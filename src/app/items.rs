@@ -41,7 +41,9 @@ impl Game {
         for stack in self.session.inventory.take_spill() {
             self.mobs.entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
         }
-        if !self.session.vitals.is_dead() {
+        // A player watching the End credits isn't in the level to touch
+        // items (v1.0 gap Track 8e).
+        if !self.session.vitals.is_dead() && self.credits.is_none() {
             self.pick_up_items();
         }
         let session = &self.session;
@@ -150,6 +152,14 @@ impl Game {
     /// Q: drops one of the selected item, or the whole stack with Ctrl.
     /// With the inventory open, drops from the slot under the mouse.
     pub(super) fn drop_selected(&mut self, whole_stack: bool) {
+        // v1.0 final track F1: a guest's drop key over a slot (`THROW`).
+        if self.lan.client.is_some()
+            && self.inventory_open
+            && let Some(code) = self.slot_under_cursor().and_then(super::lan::encode_slot)
+        {
+            self.lan_command(&format!("slot_throw {code} {}", whole_stack as u8));
+            return;
+        }
         if self.lan.client.is_some() {
             self.lan_command(if whole_stack { "drop_stack" } else { "drop" });
             return;
@@ -166,15 +176,10 @@ impl Game {
                     return;
                 }
                 // v0.17 Track D2: over a storage slot the drop key throws
-                // from it, with nothing held (`THROW`).
+                // from it, with nothing held (`THROW`); v1.0 final track
+                // F1: any slot of any screen.
                 Some(s) => {
-                    if let Some(slot) = super::screen::storage_slot(s) {
-                        self.with_screen(|screen| {
-                            if let Some(mut storage) = screen.storage() {
-                                storage.throw(slot, whole_stack);
-                            }
-                        });
-                    }
+                    self.with_screen(|screen| screen.throw_slot(s, whole_stack));
                     return;
                 }
                 None => return,
@@ -195,25 +200,12 @@ impl Game {
     /// swaps that slot with hotbar slot `hotbar` (`SWAP`). Returns whether
     /// a slot was under the mouse.
     pub(super) fn swap_under_cursor(&mut self, hotbar: usize) -> bool {
-        // v0.18 Track 4: `SWAP` on a creative cell puts a full stack of it
-        // in that hotbar slot; an empty cell does nothing.
-        match self.slot_under_cursor() {
-            Some(super::hud::SlotRef::Palette(s)) => {
-                self.session.inventory.slots[hotbar] = Some(Stack { count: s.max(), ..s });
-                return true;
-            }
-            Some(super::hud::SlotRef::PaletteEmpty | super::hud::SlotRef::Destroy) => return true,
-            _ => {}
+        // v1.0 final track F1: every slot of every screen, for the host
+        // and LAN guests (`clicks::swap_slot`).
+        if self.slot_under_cursor().is_none() {
+            return false;
         }
-        let Some(slot) = self.slot_under_cursor().and_then(super::screen::storage_slot) else { return false };
-        self.with_screen(|screen| match screen.storage() {
-            Some(mut storage) => storage.swap(slot, hotbar),
-            None => {
-                if let voxelcraft::session::storage::StorageSlot::Inventory(i) = slot {
-                    voxelcraft::session::storage::swap_in_inventory(&mut screen.session.inventory, i, hotbar);
-                }
-            }
-        });
+        self.swap_slot_under_cursor(Some(hotbar));
         true
     }
 
@@ -234,61 +226,97 @@ impl Game {
     /// Spinning, bobbing models for nearby dropped items: a small cube for
     /// blocks, a flat icon for everything else, with extra copies for
     /// bigger stacks.
-    pub(super) fn item_models(&self, alpha: f64) -> Vec<BlockModel> {
+    pub(super) fn item_models(&self, alpha: f64, camera: DVec3) -> Vec<BlockModel> {
         let mut out = Vec::new();
         for item in &self.mobs.entities.items {
             if item.pos.distance_squared(self.session.player.pos) > DRAW_DIST * DRAW_DIST {
                 continue;
             }
-            let block = crate::world::copper_golem_statue::item_model(item.stack)
-                .or_else(|| item.stack.item.block())
-                .filter(|b| !b.flat_icon());
-            let icon = match block {
-                Some(_) => None,
-                None => item
-                    .stack
-                    .item
-                    .block()
-                    .map(|b| b.info().tex[0])
-                    .or_else(|| item.stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&item.stack)))
-                    .or_else(|| item.stack.item.icon_layer()),
-            };
-            let size = if block.is_some() { 0.25 } else { 0.5 };
-            let spin = item.age + item.phase;
-            let bob = 0.1 + 0.07 * (item.age * 2.0 + item.phase).sin() as f64;
-            let sky_light = crate::entity::sky_light(&self.world, item.pos + DVec3::Y * 0.25);
-            let block_light = self.torch_light(item.pos + DVec3::Y * 0.25);
-            let copies = match item.stack.count {
-                1 => 1,
-                2..=16 => 2,
-                17..=32 => 3,
-                _ => 4,
-            };
-            for i in 0..copies {
-                // Copies sit a little apart, the same way every frame.
-                let k = i as f64;
-                let offset = DVec3::new((k * 2.3).sin(), 0.0, (k * 1.7).cos()) * 0.06 * k.min(1.0);
-                let min = item.previous_pos.lerp(item.pos, alpha)
-                    + offset
-                    + DVec3::new(-size / 2.0, bob + k * 0.03, -size / 2.0);
-                out.push(BlockModel {
-                    patterns: None,
-                    lid: None,
-                    min,
-                    size: size as f32,
-                    block: block.unwrap_or(Block::AIR),
-                    sky_light,
-                    block_light,
-                    yaw: spin,
-                    icon,
-                    orient: None,
-                    tint: voxelcraft::entity::wolf_armor::item_tint_bytes(item.stack),
-                });
-            }
+            let pos = item.previous_pos.lerp(item.pos, alpha);
+            // `ItemEntityRenderer`: `sin(ageInTicks / 10 + bobOffs) * 0.1 + 0.1`.
+            let bob = 0.1 + 0.1 * (item.age * 2.0 + item.phase).sin() as f64;
+            self.dropped_models(item.stack, pos, item.age + item.phase, bob, camera, &mut out);
+        }
+        // v1.0 gap track 6: `--item-review`'s staged item, at rest.
+        if let Some((stack, pos, spin)) = self.item_review_drop() {
+            self.dropped_models(stack, pos, spin, 0.0, camera, &mut out);
         }
         out
     }
+
+    /// The models of a dropped `stack` lying at `pos`, turned `spin` and
+    /// raised `bob` (with copies for bigger stacks). As Java's
+    /// `ItemEntityRenderer` places them, the model's lowest point (its
+    /// bounding box's) hovers 1/16 above the item's feet before the bob.
+    fn dropped_models(&self, stack: Stack, pos: DVec3, spin: f32, bob: f64, camera: DVec3, out: &mut Vec<BlockModel>) {
+        // v1.0 gap track 6b: beds, banners, the shield and two plants
+        // drawn with their 3D model's ground transform.
+        let mesh = voxelcraft::content::item_models::mesh(&stack)
+            .map(|m| m.lowest(voxelcraft::content::item_models::Context::Ground) as f64);
+        let block = crate::item::model_block(&stack);
+        let icon = match block {
+            Some(_) => None,
+            None => stack
+                .item
+                .dial_layer(self.dial_of(&self.session.player).for_stack(&stack))
+                .or_else(|| stack.item.flat_layer()),
+        };
+        let size = if block.is_some() { 1.0 } else { 0.5 };
+        // v1.0 gap track 6d: a block item through its whole `ground`
+        // transform, raised so its lowest point (`getModelBoundingBox`)
+        // hovers `ITEM_MIN_HOVER_HEIGHT` over the feet.
+        let ground = block.filter(|_| mesh.is_none()).map(|b| {
+            let local = voxelcraft::content::item_display::Context::Ground
+                .matrix(&voxelcraft::content::item_display::drawn(&stack));
+            (local, crate::render::extent_y(&stack, Some(b), local).0 as f64)
+        });
+        // `ITEM_MIN_HOVER_HEIGHT` (a flat icon's quad starts at its bottom edge).
+        let lift = HOVER;
+        let sky_light = crate::entity::sky_light(&self.world, pos + DVec3::Y * 0.25);
+        let block_light = self.torch_light(pos + DVec3::Y * 0.25);
+        let copies = match stack.count {
+            1 => 1,
+            2..=16 => 2,
+            17..=32 => 3,
+            _ => 4,
+        };
+        for i in 0..copies {
+            // Copies sit a little apart, the same way every frame.
+            let k = i as f64;
+            let offset = DVec3::new((k * 2.3).sin(), 0.0, (k * 1.7).cos()) * 0.06 * k.min(1.0);
+            let mut min = pos + offset + DVec3::new(-size / 2.0, lift + bob + k * 0.03, -size / 2.0);
+            if let Some(lowest) = mesh.or(ground.map(|g| g.1)) {
+                // The model's origin, its lowest point hovering.
+                min = pos + offset + DVec3::new(0.0, HOVER - lowest + bob + k * 0.03, 0.0);
+            }
+            let transform = ground.map(|(local, _)| {
+                glam::Mat4::from_translation((min - camera).as_vec3()) * glam::Mat4::from_rotation_y(-spin) * local
+            });
+            out.push(BlockModel {
+                patterns: None,
+                lid: None,
+                swing: None,
+                min,
+                size: if mesh.is_some() { 1.0 } else { size as f32 },
+                block: block.unwrap_or(Block::AIR),
+                sky_light,
+                block_light,
+                yaw: spin,
+                icon,
+                orient: None,
+                tint: voxelcraft::entity::wolf_armor::item_tint_bytes(stack),
+                glint: stack.has_foil(),
+                translucent: crate::item::translucent(&stack),
+                mesh: mesh.map(|_| (stack, voxelcraft::content::item_models::Context::Ground)),
+                transform,
+            });
+        }
+    }
 }
+
+/// `ItemEntityRenderer.ITEM_MIN_HOVER_HEIGHT`: how far a dropped item's
+/// model floats above its feet at the bottom of its bob.
+const HOVER: f64 = 1.0 / 16.0;
 
 /// The orb pickup ding (Java's random pitch around 0.9) and, every five
 /// levels, the level-up fanfare. `at` is `None` for the local player.
@@ -317,12 +345,26 @@ pub(super) fn shot_sound(audio: &mut Audio, ranged: voxelcraft::session::ranged:
     }
 }
 
+/// v1.0 gap track 6: one of the bundle sounds at Java's volume and pitch.
+pub(super) fn bundle_sound(audio: &mut Audio, cue: voxelcraft::content::bundle::Cue, at: Option<DVec3>) {
+    let (volume, pitch) = cue.volume_pitch();
+    audio.play(Sound::Bundle(cue), at, volume, pitch);
+}
+
 /// A v0.16 weapon sound at `at`, at Java's volume 1 and pitch 1.
 pub(super) fn weapon_sound(audio: &mut Audio, cue: voxelcraft::weapons::Cue, at: DVec3) {
     audio.play(Sound::Weapon(cue), Some(at), 1.0, (0.95, 1.05));
 }
 
 /// Java's eye launch whoosh, pitched down like a thrown pearl.
+/// v1.0 final Track F4: `InstrumentItem.play`, the instrument's sound at
+/// the player in `RECORDS`, volume `range / 16` (Java clamps the gain to 1
+/// and hears it linearly to 256 blocks, [`Sound::java_range`]), pitch 1.
+pub(super) fn horn_sound(audio: &mut Audio, instrument: u8, from: DVec3) {
+    // `playSound(player, player, ...)` plays at the player's feet.
+    audio.play_in(SoundSource::Records, Sound::Horn(instrument), Some(from), 1.0, (1.0, 1.0));
+}
+
 pub(super) fn eye_thrown_sound(audio: &mut Audio, from: DVec3) {
     audio.play_in(SoundSource::Neutral, Sound::Bow, Some(from), 0.5, (0.42, 0.62));
 }

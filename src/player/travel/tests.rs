@@ -700,3 +700,36 @@ fn auto_jump_skips_tall_walls_steps_ceilings_sneaking_and_backing_up() {
     let back = MoveInput { forward: -1.0, ..Default::default() };
     assert_eq!(highest(&mut auto(&behind), &behind, back, 30), FLOOR as f64, "walking backwards");
 }
+
+/// v1.0 gap Track 2c: lava currents push players at the dimension's rate
+/// (`FAST_LAVA`: 0.007 in the Nether against 0.0023 elsewhere), which the
+/// world's `BlockSource::fast_lava` reports.
+#[test]
+fn nether_lava_pushes_players_faster() {
+    struct Nether<'a>(&'a Grid, bool);
+    impl crate::physics::BlockSource for Nether<'_> {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            self.0.block(p)
+        }
+        fn fast_lava(&self) -> bool {
+            self.1
+        }
+    }
+    let mut world = ground();
+    for (x, b) in [(-4, Block::LAVA), (-3, Block(38)), (-2, Block(39)), (-1, Block(40))] {
+        for z in -3..=3 {
+            world.set(IVec3::new(x, FLOOR, z), b);
+        }
+    }
+    let drift = |fast: bool| {
+        let mut p = standing(&world);
+        p.pos = DVec3::new(-2.5, FLOOR as f64, 0.5);
+        let w = Nether(&world, fast);
+        for _ in 0..3 {
+            p.tick(MoveInput::default(), &w);
+        }
+        p.pos.x + 2.5
+    };
+    let (slow, fast) = (drift(false), drift(true));
+    assert!(slow > 0.0 && fast > slow * 1.5, "{slow} {fast}");
+}

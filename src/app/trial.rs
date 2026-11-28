@@ -28,6 +28,10 @@ impl Game {
     pub(super) fn tick_trial(&mut self) {
         let mut players = vec![trial_player(&self.session)];
         players.extend(self.agents.players.values().filter(|b| b.active).map(|b| trial_player(&b.agent.session)));
+        // v1.0 final F11: nobody is in a background level.
+        if self.unattended {
+            players.clear();
+        }
         let rules = TrialRules {
             spawner_blocks: self.gamerules.bool("spawner_blocks_work"),
             spawn_mobs: self.gamerules.bool("spawn_monsters"),

@@ -669,9 +669,10 @@ fn recreate_fills_create_new_world_from_the_world() {
 fn create_new_world_cycles_modes_and_switches_tabs() {
     let mut host = Host::new("create");
     let mut stack = over_title(CreateWorld::new());
-    // Game tab: Tab bar (2), name, mode, difficulty, then the footer.
-    assert_eq!(stack.peek(&host, SIZE).0.slots.len(), 7);
-    let (mode, difficulty, create) = (3, 4, 5);
+    // Game tab: Tab bar (3, with v1.0 final F6's More), name, mode,
+    // difficulty, then the footer.
+    assert_eq!(stack.peek(&host, SIZE).0.slots.len(), 8);
+    let (mode, difficulty, create) = (4, 5, 6);
     // Survival, Hardcore (difficulty locked to Hard), Creative, Survival.
     click(&mut stack, &mut host, mode);
     assert!(!stack.peek(&host, SIZE).0.slots[difficulty].focusable, "Hardcore locks the difficulty");
@@ -680,16 +681,29 @@ fn create_new_world_cycles_modes_and_switches_tabs() {
     let (_, new) = played(click(&mut stack, &mut host, create)).unwrap();
     let new = new.unwrap();
     assert_eq!((new.mode, new.hardcore, new.difficulty), (GameMode::Creative, false, Difficulty::Hard));
-    // The controller: up to the tab bar, right to World; focusing a tab shows it.
+    // The controller: up to the tab bar, onto World (the middle of three,
+    // above the name); focusing a tab shows it.
+    let mut stack = over_title(CreateWorld::new());
+    stack.nav(&mut host, Nav::Up, SIZE);
+    let (shape, _) = stack.peek(&host, SIZE);
+    assert_eq!(shape.slots.len(), 6, "World tab: the seed field and the footer");
+    stack.nav(&mut host, Nav::Down, SIZE);
+    typed(&mut stack, &mut host, "-7");
+    let (_, new) = played(click(&mut stack, &mut host, 4)).unwrap();
+    assert_eq!(new.unwrap().seed, Some(-7i64 as u64));
+    // v1.0 final F6: More has Game Rules, and greyed Experiments and Data
+    // Packs; the rules chosen there go with the new world.
     let mut stack = over_title(CreateWorld::new());
     stack.nav(&mut host, Nav::Up, SIZE);
     stack.nav(&mut host, Nav::Right, SIZE);
     let (shape, _) = stack.peek(&host, SIZE);
-    assert_eq!(shape.slots.len(), 5, "World tab: the seed field and the footer");
-    stack.nav(&mut host, Nav::Down, SIZE);
-    typed(&mut stack, &mut host, "-7");
-    let (_, new) = played(click(&mut stack, &mut host, 3)).unwrap();
-    assert_eq!(new.unwrap().seed, Some(-7i64 as u64));
+    assert_eq!(shape.slots.len(), 8, "More tab: three buttons and the footer");
+    assert!(shape.slots[3].focusable && !shape.slots[4].focusable && !shape.slots[5].focusable);
+    click(&mut stack, &mut host, 3);
+    assert_eq!(stack.depth(), 3, "Game Rules opens Edit Game Rules");
+    stack.nav(&mut host, Nav::Back, SIZE);
+    let (_, new) = played(click(&mut stack, &mut host, 6)).unwrap();
+    assert_eq!(*new.unwrap().rules, voxelcraft::rules::GameRules::default());
     // Cancel goes back.
     let mut stack = over_title(CreateWorld::new());
     stack.nav(&mut host, Nav::Back, SIZE);

@@ -20,6 +20,7 @@
 //! | 1    | 8-15  | ambient occlusion per corner, 2 bits (0 dark .. 3) |
 //! | 1    | 16-20 | water surface drop of the upper edge, 1/16 block   |
 //! | 1    | 21-24 | texture layer, high 4 bits (normal and cross quads) |
+//! | 1    | 25-26 | random variant group (v1.0 final track F3)         |
 //! | 2    | 0-31  | per corner: sky light (low 4 bits), block light    |
 //!
 //! For a face on axis `d` the u and v axes are `(d + 1) % 3` and
@@ -36,9 +37,53 @@
 //! so their three unused coordinate bits in word 0 (5, 11, 17) store
 //! layer bits 8-10 instead. A face with area has a lower v bound of at most
 //! 15, so the top bit of that bound (word 0 bit 30) stores layer bit 11.
-//! All passes address 4096 texture layers. Detail upper/plane coordinate
-//! code 31 represents 1.5/16 (frogspawn); ordinary shape coordinates remain
-//! integer sixteenths. The code is decoded only in the detail vertex path.
+//! All passes address 4096 texture layers. Detail plane code 31 represents
+//! 1.5/16 (frogspawn); ordinary shape coordinates remain integer
+//! sixteenths. The code is decoded only in the detail vertex path.
+//!
+//! v1.0 gap track 6e: an upper bound is 1 to 16 and is stored as its low
+//! four bits (16 as 0), and a lower u bound is at most 15, so three bits are
+//! spare: word 0 bit 25 and word 1 bits 20 and 25. Plane codes 17-24 are a
+//! face on the cell's edge (the side its face points to) whose texture takes
+//! Java's explicit UVs under symmetry `code - 17`, the spare bits then naming
+//! its offset; on any other face the spare bits are the symmetry itself
+//! (`java_uv`: doors, trapdoors and glass panes as Java's models map them).
+//! Plane codes 25-28 are a rail's plane at 1/16 sloping east, west, north or
+//! south.
+//!
+//! v1.0 gap track 6f: plane code 29 is a face of a Java model the game draws
+//! whole from the jar's element layout (iron and copper bars, hoppers and
+//! end rods, which Java draws without ambient occlusion and so lit flat):
+//! word 1's AO bits hold its depth code (0-16 sixteenths, 17 for Java's
+//! 0.001 and 18 for 15.999, its planes just inside the cell), the spare
+//! bits its UV symmetry, and word 2 its one light (bits 0-7) and its UV
+//! offset in texels (bits 8-11 u, 12-15 v); the shader draws it unoccluded.
+//!
+//! v1.0 final track F3: a normal quad's variant group (word 1 bits 25-26,
+//! [`variants`]) names Java's random model variants of a full cube (stone
+//! mirrored, grass turned, netherrack turned every way); the fragment
+//! shader picks each cell's variant by Java's position seed and turns or
+//! mirrors that cell's texture, so a merged quad still covers many cells.
+//!
+//! UVs follow Java's default face UVs ([`face_uv`], v1.0 gap track 6d):
+//! every face's texture upright and unmirrored seen from outside, except
+//! where a model gives explicit UVs (above).
+//!
+//! v1.0 gap track 6c: a detail quad whose face is 6 or 7 is a *fine* quad
+//! (bamboo, whose stalk and leaf planes sit off the sixteenth grid). Word 0
+//! holds the cell, layer bits 8-10 in bits 5, 11 and 17 and bit 11 in bit
+//! 18, its real face in bits 21-23, the plane's coordinate code in bits
+//! 24-27, bit 28 for a leaf plane (lit flat, shaded as a face up, its whole
+//! texture stretched over its bounds) and the diagonal flip in bit 31;
+//! word 1 the layer, ambient occlusion and the lower and upper u and v
+//! codes in bits 16-27 (3 bits each). The codes are sixteenths 0, 0.8,
+//! 6.5, 7, 9, 9.5, 15.2 and 16 (and 8 for a plane). The shader moves a fine
+//! quad by Java's bamboo offset for its column. v1.0 gap track 6d: a stalk
+//! quad's word 0 bits 29-30 name Java's stalk model for the cell
+//! ([`crate::world::offset::bamboo_model`]); the shader maps its sides to
+//! that model's texture column (3 texels apart from 0, as wide as the
+//! stalk) and its ends to the texture's corner squares, as `bamboo1_age0`
+//! to `bamboo4_age1` do.
 //!
 //! Faces 6 and 7 are the two diagonal planes of a cross-shaped block
 //! (plants, torches) at the cell `(x, y, z)`: face 6 runs from (0, 0) to
@@ -47,12 +92,19 @@
 //! Word 0 bits 21-22 turn a cross onto its side (0 upright, 1 along x, 2
 //! along z) and bit 23 points it the negative way: Java's amethyst buds on
 //! walls are its cross model turned 90 degrees about x, then about y.
+//! Bits 24-26 of an upright cross name its Java model offset kind
+//! (`world::offset::Kind`, 0 for none): the shader moves the plant by
+//! Java's offset for its world column, which each draw's chunk origin gives
+//! it, so the quads stay the same size.
 
 use std::sync::Arc;
 
 use crate::world::block::{Block, Facing, RenderKind, tex};
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_MAX_Y, WORLD_MIN_Y};
 use crate::world::shape::{self, Boxes};
+
+mod java_uv;
+pub mod variants;
 
 /// A cross drawn on its side: Java's amethyst buds and clusters on walls
 /// (`facing` north, south, east, west: the cross model turned x 90 and y
@@ -67,6 +119,46 @@ pub fn side_cross(b: Block) -> Option<u32> {
         (_, -1) => Some(2 | 4),
         _ => None,
     }
+}
+
+/// v1.0 gap track 6d: Java's default UV of the point `p` (block units) on
+/// a face (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z), as `FaceBakery` maps an
+/// element's face without explicit UVs: each texture upright and
+/// unmirrored seen from outside. The terrain shader's `face_uv` is the same
+/// mapping in planar form (`1 - c` as `-c`, which tiles identically).
+pub fn face_uv(face: usize, p: [f32; 3]) -> [f32; 2] {
+    let [x, y, z] = p;
+    match face {
+        0 => [1.0 - z, 1.0 - y],
+        1 => [z, 1.0 - y],
+        2 => [x, z],
+        3 => [x, 1.0 - z],
+        4 => [x, 1.0 - y],
+        _ => [1.0 - x, 1.0 - y],
+    }
+}
+
+/// v1.0 gap track 6f: the UVs of a block item's face (0 +X .. 5 -Z) on the
+/// box `min`..`max` (sixteenths), from its corners' default [`face_uv`]s:
+/// Java's explicit UVs where the item model has them (trapdoors' rims, as
+/// the jar's `*_trapdoor_bottom` maps them; end rods, as `end_rod` does),
+/// shifted into one texture repeat (0..=1).
+pub fn item_face_uvs(block: Block, face: usize, min: [u8; 3], max: [u8; 3], uv: [[f32; 2]; 4]) -> [[f32; 2]; 4] {
+    let d = face / 2;
+    let (mut lo, mut hi) = (min, max);
+    let depth = if face.is_multiple_of(2) { max[d] } else { min[d] };
+    lo[d] = depth;
+    hi[d] = depth;
+    let Some((sym, offset)) = java_uv::item_face_transform(block.canonical(), face, lo, hi) else {
+        return uv;
+    };
+    let mut out = uv.map(|t| java_uv::apply(sym, offset, t));
+    for a in 0..2 {
+        let shift = out.iter().map(|t| t[a]).fold(f32::MAX, f32::min);
+        let shift = (shift + 1e-4).floor();
+        out.iter_mut().for_each(|t| t[a] -= shift);
+    }
+    out
 }
 
 /// Margin for adjacent face/corner light, AO and connected shape samples.
@@ -99,6 +191,9 @@ pub struct MeshInput {
     /// v0.18 Track 9: local cells drawn as block-entity models instead (a
     /// chest whose lid is open or moving, a barrel in use); usually empty.
     pub models: Vec<glam::IVec3>,
+    /// v1.0 gap track 6d: the world position of the chunk's first block,
+    /// for model choices seeded by position (bamboo's stalk models).
+    pub origin: glam::IVec3,
 }
 
 impl MeshInput {
@@ -323,6 +418,12 @@ const PRESENT: u64 = 1 << 31;
 /// Top drop of a low block (see `Block::top_drop`), in 1/16 block, above
 /// the 12 layer bits, AO and kind.
 const DROP_SHIFT: u64 = 26;
+/// v1.0 final track F3: a full cube's random variant group
+/// ([`variants::group`]) in the merge key's four spare bits above the
+/// layer, so faces of different groups never merge.
+const GROUP_SHIFT: u64 = 12;
+/// Word 1 bits of a normal quad's variant group (see the module docs).
+const WORD_GROUP_SHIFT: u32 = 25;
 
 /// What face culling and water surfaces see: waterlogged blocks are water
 /// (their own model is added separately), except a waterlogged cube that
@@ -342,7 +443,79 @@ fn shaped_boxes(blocks: &[Block], i: usize, b: Block) -> Boxes {
     }
     let neighbour = |f: Facing| at(f.offset());
     let below = i.checked_sub(D * D).map(|j| blocks[j]).unwrap_or(Block::AIR);
-    shape::shape_with(b, neighbour, below, shape::Above::read(b, at))
+    let mut boxes = shape::shape_with(b, neighbour, below, shape::Above::read(b, at));
+    // v1.0 gap Track 7: planes that are drawn but never collide: a leafy
+    // bamboo's crossed leaves and the potted bamboo's leaf.
+    let canonical = b.canonical();
+    if let Some(planes) = crate::world::overworld_blocks::bamboo_leaf_planes(canonical) {
+        planes.into_iter().for_each(|p| boxes.push(p));
+    } else if crate::world::utilities::is_potted_bamboo(canonical) {
+        debug_assert_eq!(boxes.as_slice().len(), crate::world::utilities::POTTED_BAMBOO_LEAF_BOX);
+        boxes.push(crate::world::utilities::POTTED_BAMBOO_LEAF_PLANE);
+    }
+    boxes
+}
+
+/// v1.0 gap track 6e: detail plane codes 17-24, a face on the cell's edge
+/// with Java's UV symmetry `code - 17` ([`java_uv`]).
+const PLANE_JAVA_UV: u32 = 17;
+/// v1.0 gap track 6e: detail plane codes 25-28, a rail's plane at 1/16
+/// sloping east, west, north or south.
+const PLANE_SLOPE: u32 = 25;
+/// v1.0 gap track 6f: each face's neighbour offset (x, y, z), faces +X,
+/// -X, +Y, -Y, +Z, -Z.
+const FACE_OFFSET: [[isize; 3]; 6] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+/// v1.0 gap track 6f: detail plane code 29, a face of a Java model drawn
+/// without ambient occlusion ([`java_uv::ModelFace`]): the AO bits hold its
+/// depth code (0-16 sixteenths, 17 Java's 0.001, 18 its 15.999), the spare
+/// bits its UV symmetry, and the light word its one light (bits 0-7) and
+/// texel offset (bits 8-11 u, 12-15 v).
+const PLANE_MODEL: u32 = 29;
+/// v1.0 final F10: the cauldron's body boxes (`utilities::boxes`), drawn
+/// as Java's model; the box after them is its contents.
+const CAULDRON_BODY: usize = 9;
+
+// v1.0 gap track 6c: fine-quad coordinate codes (`chunk.wgsl`'s
+// `fine_coord`): sixteenths 0, 0.8, 6.5, 7, 9, 9.5, 15.2 and 16 for bounds,
+// and 8 for a plane only.
+const FINE_0: u32 = 0;
+const FINE_0_8: u32 = 1;
+const FINE_6_5: u32 = 2;
+const FINE_7: u32 = 3;
+const FINE_9: u32 = 4;
+const FINE_9_5: u32 = 5;
+const FINE_15_2: u32 = 6;
+const FINE_16: u32 = 7;
+const FINE_8: u32 = 8;
+
+/// v1.0 gap track 6c: a fine quad (see the module docs) of the cell
+/// `[x, y, z]` facing `face`, its plane and `[lo u, hi u, lo v, hi v]` as
+/// coordinate codes.
+#[allow(clippy::too_many_arguments)]
+fn fine_quad(
+    [x, y, z]: [usize; 3],
+    face: u32,
+    layer: u32,
+    plane: u32,
+    r: [u32; 4],
+    leaf: bool,
+    ao: u32,
+    light: u32,
+) -> [u32; 3] {
+    [
+        (x | y << 6 | z << 12) as u32
+            | (layer >> 8 & 1) << 5
+            | (layer >> 9 & 1) << 11
+            | (layer >> 10 & 1) << 17
+            | (layer >> 11 & 1) << 18
+            | 3 << 19
+            | face << 21
+            | plane << 24
+            | u32::from(leaf) << 28
+            | flip_diagonal(ao, light) << 31,
+        (layer & 255) | ao << 8 | r[0] << 16 | r[1] << 19 | r[2] << 22 | r[3] << 25 | DETAIL,
+        light,
+    ]
 }
 
 /// Lights and meshes one chunk.
@@ -354,7 +527,7 @@ pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
         region.blocks[ridx(x, y, z)] = Block::AIR;
     }
     region.copy_light(&input.light);
-    let mesh = mesh_region(region, &input.foliage);
+    let mesh = mesh_region(region, &input.foliage, input.origin);
     #[cfg(test)]
     let mesh = MeshData {
         block_light: Region::centre_light(&region.block_light),
@@ -365,7 +538,7 @@ pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
 }
 
 /// Greedy-meshes the centre chunk of a lit region.
-fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData {
+fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam::IVec3) -> MeshData {
     let blocks = &r.blocks[..];
     let (sky, blk) = (&r.sky[..], &r.block_light[..]);
     let mut out: [Vec<[u32; 3]>; PASSES] = Default::default();
@@ -377,6 +550,10 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
     // their boxes, collected during the +X sweep.
     let mut cross_cells = Vec::new();
     let mut shaped_cells: Vec<(usize, Boxes)> = Vec::new();
+    // v1.0 gap track 6f: each shaped cell's Java model faces, if the game
+    // draws its whole model from the jar, found once (on the +X pass, when
+    // the cells are all collected) for the six passes.
+    let mut model_cells: Vec<Option<&'static [java_uv::ModelFace]>> = Vec::new();
 
     for face in 0..6 {
         for (starts, quads) in face_start.iter_mut().zip(&out) {
@@ -437,6 +614,20 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         }
                     } else {
                         match b.kind() {
+                            // v1.0 gap Track 5c: a Nether portal is Java's
+                            // plane along its axis, drawn with the shaped blocks.
+                            RenderKind::Translucent if b.is_nether_portal() => {
+                                if face == 0 {
+                                    let along_x = crate::world::portal::along_x(
+                                        b,
+                                        blocks[i as usize + 1],
+                                        blocks[i as usize - 1],
+                                    );
+                                    shaped_cells
+                                        .push((i as usize, Boxes::from_box(crate::world::portal::plane(along_x))));
+                                }
+                                false
+                            }
                             // Low blocks (beds) show their lowered top under anything.
                             RenderKind::Cutout if face == 2 && b.top_drop() > 0 => true,
                             // Ice: the only translucent block that isn't a fluid.
@@ -473,7 +664,14 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         };
                         let layer = tex::tinted(b.info().tex[face], foliage[x + z * CHUNK_SIZE]) as u64;
                         let drop = (b.top_drop() as u64) << DROP_SHIFT;
-                        key = PRESENT | kind << KIND_SHIFT | ao << AO_SHIFT | layer | drop | light << LIGHT_SHIFT;
+                        let group = if kind == 0 { variants::group(b) as u64 } else { 0 };
+                        key = PRESENT
+                            | kind << KIND_SHIFT
+                            | ao << AO_SHIFT
+                            | layer
+                            | group << GROUP_SHIFT
+                            | drop
+                            | light << LIGHT_SHIFT;
                         any = true;
                     }
                     mask[vv * CHUNK_SIZE + uu] = key;
@@ -535,7 +733,11 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                             | (w as u32 - 1) << 21
                             | (h as u32 - 1) << 26
                             | flip << 31,
-                        (layer & 255) | corner_ao << 8 | drop << 16 | (layer >> 8) << 21,
+                        (layer & 255)
+                            | corner_ao << 8
+                            | drop << 16
+                            | (layer >> 8) << 21
+                            | (((key >> GROUP_SHIFT) & 15) as u32) << WORD_GROUP_SHIFT,
                         (key >> LIGHT_SHIFT) as u32,
                     ]);
                     uu += w;
@@ -545,7 +747,22 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
 
         // Shaped blocks: each box face pointing this way, unless it's hidden
         // by another box or lies against an opaque neighbour.
-        for (i, boxes) in &shaped_cells {
+        if face == 0 {
+            model_cells = shaped_cells
+                .iter()
+                .map(|&(i, _)| {
+                    let neighbour = |f: Facing| {
+                        let o = f.offset();
+                        let n =
+                            (i as isize + o.x as isize + o.y as isize * (D * D) as isize + o.z as isize * D as isize)
+                                as usize;
+                        blocks[n].canonical()
+                    };
+                    java_uv::model_faces(blocks[i].canonical(), neighbour)
+                })
+                .collect();
+        }
+        for (k, (i, boxes)) in shaped_cells.iter().enumerate() {
             // A waterlogged block draws as its dry original.
             let (i, b) = (*i, blocks[*i].canonical());
             // See-through textures need the alpha test.
@@ -562,43 +779,172 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 || matches!(b, Block::IRON_BARS | Block::BREWING_STAND)
                 || crate::world::copper::see_through(b)
                 || crate::world::overworld_blocks::bud_facing(b).is_some()
+                || crate::world::overworld_blocks::bamboo_leaf_planes(b).is_some()
                 || crate::world::utilities::see_through(b)
                 || b == crate::world::beacon::BEACON
+                || crate::world::overworld_blocks::cocoa_of(b).is_some()
                 || crate::world::cave_blocks::see_through(b)
                 || matches!(b.shaped(), Some(crate::world::block::Shaped::Frame { .. }));
-            let pass = if see_through { CUTOUT } else { OPAQUE };
+            // Java's `nether_portal_ns` and `_ew` models: only the plane's two
+            // broad faces (no cullface, so never hidden by a neighbour), in
+            // the translucent layer its texture's alpha puts it in.
+            let portal = b.is_nether_portal();
+            let pass = if portal {
+                TRANSLUCENT
+            } else if see_through {
+                CUTOUT
+            } else {
+                OPAQUE
+            };
             let (x, y, z) = (i % D - MARGIN, i / (D * D) - MARGIN, i / D % D - MARGIN);
             let layer = tex::tinted(b.info().tex[face], foliage[x + z * CHUNK_SIZE]) as u32;
             if let Some(rail) = b.rail_shape() {
                 if face == 2 || face == 3 {
                     // Detail lower-u values 17..20 tag the four slopes; all
                     // ordinary detail bounds remain 0..16. Rails are a plane.
-                    let slope = match rail {
-                        crate::world::block::RailShape::AscendingEast => 17,
-                        crate::world::block::RailShape::AscendingWest => 18,
-                        crate::world::block::RailShape::AscendingNorth => 19,
-                        crate::world::block::RailShape::AscendingSouth => 20,
-                        _ => 0,
+                    // v1.0 gap track 6e: plane codes 25-28 are the plane at
+                    // 1/16 sloping east, west, north or south; 1 a flat rail.
+                    let plane = match rail {
+                        crate::world::block::RailShape::AscendingEast => PLANE_SLOPE,
+                        crate::world::block::RailShape::AscendingWest => PLANE_SLOPE + 1,
+                        crate::world::block::RailShape::AscendingNorth => PLANE_SLOPE + 2,
+                        crate::world::block::RailShape::AscendingSouth => PLANE_SLOPE + 3,
+                        _ => 1,
                     };
                     let light = (sky[i] as u32 | (blk[i] as u32) << 4) * 0x01010101;
+                    // Upper bounds of 16 are stored as 0 (see the module docs).
                     out[CUTOUT].push([
                         (x | y << 6 | z << 12) as u32
                             | (layer >> 8 & 1) << 5
                             | (layer >> 9 & 1) << 11
                             | (layer >> 10 & 1) << 17
                             | (face as u32) << 18
-                            | slope << 21
                             | (layer >> 11 & 1) << 30,
-                        (layer & 255) | 255 << 8 | 16 << 16 | 16 << 21 | 1 << 26 | DETAIL,
+                        (layer & 255) | 255 << 8 | plane << 26 | DETAIL,
                         light,
                     ]);
                 }
                 continue;
             }
+            // v1.0 gap track 6c: bamboo as Java's models: a stalk 2 or 3
+            // texels across by its age and leaf planes from 0.8 to 15.2, in
+            // fine quads moved by the column's offset.
+            if let Some((age, leaves)) = crate::world::overworld_blocks::bamboo_stalk(b) {
+                let edge = || {
+                    let front = i as isize + sd;
+                    (!blocks[front as usize].is_opaque()).then_some(front)
+                };
+                let (lo, hi) = if age == 0 { (FINE_7, FINE_9) } else { (FINE_6_5, FINE_9_5) };
+                let stalk_layer = crate::world::overworld_blocks::t::BAMBOO as u32;
+                let stalk = if d == 1 {
+                    // The top or bottom, at the cell's edge.
+                    edge().map(|front| (front, if positive { FINE_16 } else { FINE_0 }, [lo, hi, lo, hi]))
+                } else {
+                    let full = [FINE_0, FINE_16];
+                    let r = if d == 0 { [full[0], full[1], lo, hi] } else { [lo, hi, full[0], full[1]] };
+                    Some((i as isize, if positive { hi } else { lo }, r))
+                };
+                if let Some((front, plane, r)) = stalk {
+                    let (ao, light) = shade_corners(blocks, sky, blk, front, su, sv, true);
+                    let (ao, light) = (ao as u32, light as u32);
+                    // v1.0 gap track 6d: Java's stalk model for the cell, in
+                    // word 0 bits 29-30 (its texture column).
+                    let at = origin + glam::IVec3::new(x as i32, y as i32, z as i32);
+                    let model = u32::from(crate::world::offset::bamboo_model(at.x, at.y, at.z));
+                    let mut q = fine_quad([x, y, z], face as u32, stalk_layer, plane, r, false, ao, light);
+                    q[0] |= model << 29;
+                    out[pass].push(q);
+                }
+                // The leaf planes: x across at z 8 (faces +-Z) and z across
+                // at x 8 (faces +-X), lit flat by the cell, no occlusion.
+                if leaves != 0 && d != 1 {
+                    let (across, up) = ([FINE_0_8, FINE_15_2], [FINE_0, FINE_16]);
+                    let r = if d == 0 {
+                        [up[0], up[1], across[0], across[1]]
+                    } else {
+                        [across[0], across[1], up[0], up[1]]
+                    };
+                    let light = u32::from(sky[i] | blk[i] << 4) * 0x0101_0101;
+                    out[pass].push(fine_quad([x, y, z], face as u32, layer, FINE_8, r, true, 0xFF, light));
+                }
+                continue;
+            }
+            // v1.0 gap track 6f: Java's whole element layout (bars, hoppers,
+            // end rods): each face as the jar's model has it, lit flat (Java
+            // draws them without ambient occlusion: the cell's own light, or
+            // the neighbour's for a face on the cell's edge), in plane code 29.
+            let cauldron = crate::world::utilities::cauldron_of(b);
+            if let Some(faces) = model_cells[k] {
+                for mf in faces.iter().filter(|m| usize::from(m.face) == face) {
+                    let depth = if positive { mf.hi[d] } else { mf.lo[d] };
+                    let r = [mf.lo[u], mf.hi[u], mf.lo[v], mf.hi[v]].map(u32::from);
+                    let on_edge = !mf.inset && depth == if positive { 16 } else { 0 };
+                    let front = if on_edge { (i as isize + sd) as usize } else { i };
+                    // Java culls a face by its cullface (a hopper's inner
+                    // rim faces by the block above); a face on the edge
+                    // against an opaque neighbour can't be seen either.
+                    let culled = mf.cull < 6 && {
+                        let o = FACE_OFFSET[usize::from(mf.cull)];
+                        let n = i as isize + o[0] + o[1] * (D * D) as isize + o[2] * D as isize;
+                        blocks[n as usize].is_opaque()
+                    };
+                    if culled || (on_edge && blocks[front].is_opaque()) {
+                        continue;
+                    }
+                    let layer = java_uv::model_layer(b, mf.tex, layer);
+                    let light = u32::from(sky[front] | blk[front] << 4)
+                        | u32::from(mf.offset[0]) << 8
+                        | u32::from(mf.offset[1]) << 12;
+                    let bits = match (mf.inset, depth) {
+                        (true, 0) => 17,
+                        (true, _) => 18,
+                        _ => u32::from(depth),
+                    };
+                    let spare = u32::from(mf.sym);
+                    out[pass].push([
+                        (x | y << 6 | z << 12) as u32
+                            | (layer >> 8 & 1) << 5
+                            | (layer >> 9 & 1) << 11
+                            | (layer >> 10 & 1) << 17
+                            | (face as u32) << 18
+                            | r[0] << 21
+                            | (spare & 1) << 25
+                            | r[2] << 26
+                            | (layer >> 11 & 1) << 30,
+                        (layer & 255)
+                            | bits << 8
+                            | (r[1] & 15) << 16
+                            | (spare >> 1 & 1) << 20
+                            | (r[3] & 15) << 21
+                            | (spare >> 2 & 1) << 25
+                            | PLANE_MODEL << 26
+                            | DETAIL,
+                        light,
+                    ]);
+                }
+                // v1.0 final F10: a cauldron's contents (its last box) are
+                // still drawn as a box below.
+                if cauldron.is_none() {
+                    continue;
+                }
+            }
+            // v1.0 gap track 6e: Java's explicit face UVs (`java_uv`).
+            let java_uvs = java_uv::has_ops(b);
+            let frogspawn = b == crate::world::frog_blocks::FROGSPAWN;
             for (j, bx) in boxes.as_slice().iter().enumerate() {
+                if cauldron.is_some() && model_cells[k].is_some() && j < CAULDRON_BODY {
+                    continue;
+                }
+                // v1.0 gap track 6e: Java's frogspawn is a plane at 1.5/16
+                // (both faces there, no sides), which also keeps the 1.5/16
+                // code out of the bounds.
+                let plane = shape::Box16 { min: [0, 2, 0], max: [16, 2, 16] };
+                let bx = if frogspawn { &plane } else { bx };
                 // Candle wax and wicks have layers of their own.
                 let layer = crate::world::colour_blocks::box_layer(b, j)
                     .or_else(|| crate::world::beacon::box_layer(b, j))
+                    .or_else(|| crate::world::overworld_blocks::box_layer(b, j))
+                    .or_else(|| crate::world::utilities::box_layer(b, j))
                     .map_or(layer, u32::from);
                 let depth = if positive { bx.max[d] } else { bx.min[d] };
                 let r = [bx.min[u], bx.max[u], bx.min[v], bx.max[v]];
@@ -607,12 +953,23 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 if r[0] >= r[1] || r[2] >= r[3] {
                     continue;
                 }
+                if portal && bx.max[d] - bx.min[d] == 16 {
+                    continue;
+                }
+
                 let on_edge = depth == if positive { 16 } else { 0 };
                 let front = if on_edge { i as isize + sd } else { i as isize };
                 if (on_edge && blocks[front as usize].is_opaque()) || boxes.face_hidden(j, d, positive, r) {
                     continue;
                 }
-                let (ao, light) = shade_corners(blocks, sky, blk, front, su, sv, true);
+                // `ModelBlockRenderer` draws a light-emitting block without
+                // ambient occlusion, its faces inside the cell flat with the
+                // cell's own light.
+                let (ao, light) = if portal {
+                    (0xFF, u64::from(sky[i] | blk[i] << 4) * 0x0101_0101)
+                } else {
+                    shade_corners(blocks, sky, blk, front, su, sv, true)
+                };
                 let (ao, light) = (ao as u32, light as u32);
                 let coord = |value: u8, axis: usize| {
                     if b == crate::world::frog_blocks::FROGSPAWN && axis == 1 && value == 2 {
@@ -621,8 +978,29 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         u32::from(value)
                     }
                 };
-                let r = [coord(r[0], u), coord(r[1], u), coord(r[2], v), coord(r[3], v)];
-                let depth = coord(depth, d);
+                // Upper bounds of 16 are stored as 0, freeing their top bits.
+                let r = [coord(r[0], u), coord(r[1], u) & 15, coord(r[2], v), coord(r[3], v) & 15];
+                let edge_depth = depth;
+                let mut depth = coord(depth, d);
+                // v1.0 gap track 6e: Java's explicit UVs. A face on the cell's
+                // edge keeps its symmetry in the plane code and its offset in
+                // the three spare bound bits; an inner face its symmetry there.
+                let mut spare = 0;
+                if java_uvs {
+                    let mut flat_lo = bx.min;
+                    let mut flat_hi = bx.max;
+                    flat_lo[d] = edge_depth;
+                    flat_hi[d] = edge_depth;
+                    let op = java_uv::face_op(b, blocks[i - D * D], face, flat_lo, flat_hi);
+                    if java_uv::on_edge(op) {
+                        debug_assert!(on_edge, "{b:?} face {face}");
+                        depth = PLANE_JAVA_UV + java_uv::symmetry(op);
+                        spare = java_uv::offset(op);
+                    } else {
+                        debug_assert_eq!(java_uv::offset(op), 0, "{b:?} face {face}");
+                        spare = java_uv::symmetry(op);
+                    }
+                }
                 out[pass].push([
                     (x | y << 6 | z << 12) as u32
                         | (layer >> 8 & 1) << 5
@@ -630,10 +1008,18 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         | (layer >> 10 & 1) << 17
                         | (face as u32) << 18
                         | r[0] << 21
+                        | (spare & 1) << 25
                         | r[2] << 26
                         | (layer >> 11 & 1) << 30
                         | flip_diagonal(ao, light) << 31,
-                    (layer & 255) | ao << 8 | r[1] << 16 | r[3] << 21 | depth << 26 | DETAIL,
+                    (layer & 255)
+                        | ao << 8
+                        | r[1] << 16
+                        | (spare >> 1 & 1) << 20
+                        | r[3] << 21
+                        | (spare >> 2 & 1) << 25
+                        | depth << 26
+                        | DETAIL,
                     light,
                 ]);
             }
@@ -649,8 +1035,14 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
         let pos = (x | y << 6 | z << 12) as u32;
         let layer = tex::tinted(b.info().tex[0], foliage[x + z * CHUNK_SIZE]) as u32;
         let turn = side_cross(b).unwrap_or(0) << 21;
+        // v1.0 gap track 6c: the plant's offset kind (`world::offset`).
+        let shift = if turn == 0 { crate::world::offset::kind(b).map_or(0, |k| k as u32) << 24 } else { 0 };
         for face in [6u32, 7] {
-            cross.push([pos | face << 18 | turn, (layer & 255) | 0xFF << 8 | (layer >> 8) << 21, l * 0x0101_0101]);
+            cross.push([
+                pos | face << 18 | turn | shift,
+                (layer & 255) | 0xFF << 8 | (layer >> 8) << 21,
+                l * 0x0101_0101,
+            ]);
         }
     }
     // Every cross quad belongs to face group 0.
@@ -725,20 +1117,14 @@ mod tests {
         std::array::from_fn(|k| {
             let j = (k as u32 + flip) & 3;
             let c = if face.is_multiple_of(2) { j } else { (4 - j) & 3 };
-            let light = q[2] >> (c * 8) & 0xFF;
+            // v1.0 gap track 6f: a model face (plane code 29) has one light.
+            let model = detail && q[1] >> 26 & 31 == PLANE_MODEL;
+            let light = if model { q[2] & 0xFF } else { q[2] >> (c * 8) & 0xFF };
             let coord_mask = if detail { 31 } else { 63 };
             let base = [q[0] & coord_mask, q[0] >> 6 & coord_mask, q[0] >> 12 & coord_mask].map(|x| x as f32);
             let pos = if detail {
-                let sixteenths = |shift: u32, word: u32| {
-                    let value = word >> shift & 31;
-                    if value == 31 { 1.5 / 16.0 } else { value as f32 / 16.0 }
-                };
-                let mut p = base;
-                p[d] += sixteenths(26, q[1]);
-                p[u] += if c == 1 || c == 2 { sixteenths(16, q[1]) } else { sixteenths(21, q[0]) };
-                // The lower v bound's top bit is layer bit 11.
-                p[v] += if c >= 2 { sixteenths(21, q[1]) } else { (q[0] >> 26 & 15) as f32 / 16.0 };
-                p
+                let p_ = detail_position(q, c);
+                [base[0] + p_[0], base[1] + p_[1], base[2] + p_[2]]
             } else {
                 let du = if c == 1 || c == 2 { w } else { 0 };
                 let dv = if c >= 2 { h } else { 0 };
@@ -758,6 +1144,67 @@ mod tests {
         })
     }
 
+    /// A detail quad's corner `c` in its cell (blocks), decoded as
+    /// `chunk.wgsl` does: bounds in sixteenths with upper bounds of 16
+    /// stored as 0, the plane's code (1.5/16 for 31, the edge the face
+    /// points to for Java's UV codes 17-24, 1/16 for a rail's slope, a
+    /// model face's depth code for 29).
+    fn detail_position(q: [u32; 3], c: u32) -> [f32; 3] {
+        let face = (q[0] >> 18) & 7;
+        let d = (face / 2) as usize;
+        let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+        let upper = |shift: u32| match q[1] >> shift & 15 {
+            0 => 1.0,
+            value => value as f32 / 16.0,
+        };
+        let code = q[1] >> 26 & 31;
+        let mut p = [0.0; 3];
+        p[d] = match code {
+            31 => 1.5 / 16.0,
+            29 => match q[1] >> 8 & 31 {
+                17 => 0.001 / 16.0,
+                18 => 15.999 / 16.0,
+                value => value as f32 / 16.0,
+            },
+            17..=24 => face.is_multiple_of(2) as u32 as f32,
+            25..=28 => 1.0 / 16.0,
+            value => value as f32 / 16.0,
+        };
+        p[u] = if c == 1 || c == 2 { upper(16) } else { (q[0] >> 21 & 15) as f32 / 16.0 };
+        // The lower v bound's top bit is layer bit 11.
+        p[v] = if c >= 2 { upper(21) } else { (q[0] >> 26 & 15) as f32 / 16.0 };
+        p
+    }
+
+    /// v1.0 gap track 6e: a detail quad's texture coordinates at its corner
+    /// `c` in texels (0..16, wrapped), decoded as `chunk.wgsl` does: the
+    /// planar default under Java's UV symmetry and offset.
+    fn detail_uv(q: [u32; 3], c: u32) -> [f32; 2] {
+        const M: [[f32; 4]; 8] = [
+            [1., 0., 0., 1.],
+            [-1., 0., 0., 1.],
+            [1., 0., 0., -1.],
+            [-1., 0., 0., -1.],
+            [0., 1., 1., 0.],
+            [0., -1., 1., 0.],
+            [0., 1., -1., 0.],
+            [0., -1., -1., 0.],
+        ];
+        const OFFSET: [[f32; 2]; 8] =
+            [[0., 0.], [3., 0.], [13., 0.], [0., 3.], [0., 13.], [0., 7.], [0., 9.], [1., 0.]];
+        let face = (q[0] >> 18) & 7;
+        let code = q[1] >> 26 & 31;
+        let spare = (q[0] >> 25 & 1) | (q[1] >> 20 & 1) << 1 | (q[1] >> 25 & 1) << 2;
+        let (m, o) = match code {
+            17..=24 => (code - 17, OFFSET[spare as usize]),
+            29 => (spare, [(q[2] >> 8 & 15) as f32, (q[2] >> 12 & 15) as f32]),
+            _ => (spare, [0.0; 2]),
+        };
+        let g = face_uv(face as usize, detail_position(q, c)).map(|x| x * 16.0);
+        let [a, b, cc, dd] = M[m as usize];
+        [(a * g[0] + b * g[1] + o[0]).rem_euclid(16.0), (cc * g[0] + dd * g[1] + o[1]).rem_euclid(16.0)]
+    }
+
     fn all_corners(m: &MeshData) -> impl Iterator<Item = Corner> + '_ {
         m.quads.iter().flat_map(|&q| corners(q))
     }
@@ -774,13 +1221,21 @@ mod tests {
 
     /// Meshes a single chunk surrounded by air with open sky.
     fn mesh_blocks(blocks: &[([usize; 3], Block)]) -> MeshData {
+        mesh_placed(blocks).0
+    }
+
+    /// [`mesh_blocks`], and the blocks the world holds at those cells once
+    /// placed (a door's halves pair up, an unpowered iron door shuts).
+    fn mesh_placed(blocks: &[([usize; 3], Block)]) -> (MeshData, Vec<Block>) {
         let columns = (-1..=1).flat_map(|z| (-1..=1).map(move |x| glam::IVec2::new(x, z)));
         let mut world = crate::world::lighting::flat_test_world(columns, -64);
+        let at = |p: [usize; 3]| glam::IVec3::new(p[0] as i32, 64 + p[1] as i32, p[2] as i32);
         for &(p, b) in blocks {
-            world.edit(glam::IVec3::new(p[0] as i32, 64 + p[1] as i32, p[2] as i32), b, false);
+            world.edit(at(p), b, false);
         }
         world.update_block_light();
-        build(&world.mesh_input(glam::IVec3::new(0, 2, 0)), &mut Region::default())
+        let placed = blocks.iter().map(|&(p, _)| world.get_block(at(p)).unwrap_or(Block::AIR)).collect();
+        (build(&world.mesh_input(glam::IVec3::new(0, 2, 0)), &mut Region::default()), placed)
     }
 
     #[test]
@@ -821,9 +1276,13 @@ mod tests {
                     high[1] >> 21 & 15
                 };
                 assert_eq!((high[1] & 255) | high_bits << 8, layer);
-                let coord_extras = if detail { (1 << 5) | (1 << 11) | (1 << 17) | (1 << 30) } else { 0 };
+                // v1.0 gap track 6c: a cross also names its offset kind,
+                // which follows the block, not its layer.
+                let offset_kind = if pass == CROSS { 7 << 24 } else { 0 };
+                let coord_extras = if detail { (1 << 5) | (1 << 11) | (1 << 17) | (1 << 30) } else { offset_kind };
                 assert_eq!(high[0] & !coord_extras, low[0] & !coord_extras);
-                let layer_bits = 255 | if detail { 0 } else { 15 << 21 };
+                // v1.0 final track F3: stone also names its variant group.
+                let layer_bits = 255 | if detail { 0 } else { 15 << 21 | 3 << WORD_GROUP_SHIFT };
                 assert_eq!(high[1] & !layer_bits, low[1] & !layer_bits);
                 assert_eq!(high[2], low[2]);
                 if pass != CROSS {
@@ -831,6 +1290,31 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// v1.0 final track F3: full cubes with Java's random variants carry
+    /// their group in word 1 and still merge (a top face runs x along v);
+    /// their neighbours of another
+    /// group (or none) don't merge with them.
+    #[test]
+    fn variant_groups_ride_on_normal_quads_and_keep_merging() {
+        let mut blocks: Vec<([usize; 3], Block)> = (0..4).map(|x| ([x, 8, 8], Block::GRASS)).collect();
+        blocks.extend((4..6).map(|x| ([x, 8, 8], Block::STONE)));
+        blocks.push(([6, 8, 8], Block::NETHERRACK));
+        blocks.push(([7, 8, 8], Block::SNOWY_GRASS));
+        let mesh = mesh_blocks(&blocks).quads_of(OPAQUE);
+        let tops: Vec<(u32, u32, u32)> = mesh
+            .quads
+            .iter()
+            .filter(|q| (q[0] >> 18) & 7 == 2)
+            .map(|q| (q[0] & 63, ((q[0] >> 26) & 31) + 1, (q[1] >> WORD_GROUP_SHIFT) & 3))
+            .collect();
+        let mut tops = tops;
+        tops.sort();
+        assert_eq!(
+            tops,
+            [(0, 4, variants::TURNED), (4, 2, variants::MIRRORED), (6, 1, variants::NETHERRACK), (7, 1, 0)]
+        );
     }
 
     #[test]
@@ -1113,11 +1597,11 @@ mod tests {
     fn frogspawn_cutout_mesh_uses_the_exact_half_sixteenth_top() {
         let m = mesh_blocks(&[([5, 4, 5], Block::WATER), ([5, 5, 5], crate::world::frog_blocks::FROGSPAWN)]);
         let pass = m.quads_of(CUTOUT);
-        assert_eq!(pass.quads.len(), 6);
+        // v1.0 gap track 6e: Java's plane, its top and bottom at 1.5/16.
+        assert_eq!(pass.quads.len(), 2);
         assert!(m.quads_of(OPAQUE).quads.is_empty());
         let ys: Vec<_> = all_corners(&pass).map(|c| c.pos[1]).collect();
-        assert!(ys.iter().all(|y| *y == 5.0 || *y == 5.09375));
-        assert!(ys.contains(&5.09375));
+        assert!(ys.iter().all(|y| *y == 5.09375), "{ys:?}");
     }
 
     #[test]
@@ -1168,6 +1652,748 @@ mod tests {
         let m = mesh_blocks(&[([5, 5, 5], vine)]);
         assert_eq!(m.pass_quads(OPAQUE), 0);
         assert!(m.pass_quads(CUTOUT) > 0);
+    }
+
+    /// v1.0 gap Track 5c: a lit portal is Java's `nether_portal_ns` (along
+    /// X) or `nether_portal_ew` (along Z) model: per block, the two broad
+    /// faces of a 4/16 plane through the middle of the cell, translucent,
+    /// with nothing drawn between portal blocks or against the frame, and
+    /// lit flat by the cell's own light (no ambient occlusion, as Java draws
+    /// light-emitting blocks).
+    #[test]
+    fn nether_portals_are_javas_thin_plane_along_their_axis() {
+        for along_x in [true, false] {
+            let at = |a: usize, y: usize| if along_x { [a, y, 5] } else { [5, y, a] };
+            let mut blocks = Vec::new();
+            for a in 4..=7 {
+                for y in 4..=8 {
+                    let edge = a == 4 || a == 7 || y == 4 || y == 8;
+                    let b = if edge { Block::OBSIDIAN } else { crate::world::portal::of_axis(along_x) };
+                    blocks.push((at(a, y), b));
+                }
+            }
+            let m = mesh_blocks(&blocks);
+            let portal = m.quads_of(TRANSLUCENT);
+            assert_eq!(portal.quads.len(), 2 * 6, "along x: {along_x}");
+            let thin = if along_x { 2 } else { 0 };
+            let mut faces = [0; 6];
+            for &q in &portal.quads {
+                assert_eq!(q[1] >> 31, 1, "a detail quad");
+                assert_eq!(detail_layer(q), tex::PORTAL);
+                let cs = corners(q);
+                let face = cs[0].face as usize;
+                faces[face] += 1;
+                assert_eq!(face / 2, thin);
+                let depth = 5.0 + if face.is_multiple_of(2) { 10.0 / 16.0 } else { 6.0 / 16.0 };
+                for c in cs {
+                    assert!((c.pos[thin] - depth).abs() < 1e-6, "{c:?}");
+                    assert_eq!((c.ao, c.block, c.sky), (3, 11, cs[0].sky), "{c:?}");
+                }
+            }
+            assert_eq!(faces[2 * thin], 6);
+            // An older save's portal draws the same once its axis is read
+            // from the frame beside it.
+            let legacy: Vec<_> =
+                blocks.iter().map(|&(p, b)| (p, if b.is_nether_portal() { Block::NETHER_PORTAL } else { b })).collect();
+            assert_eq!(mesh_blocks(&legacy).quads_of(TRANSLUCENT).quads, portal.quads);
+        }
+    }
+
+    /// v1.0 gap track 6e: every door, trapdoor and glass pane face, and
+    /// every glazed terracotta face, takes the UVs Java 26.3's models give
+    /// it, corner by corner (`tests/fixtures/java/26.3/block_model_uvs.json`,
+    /// read from the jar's models and blockstates by
+    /// `tools/extract_java_model_uvs.py`: each face's world rectangle and
+    /// each vertex's position and UV). Faces Java's model doesn't list keep
+    /// the default UVs.
+    #[test]
+    fn shaped_faces_take_javas_model_uvs() {
+        use crate::world::block::Shaped;
+        type Faces = Vec<(usize, [f32; 3], [f32; 3], Vec<([f32; 3], [f32; 2])>)>;
+        let fixture: std::collections::HashMap<String, std::collections::HashMap<String, Faces>> =
+            serde_json::from_str(include_str!("../tests/fixtures/java/26.3/block_model_uvs.json")).unwrap();
+        let wrap = |t: [f32; 2]| t.map(|x| x.rem_euclid(16.0));
+        let near = |a: [f32; 2], b: [f32; 2]| {
+            let d = |x: f32, y: f32| ((x - y).rem_euclid(16.0)).min((y - x).rem_euclid(16.0));
+            d(a[0], b[0]) < 1e-3 && d(a[1], b[1]) < 1e-3
+        };
+        // Checks the detail quads of the block at `at` against `faces`;
+        // returns how many of them Java's model lists.
+        let check = |m: &MeshData, at: [usize; 3], faces: &Faces, what: &str| {
+            let mut matched = 0;
+            for &q in m.quads.iter().filter(|q| q[1] & DETAIL != 0 && (q[0] >> 18 & 7) < 6) {
+                let cell = [q[0] & 31, q[0] >> 6 & 31, q[0] >> 12 & 31].map(|x| x as usize);
+                if cell != at {
+                    continue;
+                }
+                let face = (q[0] >> 18 & 7) as usize;
+                let corners: Vec<[f32; 3]> = (0..4).map(|c| detail_position(q, c).map(|x| x * 16.0)).collect();
+                let lo: [f32; 3] = std::array::from_fn(|a| corners.iter().map(|p| p[a]).fold(f32::MAX, f32::min));
+                let hi: [f32; 3] = std::array::from_fn(|a| corners.iter().map(|p| p[a]).fold(f32::MIN, f32::max));
+                let Some((_, _, _, verts)) = faces.iter().find(|f| f.0 == face && f.1 == lo && f.2 == hi) else {
+                    continue;
+                };
+                matched += 1;
+                for (c, p) in corners.iter().enumerate() {
+                    let (_, java) = verts.iter().find(|(vp, _)| vp == p).expect("a Java vertex at each corner");
+                    let ours = detail_uv(q, c as u32);
+                    assert!(
+                        near(ours, wrap(*java)),
+                        "{what} face {face} {lo:?}-{hi:?} corner {p:?}: {ours:?} vs {java:?}"
+                    );
+                }
+            }
+            matched
+        };
+        let facing_name = |f: Facing| ["south", "north", "east", "west"][java_uv::facing_index(f)];
+        // Doors, both halves and hinges.
+        let doors = &fixture["doors"];
+        let mut checked = 0;
+        for id in 0..crate::world::block::STATE_CAPACITY as u16 {
+            let lower = Block(id);
+            if !matches!(lower.shaped(), Some(Shaped::Door { upper: false, .. }))
+                || crate::world::mount_states::is_right_hinge(lower)
+            {
+                continue;
+            }
+            let Some(right) = crate::world::mount_states::right_of(lower) else { continue };
+            let upper = (0..crate::world::block::STATE_CAPACITY as u16)
+                .map(Block)
+                .find(|u| u.name() == lower.name() && matches!(u.shaped(), Some(Shaped::Door { upper: true, .. })));
+            for b in [lower, right] {
+                let mut blocks = vec![([5, 5, 5], b)];
+                if let Some(u) = upper {
+                    blocks.push(([5, 6, 5], u));
+                }
+                let (m, placed) = mesh_placed(&blocks);
+                let b = placed[0];
+                for (at, half) in [([5, 5, 5], "lower"), ([5, 6, 5], "upper")] {
+                    if half == "upper" && upper.is_none() {
+                        continue;
+                    }
+                    let Some(Shaped::Door { facing, open, .. }) = b.shaped() else { unreachable!() };
+                    let label = format!(
+                        "facing={},half={half},hinge={},open={open}",
+                        facing_name(facing.clockwise().clockwise()),
+                        if crate::world::mount_states::is_right_hinge(b) { "right" } else { "left" }
+                    );
+                    let faces = &doors[&label];
+                    let matched = check(&m, at, faces, &format!("{} {label}", b.name()));
+                    if matched != faces.len() {
+                        let ours: Vec<_> = m
+                            .quads
+                            .iter()
+                            .filter(|q| q[1] & DETAIL != 0)
+                            .map(|&q| {
+                                let c: Vec<[f32; 3]> =
+                                    (0..4).map(|c| detail_position(q, c).map(|x| x * 16.0)).collect();
+                                (q[0] >> 18 & 7, q[0] & 31, q[0] >> 6 & 31, q[0] >> 12 & 31, c[0], c[2])
+                            })
+                            .collect();
+                        let java: Vec<_> = faces.iter().map(|f| (f.0, f.1, f.2)).collect();
+                        panic!("{} {label}: {matched} of {}: ours {ours:?} java {java:?}", b.name(), faces.len());
+                    }
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked >= 2 * 2 * 8 * 13, "{checked} door halves");
+        // Trapdoors: both templates.
+        let mut trapdoors = 0;
+        for id in 0..crate::world::block::STATE_CAPACITY as u16 {
+            let b = Block(id);
+            let Some(crate::world::redstone_blocks::Component::Trapdoor { facing, open, top, .. }) =
+                crate::world::redstone_blocks::component(b)
+            else {
+                continue;
+            };
+            if b.is_waterlogged() {
+                continue;
+            }
+            let family = if java_uv::orientable_trapdoor(b) { "orientable_trapdoors" } else { "trapdoors" };
+            let label =
+                format!("facing={},half={},open={open}", facing_name(facing), if top { "top" } else { "bottom" });
+            let faces = &fixture[family][&label];
+            let (m, placed) = mesh_placed(&[([5, 5, 5], b)]);
+            if placed[0] != b {
+                // An unpowered iron trapdoor shuts.
+                continue;
+            }
+            let matched = check(&m, [5, 5, 5], faces, &format!("{} {label}", b.name()));
+            assert_eq!(matched, faces.len(), "{} {label}", b.name());
+            trapdoors += 1;
+        }
+        assert!(trapdoors >= 16 * 14, "{trapdoors} trapdoors");
+        // Glass panes, every set of connections (stone beside each joined side).
+        for bits in 0..16usize {
+            let label: String =
+                ["n", "e", "s", "w"].iter().enumerate().filter(|(i, _)| bits >> i & 1 == 1).map(|(_, s)| *s).collect();
+            let faces = &fixture["panes"][if label.is_empty() { "-" } else { &label }];
+            for pane in [Block::GLASS_PANE, Block::stained_pane(crate::color::DyeColor::Red)] {
+                let mut blocks = vec![([5, 5, 5], pane)];
+                for (i, at) in [[5, 5, 4], [6, 5, 5], [5, 5, 6], [4, 5, 5]].into_iter().enumerate() {
+                    if bits >> i & 1 == 1 {
+                        blocks.push((at, Block::GLASS));
+                    }
+                }
+                let m = mesh_blocks(&blocks);
+                let matched = check(&m, [5, 5, 5], faces, &format!("{} {label}", pane.name()));
+                assert!(matched >= 4, "{} {label}: {matched}", pane.name());
+            }
+        }
+        // Glazed terracotta: whole faces, the layer's quarter turn on the
+        // planar UVs (`render::textures::glazed_pixel`).
+        for (i, facing) in [Facing::South, Facing::North, Facing::East, Facing::West].into_iter().enumerate() {
+            let b = Block::glazed(crate::color::DyeColor::Lime).with_facing(facing);
+            assert_eq!(b, Block(Block::glazed(crate::color::DyeColor::Lime).0 + i as u16));
+            let faces = &fixture["glazed"][&format!("facing={}", facing_name(facing))];
+            let m = mesh_blocks(&[([5, 5, 5], b)]);
+            let mut seen = 0;
+            for &q in &m.quads {
+                let face = (q[0] >> 18 & 7) as usize;
+                let layer = (q[1] & 255 | (q[1] >> 21 & 15) << 8) as u16;
+                let turn = (layer - tex::GLAZED) % 4;
+                let (_, _, _, verts) = faces.iter().find(|f| f.0 == face).expect("every face listed");
+                for c in corners(q) {
+                    let p = [c.pos[0] - 5.0, c.pos[1] - 5.0, c.pos[2] - 5.0].map(|x| x * 16.0);
+                    let g = face_uv(face, [p[0] / 16.0, p[1] / 16.0, p[2] / 16.0]).map(|x| x * 16.0);
+                    let base = match turn {
+                        1 => [g[1], -g[0]],
+                        2 => [-g[0], -g[1]],
+                        3 => [-g[1], g[0]],
+                        _ => g,
+                    };
+                    let (_, java) = verts.iter().find(|(vp, _)| *vp == p).expect("a Java vertex");
+                    assert!(near(wrap(base), wrap(*java)), "{facing:?} face {face}: {base:?} vs {java:?}");
+                }
+                seen += 1;
+            }
+            assert_eq!(seen, 6, "{facing:?}");
+        }
+    }
+
+    /// v1.0 gap track 6f: a trapdoor item is the jar's unturned
+    /// `*_trapdoor_bottom` model: every face of its box, corner by corner,
+    /// takes the UVs of the north-facing, bottom, closed state.
+    #[test]
+    fn trapdoor_items_take_javas_model_uvs() {
+        type Faces = Vec<(usize, [f32; 3], [f32; 3], Vec<([f32; 3], [f32; 2])>)>;
+        let fixture: std::collections::HashMap<String, std::collections::HashMap<String, Faces>> =
+            serde_json::from_str(include_str!("../tests/fixtures/java/26.3/block_model_uvs.json")).unwrap();
+        let near = |a: [f32; 2], b: [f32; 2]| {
+            let d = |x: f32, y: f32| ((x - y).rem_euclid(16.0)).min((y - x).rem_euclid(16.0));
+            d(a[0], b[0]) < 1e-3 && d(a[1], b[1]) < 1e-3
+        };
+        let mut checked = 0;
+        for id in 0..crate::world::block::STATE_CAPACITY as u16 {
+            let b = Block(id);
+            if !matches!(
+                crate::world::redstone_blocks::component(b),
+                Some(crate::world::redstone_blocks::Component::Trapdoor { open: false, top: false, .. })
+            ) || b.is_waterlogged()
+            {
+                continue;
+            }
+            let family = if java_uv::orientable_trapdoor(b) { "orientable_trapdoors" } else { "trapdoors" };
+            let faces = &fixture[family]["facing=north,half=bottom,open=false"];
+            let boxes = shape::item_boxes(b);
+            assert_eq!(boxes.as_slice().len(), 1, "{}", b.name());
+            let bx = boxes.as_slice()[0];
+            for face in 0..6 {
+                let (d, positive) = (face / 2, face % 2 == 0);
+                let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+                let corner = |a: bool, bb: bool| {
+                    let mut p = [0u8; 3];
+                    p[d] = if positive { bx.max[d] } else { bx.min[d] };
+                    p[u] = if a { bx.max[u] } else { bx.min[u] };
+                    p[v] = if bb { bx.max[v] } else { bx.min[v] };
+                    p.map(f32::from)
+                };
+                let c = [corner(false, false), corner(true, false), corner(true, true), corner(false, true)];
+                let uv = item_face_uvs(b, face, bx.min, bx.max, c.map(|p| face_uv(face, p.map(|x| x / 16.0))));
+                let (_, _, _, verts) = faces.iter().find(|f| f.0 == face).expect("every face in Java's model");
+                for (p, t) in c.iter().zip(uv) {
+                    let (_, java) = verts.iter().find(|(vp, _)| vp == p).expect("a Java vertex at each corner");
+                    let ours = t.map(|x| x * 16.0);
+                    assert!(near(ours, *java), "{} face {face} {p:?}: {ours:?} vs {java:?}", b.name());
+                    assert!(t.iter().all(|x| (-1e-3..=1.0 + 1e-3).contains(x)), "{} face {face}: {t:?}", b.name());
+                }
+            }
+            checked += 1;
+        }
+        assert!(checked >= 4 * 14, "{checked} trapdoor states");
+    }
+
+    /// A fixture face: its face, rect, and each corner with its Java UV.
+    type FixtureFace = (usize, [f32; 3], [f32; 3], Vec<([f32; 3], [f32; 2])>);
+    type ModelFixture = std::collections::HashMap<String, std::collections::HashMap<String, Vec<FixtureFace>>>;
+
+    fn model_fixture() -> ModelFixture {
+        serde_json::from_str(include_str!("../tests/fixtures/java/26.3/block_model_uvs.json")).unwrap()
+    }
+
+    /// v1.0 gap track 6f: checks that every quad of the cell `[5, 5, 5]` in
+    /// `m` is a model face (plane code 29) matching a face of Java's model
+    /// `faces`, corner by corner with the jar's UVs, and that every one of
+    /// Java's faces is drawn (none culled: no opaque neighbours). Returns
+    /// each quad's face, lower corner and layer.
+    fn check_model_faces(m: &MeshData, faces: &[FixtureFace], what: &str) -> Vec<(usize, [f32; 3], u16)> {
+        let near_uv = |a: [f32; 2], b: [f32; 2]| {
+            let d = |x: f32, y: f32| ((x - y).rem_euclid(16.0)).min((y - x).rem_euclid(16.0));
+            d(a[0], b[0]) < 1e-3 && d(a[1], b[1]) < 1e-3
+        };
+        // Positions in sixteenths; a plane drawn on the edge for Java's
+        // 0.001 facing out is within 0.01.
+        let near = |a: [f32; 3], b: [f32; 3]| (0..3).all(|i| (a[i] - b[i]).abs() < 0.01);
+        let mut seen = vec![false; faces.len()];
+        let mut out = Vec::new();
+        for &q in m.quads.iter().filter(|q| q[1] & DETAIL != 0) {
+            if [q[0] & 31, q[0] >> 6 & 31, q[0] >> 12 & 31] != [5, 5, 5] {
+                continue;
+            }
+            assert_eq!(q[1] >> 26 & 31, PLANE_MODEL, "{what}: a model face");
+            let face = (q[0] >> 18 & 7) as usize;
+            let corners: Vec<[f32; 3]> = (0..4).map(|c| detail_position(q, c).map(|x| x * 16.0)).collect();
+            // Java's faces with these corners (the models repeat some).
+            let mut matched = false;
+            for (k, (_, _, _, verts)) in faces.iter().enumerate().filter(|(_, f)| f.0 == face) {
+                let javas: Option<Vec<[f32; 2]>> =
+                    corners.iter().map(|p| verts.iter().find(|(vp, _)| near(*vp, *p)).map(|(_, t)| *t)).collect();
+                let Some(javas) = javas else { continue };
+                for (c, java) in javas.iter().enumerate() {
+                    let ours = detail_uv(q, c as u32);
+                    assert!(near_uv(ours, *java), "{what} face {face} corner {c}: {ours:?} vs {java:?}");
+                }
+                seen[k] = true;
+                matched = true;
+            }
+            assert!(matched, "{what}: face {face} {:?}-{:?} isn't Java's", corners[0], corners[2]);
+            out.push((face, corners[0], detail_layer(q)));
+        }
+        assert!(seen.iter().all(|&s| s), "{what}: Java faces not drawn {seen:?}");
+        assert!(out.len() <= faces.len(), "{what}: {} quads", out.len());
+        out
+    }
+
+    /// v1.0 gap track 6f: end rods are Java's `end_rod` model in each of
+    /// the six facings, every face with the jar's UVs on the rod's one
+    /// texture and lit flat (Java draws a light-emitting block without
+    /// ambient occlusion); the item takes the same UVs (facing up).
+    #[test]
+    fn end_rods_are_javas_model_layout() {
+        use crate::world::end_blocks::{Dir, end_rod};
+        let fixture = model_fixture();
+        for dir in Dir::ALL {
+            let name = ["down", "up", "north", "south", "west", "east"][dir as usize];
+            let faces = &fixture["end_rods"][&format!("facing={name}")];
+            let drawn =
+                check_model_faces(&mesh_blocks(&[([5, 5, 5], end_rod(dir))]), faces, &format!("end rod {name}"));
+            assert_eq!(drawn.len(), 11, "end rod {name}");
+            assert!(drawn.iter().all(|d| d.2 == crate::world::end_blocks::ROD_LAYER), "end rod {name}");
+        }
+        // The item: the facing-up model's faces, corner by corner.
+        let item = crate::world::end_blocks::END_ROD.item_facing();
+        let faces = &fixture["end_rods"]["facing=up"];
+        let mut matched = 0;
+        for bx in shape::item_boxes(item).as_slice() {
+            for face in 0..6 {
+                let (d, positive) = (face / 2, face % 2 == 0);
+                let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+                let corner = |a: bool, bb: bool| {
+                    let mut p = [0u8; 3];
+                    p[d] = if positive { bx.max[d] } else { bx.min[d] };
+                    p[u] = if a { bx.max[u] } else { bx.min[u] };
+                    p[v] = if bb { bx.max[v] } else { bx.min[v] };
+                    p.map(f32::from)
+                };
+                let c = [corner(false, false), corner(true, false), corner(true, true), corner(false, true)];
+                let Some((_, _, _, verts)) =
+                    faces.iter().find(|f| f.0 == face && c.iter().all(|p| f.3.iter().any(|(vp, _)| vp == p)))
+                else {
+                    continue;
+                };
+                let uv = item_face_uvs(item, face, bx.min, bx.max, c.map(|p| face_uv(face, p.map(|x| x / 16.0))));
+                for (p, t) in c.iter().zip(uv) {
+                    let (_, java) = verts.iter().find(|(vp, _)| vp == p).unwrap();
+                    let ours = t.map(|x| x * 16.0);
+                    let d = |x: f32, y: f32| ((x - y).rem_euclid(16.0)).min((y - x).rem_euclid(16.0));
+                    assert!(
+                        d(ours[0], java[0]) < 1e-3 && d(ours[1], java[1]) < 1e-3,
+                        "item face {face}: {ours:?} vs {java:?}"
+                    );
+                }
+                matched += 1;
+            }
+        }
+        assert_eq!(matched, 11, "every face of the item but the rod's underside is Java's");
+    }
+
+    /// v1.0 final F10: repeaters (every delay, facing and power, and
+    /// locked by a powered repeater beside it), comparators (every facing,
+    /// mode and power) and cocoa (every age and facing) are Java's models,
+    /// every face with the jar's UVs and the layers the model's texture
+    /// variables name.
+    #[test]
+    fn diodes_and_cocoa_are_javas_model_layout() {
+        use crate::world::redstone_blocks::{Component, component};
+        let fixture = model_fixture();
+        let java_name = |f: Facing| match f {
+            Facing::North => "north",
+            Facing::South => "south",
+            Facing::East => "east",
+            Facing::West => "west",
+        };
+        let (mut repeaters, mut comparators) = (0, 0);
+        for id in 1162..=1209u16 {
+            let b = Block(id);
+            match component(b) {
+                Some(Component::Repeater { facing, delay, on }) => {
+                    let java = java_name(facing.clockwise().clockwise());
+                    for locked in [false, true] {
+                        let label = format!("delay={delay},facing={java},locked={locked},powered={on}");
+                        let mut blocks = vec![([5, 5, 5], b)];
+                        let mut faces = fixture["repeaters"][&label].clone();
+                        if locked {
+                            // Both on stone (a placed diode needs it), so the
+                            // plate's underside is culled.
+                            faces.retain(|f| !(f.0 == 3 && f.1[1] == 0.0));
+                            // A powered repeater to the side, its output
+                            // pointing into this one.
+                            let side = facing.clockwise();
+                            let o = side.offset();
+                            let at = [(5 + o.x) as usize, 5, (5 + o.z) as usize];
+                            let into = side.clockwise().clockwise();
+                            let id = (1162..=1193u16)
+                                .find(|&i| {
+                                    matches!(component(Block(i)), Some(Component::Repeater { facing, delay: 1, on: true }) if facing == into)
+                                })
+                                .unwrap();
+                            blocks.push((at, Block(id)));
+                            blocks.insert(0, ([5, 4, 5], Block::STONE));
+                            blocks.insert(0, ([at[0], 4, at[2]], Block::STONE));
+                        }
+                        let drawn = check_model_faces(&mesh_blocks(&blocks), &faces, &label);
+                        let torch = if on { 1116 } else { 1117 };
+                        let top = if on {
+                            crate::content::item_models::REPEATER_TOP_ON
+                        } else {
+                            crate::content::item_models::REPEATER_TOP
+                        };
+                        // The plate's top, its smooth stone sides and
+                        // underside, the torches and (locked) the bedrock bar.
+                        let allowed = [tex::SMOOTH_STONE, top, torch, if locked { tex::BEDROCK } else { torch }];
+                        assert!(drawn.iter().all(|d| allowed.contains(&d.2)), "{label}: {drawn:?}");
+                        assert!(drawn.iter().any(|d| d.0 == 2 && d.2 == top), "{label}: the top");
+                        assert_eq!(locked, drawn.iter().any(|d| d.2 == tex::BEDROCK), "{label}: the lock");
+                        repeaters += 1;
+                    }
+                }
+                Some(Component::Comparator { facing, subtract, on }) => {
+                    let java = java_name(facing.clockwise().clockwise());
+                    let mode = if subtract { "subtract" } else { "compare" };
+                    let label = format!("facing={java},mode={mode},powered={on}");
+                    check_model_faces(&mesh_blocks(&[([5, 5, 5], b)]), &fixture["comparators"][&label], &label);
+                    comparators += 1;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!((repeaters, comparators), (64, 16));
+        for log in Facing::ALL {
+            for age in 0..3 {
+                let b = crate::world::overworld_blocks::cocoa(age, log);
+                let label = format!("age={age},facing={}", java_name(log));
+                let drawn = check_model_faces(&mesh_blocks(&[([5, 5, 5], b)]), &fixture["cocoa"][&label], &label);
+                assert_eq!(drawn.len(), 8, "{label}");
+                assert!(drawn.iter().all(|d| d.2 == b.info().tex[0]), "{label}");
+            }
+        }
+    }
+
+    /// v1.0 final F10: a cauldron's body is Java's `cauldron` model (its
+    /// L-shaped legs and inside faces), lit flat as its `ambientocclusion:
+    /// false`; a filled cauldron adds only its contents' top.
+    #[test]
+    fn cauldrons_are_javas_model_layout() {
+        use crate::world::utilities::{Contents, cauldron, t as u};
+        let fixture = model_fixture();
+        let faces = &fixture["cauldrons"]["cauldron"];
+        let drawn = check_model_faces(&mesh_blocks(&[([5, 5, 5], cauldron(Contents::Empty))]), faces, "cauldron");
+        assert_eq!(drawn.len(), faces.len());
+        let layers = [u::CAULDRON_SIDE, u::CAULDRON_TOP, u::CAULDRON_BOTTOM];
+        assert!(drawn.iter().all(|d| layers.contains(&d.2)), "{drawn:?}");
+        for contents in [Contents::Water(1), Contents::Water(3), Contents::Lava, Contents::PowderSnow(2)] {
+            let m = mesh_blocks(&[([5, 5, 5], cauldron(contents))]);
+            let at_cell = |q: &&[u32; 3]| [q[0] & 31, q[0] >> 6 & 31, q[0] >> 12 & 31] == [5, 5, 5];
+            let others: Vec<_> = m
+                .quads
+                .iter()
+                .filter(at_cell)
+                .filter(|q| q[1] & DETAIL == 0 || q[1] >> 26 & 31 != PLANE_MODEL)
+                .collect();
+            assert_eq!(others.len(), 1, "{contents:?}: the contents' top only");
+            assert_eq!(others[0][0] >> 18 & 7, 2, "{contents:?}: a top face");
+            let model = m.quads.iter().filter(at_cell).filter(|q| q[1] & DETAIL != 0 && q[1] >> 26 & 31 == PLANE_MODEL);
+            assert_eq!(model.count(), faces.len(), "{contents:?}");
+        }
+    }
+
+    /// v1.0 gap track 6f: lanterns (iron, soul and every copper state,
+    /// standing and hanging) are Java's `template_lantern` and
+    /// `template_hanging_lantern` without the handle's turned planes, on
+    /// their own layer, lit flat as Java draws a light-emitting block.
+    #[test]
+    fn lanterns_are_javas_model_layout() {
+        let fixture = model_fixture();
+        let mut checked = 0;
+        for id in 0..crate::world::block::STATE_CAPACITY as u16 {
+            let b = Block(id);
+            if b.canonical() != b || !b.name().contains("lantern") || b.is_waterlogged() {
+                continue;
+            }
+            let Some(hanging) = java_uv::lantern_hanging(b) else { continue };
+            let faces = &fixture["lanterns"][&format!("hanging={hanging}")];
+            let what = format!("{} hanging={hanging}", b.name());
+            let drawn = check_model_faces(&mesh_blocks(&[([5, 5, 5], b)]), faces, &what);
+            assert_eq!(drawn.len(), if hanging { 12 } else { 11 }, "{what}");
+            assert!(drawn.iter().all(|d| u32::from(d.2) == u32::from(b.info().tex[0])), "{what}");
+            checked += 1;
+        }
+        // Iron and soul lanterns and four copper stages, waxed or not, each
+        // standing and hanging.
+        assert!(checked >= 2 * (2 + 8), "{checked} lanterns");
+    }
+
+    /// v1.0 gap track 6f: iron and copper bars are Java's `template_bars_*`
+    /// layout: for each of the 16 sets of connections, every quad of the
+    /// cell is a face of the jar's multipart model (planes at 0.001 and
+    /// 15.999 included), every face of the model is drawn, and each corner
+    /// takes the jar's UV.
+    #[test]
+    fn bars_are_javas_model_layout() {
+        let fixture = model_fixture();
+        let copper = (0..crate::world::block::STATE_CAPACITY as u16)
+            .map(Block)
+            .find(|b| b.name() == "copper bars")
+            .expect("copper bars");
+        for bits in 0..16usize {
+            let label: String =
+                ["n", "e", "s", "w"].iter().enumerate().filter(|(i, _)| bits >> i & 1 == 1).map(|(_, s)| *s).collect();
+            let faces = &fixture["bars"][if label.is_empty() { "-" } else { &label }];
+            for bars in [Block::IRON_BARS, copper] {
+                let mut blocks = vec![([5, 5, 5], bars)];
+                for (i, at) in [[5, 5, 4], [6, 5, 5], [5, 5, 6], [4, 5, 5]].into_iter().enumerate() {
+                    if bits >> i & 1 == 1 {
+                        blocks.push((at, Block::GLASS));
+                    }
+                }
+                let drawn = check_model_faces(&mesh_blocks(&blocks), faces, &format!("{} {label}", bars.name()));
+                let layer = bars.info().tex[0];
+                assert!(drawn.iter().all(|d| d.2 == layer), "{} {label}: the bars texture", bars.name());
+            }
+        }
+    }
+
+    /// v1.0 gap track 6f: hoppers are Java's `hopper` and `hopper_side`
+    /// models in each facing, with the rim's top, the inside and the outside
+    /// textures where the jar puts them; the rim's inner faces and the
+    /// plate inside cull against an opaque block above (`cullface: up`).
+    #[test]
+    fn hoppers_are_javas_model_layout() {
+        let fixture = model_fixture();
+        let mut checked = 0;
+        for id in 1389..=1398u16 {
+            let b = Block(id);
+            let Some(crate::world::redstone_blocks::Component::Hopper { facing, .. }) =
+                crate::world::redstone_blocks::component(b)
+            else {
+                panic!("{id} is a hopper");
+            };
+            let name = match facing {
+                4 => "down",
+                f => ["south", "north", "east", "west"][usize::from(f)],
+            };
+            let faces = &fixture["hoppers"][&format!("facing={name}")];
+            let drawn = check_model_faces(&mesh_blocks(&[([5, 5, 5], b)]), faces, &format!("hopper {name}"));
+            // The rim's top at 16 is the top texture; the plate at 11 the inside.
+            for (face, corner, layer) in &drawn {
+                if *face == 2 && corner[1] == 16.0 {
+                    assert_eq!(*layer, crate::content::item_models::HOPPER_TOP, "{name}");
+                }
+                if *face == 2 && corner[1] == 11.0 {
+                    assert_eq!(*layer, crate::content::item_models::HOPPER_INSIDE, "{name}");
+                }
+                if *face == 3 && corner[1] == 10.0 {
+                    assert_eq!(*layer, crate::content::item_models::HOPPER_INSIDE, "{name}");
+                }
+            }
+            // A stone block above hides every face whose cullface is up.
+            let covered = mesh_blocks(&[([5, 5, 5], b), ([5, 6, 5], Block::STONE)]);
+            let ups = covered
+                .quads
+                .iter()
+                .filter(|q| q[1] & DETAIL != 0 && [q[0] & 31, q[0] >> 6 & 31, q[0] >> 12 & 31] == [5, 5, 5])
+                .count();
+            assert_eq!(drawn.len() - ups, 9, "hopper {name}: the up-culled faces");
+            checked += 1;
+        }
+        assert_eq!(checked, 10);
+    }
+
+    /// v1.0 gap track 6d: Java's default face UVs, every face's texture
+    /// unmirrored seen from outside: texture right (u) cross texture down
+    /// (v) points into the block.
+    #[test]
+    fn face_uvs_are_javas_unmirrored_from_outside() {
+        let normals = [[1., 0., 0.], [-1., 0., 0.], [0., 1., 0.], [0., -1., 0.], [0., 0., 1.], [0., 0., -1.]];
+        for (face, n) in normals.iter().enumerate() {
+            let at = |p: [f32; 3]| face_uv(face, p);
+            let o = at([0.25, 0.25, 0.25]);
+            let du = |axis: usize| {
+                let mut p = [0.25f32; 3];
+                p[axis] += 0.5;
+                let q = at(p);
+                [q[0] - o[0], q[1] - o[1]]
+            };
+            // The surface direction of +u and +v.
+            let (mut right, mut down) = ([0f32; 3], [0f32; 3]);
+            for axis in 0..3 {
+                let d = du(axis);
+                right[axis] = d[0] * 2.0;
+                down[axis] = d[1] * 2.0;
+            }
+            let cross = [
+                right[1] * down[2] - right[2] * down[1],
+                right[2] * down[0] - right[0] * down[2],
+                right[0] * down[1] - right[1] * down[0],
+            ];
+            assert_eq!(cross.map(|c| c.round()), n.map(|c: f32| -c), "face {face}");
+        }
+        // The south face is Java's (x, 1 - y); the north mirrors it.
+        assert_eq!(face_uv(4, [0.25, 0.75, 1.0]), [0.25, 0.25]);
+        assert_eq!(face_uv(5, [0.25, 0.75, 0.0]), [0.75, 0.25]);
+    }
+
+    /// A detail quad's texture layer, decoded as `chunk.wgsl` does (a fine
+    /// quad keeps layer bit 11 in word 0 bit 18).
+    fn detail_layer(q: [u32; 3]) -> u16 {
+        let fine = (q[0] >> 18 & 7) >= 6;
+        let top = if fine { q[0] >> 18 & 1 } else { q[0] >> 30 & 1 };
+        ((q[1] & 255) | (q[0] >> 5 & 1) << 8 | (q[0] >> 11 & 1) << 9 | (q[0] >> 17 & 1) << 10 | top << 11) as u16
+    }
+
+    /// v1.0 gap Track 7: leafy bamboo draws its leaves on two crossed planes
+    /// beside a bare-stalk post (Java's `bamboo_*_leaves` models), in the
+    /// alpha-tested pass; bare bamboo has no planes. The potted bamboo
+    /// draws its single leaf on a plane of its own layer.
+    #[test]
+    fn leafy_bamboo_crosses_its_leaves_beside_the_post() {
+        use crate::world::overworld_blocks::{BAMBOO, BAMBOO_LARGE_LEAVES, BAMBOO_SMALL_LEAVES, t};
+        let layers = |b: Block| {
+            let m = mesh_blocks(&[([5, 5, 5], b)]);
+            let cutout = m.quads_of(CUTOUT);
+            (m.pass_quads(OPAQUE), cutout.quads.iter().map(|&q| detail_layer(q)).collect::<Vec<_>>())
+        };
+        for (b, leaves) in
+            [(BAMBOO_SMALL_LEAVES, t::BAMBOO_SMALL_LEAVES), (BAMBOO_LARGE_LEAVES, t::BAMBOO_LARGE_LEAVES)]
+        {
+            let (opaque, cutout) = layers(b);
+            assert_eq!(opaque, 0);
+            // Both faces of both planes; the post's four sides and its ends.
+            assert_eq!(cutout.iter().filter(|&&l| l == leaves).count(), 4, "{cutout:?}");
+            assert_eq!(cutout.iter().filter(|&&l| l == t::BAMBOO).count(), 6, "{cutout:?}");
+        }
+        let (_, cutout) = layers(BAMBOO);
+        assert!(!cutout.contains(&t::BAMBOO_SMALL_LEAVES) && !cutout.contains(&t::BAMBOO_LARGE_LEAVES));
+        let potted = crate::world::utilities::potted(BAMBOO).expect("bamboo pots");
+        let (_, cutout) = layers(potted);
+        assert_eq!(cutout.iter().filter(|&&l| l == crate::world::utilities::POTTED_BAMBOO_LEAF).count(), 2);
+        // The planes are drawn only: the post is still all that collides.
+        let shape = crate::world::shape::collision(BAMBOO_LARGE_LEAVES, |_| Block::AIR, Block::AIR);
+        assert_eq!(shape.as_slice().len(), 1);
+    }
+
+    /// v1.0 gap track 6c: a fine quad's corners in its cell (sixteenths),
+    /// decoded as `chunk.wgsl` decodes them (before the offset), with its
+    /// real face and whether it is a leaf plane.
+    fn fine_corners(q: [u32; 3]) -> (u32, bool, [[f32; 3]; 4]) {
+        const CODES: [f32; 9] = [0.0, 0.8, 6.5, 7.0, 9.0, 9.5, 15.2, 16.0, 8.0];
+        assert_eq!(q[1] & DETAIL, DETAIL);
+        assert!(q[0] >> 18 & 7 >= 6, "not a fine quad");
+        let face = q[0] >> 21 & 7;
+        let d = (face / 2) as usize;
+        let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+        let code = |shift: u32| CODES[(q[1] >> shift & 7) as usize];
+        let (lo, hi) = ([code(16), code(22)], [code(19), code(25)]);
+        let corners = std::array::from_fn(|c| {
+            let mut p = [0.0; 3];
+            p[d] = CODES[(q[0] >> 24 & 15) as usize];
+            p[u] = if c == 1 || c == 2 { hi[0] } else { lo[0] };
+            p[v] = if c >= 2 { hi[1] } else { lo[1] };
+            p
+        });
+        (face, q[0] >> 28 & 1 == 1, corners)
+    }
+
+    /// v1.0 gap track 6c: bamboo is Java's models in fine quads: the stalk
+    /// 3 texels across (6.5 to 9.5) at `age=1`, 2 (7 to 9) at `age=0`, and
+    /// the leaf planes through the middle from 0.8 to 15.2, both faces of
+    /// each, flagged to be lit flat and shaded as a face up.
+    #[test]
+    fn bamboo_draws_javas_stalk_widths_and_leaf_planes() {
+        use crate::world::overworld_blocks::{THIN_BAMBOO, THIN_BAMBOO_LARGE_LEAVES, bamboo};
+        for (b, (lo, hi), leaves) in [
+            (bamboo(1, 0), (6.5, 9.5), false),
+            (THIN_BAMBOO, (7.0, 9.0), false),
+            (bamboo(1, 2), (6.5, 9.5), true),
+            (THIN_BAMBOO_LARGE_LEAVES, (7.0, 9.0), true),
+        ] {
+            let m = mesh_blocks(&[([5, 5, 5], b)]);
+            let fine: Vec<_> = m.quads.iter().map(|&q| fine_corners(q)).collect();
+            let stalk: Vec<_> = fine.iter().filter(|f| !f.1).collect();
+            assert_eq!(stalk.len(), 6, "{}", b.name());
+            for (face, _, c) in &stalk {
+                let d = (face / 2) as usize;
+                for p in c {
+                    for axis in [0, 2] {
+                        let expect: &[f32] =
+                            if axis == d { if face % 2 == 0 { &[hi] } else { &[lo] } } else { &[lo, hi] };
+                        assert!(expect.iter().any(|&e| (p[axis] - e).abs() < 1e-6), "{} face {face}: {p:?}", b.name());
+                    }
+                }
+            }
+            let planes: Vec<_> = fine.iter().filter(|f| f.1).collect();
+            assert_eq!(planes.len(), if leaves { 4 } else { 0 }, "{}", b.name());
+            for (face, _, c) in planes {
+                let across = if face / 2 == 0 { 2 } else { 0 };
+                let (min, max) = c.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p[across]), b.max(p[across])));
+                assert_eq!((min, max), (0.8, 15.2));
+                assert!(c.iter().all(|p| p[2 - across] == 8.0));
+            }
+            if leaves {
+                assert_eq!(m.pass_quads(OPAQUE), 0, "leafy bamboo is cut out");
+            }
+        }
+    }
+
+    /// v1.0 gap track 6c: plants Java offsets name their offset kind in their
+    /// cross quads (bits 24-26); others, and crosses on their side, none.
+    #[test]
+    fn offset_plants_name_their_offset_kind() {
+        use crate::world::offset::Kind;
+        let kind = |b: Block| {
+            let m = mesh_blocks(&[([5, 5, 5], b)]);
+            let cross = m.quads_of(CROSS);
+            assert_eq!(cross.quads.len(), 2, "{}", b.name());
+            cross.quads[0][0] >> 24 & 7
+        };
+        assert_eq!(kind(Block::POPPY), Kind::Xz as u32);
+        assert_eq!(kind(Block::TALL_GRASS), Kind::Xyz as u32);
+        let tip =
+            crate::world::overworld_blocks::pointed_dripstone(false, crate::world::overworld_blocks::Thickness::Tip);
+        assert_eq!(kind(tip), Kind::XzSpeleothem as u32);
+        assert_eq!(kind(crate::world::overworld_blocks::BAMBOO_SAPLING), Kind::Xz as u32);
+        assert_eq!(kind(Block::DEAD_BUSH), 0);
     }
 
     #[test]

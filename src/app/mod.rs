@@ -10,6 +10,8 @@ mod benchmark;
 mod books;
 mod bow;
 mod bucket;
+mod bundles;
+mod clicks;
 mod conduit;
 mod console;
 mod containers;
@@ -30,9 +32,11 @@ mod gui;
 mod hand;
 mod hands;
 mod hud;
+mod item_review;
 mod items;
 mod keys;
 mod lan;
+mod levels;
 mod menu;
 mod mobs;
 mod options;
@@ -40,6 +44,7 @@ mod pad_menu;
 mod particles;
 mod patterns;
 mod player_actions;
+mod portal_travel;
 mod preview;
 mod raid;
 mod recipe_book;
@@ -185,6 +190,13 @@ struct Game {
     respawn_due: bool,
     /// Java's `ScrollWheelHandler`: wheel movement short of a whole notch.
     scroll: f64,
+    /// v1.0 gap track 6: the hovered bundle's selected stack, and the
+    /// bundle wheel's own part-notches (`BundleMouseActions`).
+    bundle_selection: Option<(hud::SlotRef, usize)>,
+    bundle_scroll: f64,
+    /// v1.0 final track F1: the mouse's drag, double-click and last
+    /// shift-click on container screens (`AbstractContainerScreen`).
+    screen_mouse: clicks::ScreenMouse,
     frame_limit: frame_limit::FrameLimit,
     /// Nausea and portal warp (Distortion Effects).
     distortion: distortion::Distortion,
@@ -239,6 +251,10 @@ struct Game {
     credits_seen: bool,
     /// Seconds into the credits while they play.
     credits: Option<f32>,
+    /// v1.0 gap Track 8f: ender pearls kept with their owners while the
+    /// owner or the pearl is out of this level, saved with each owner's
+    /// player data.
+    owned_pearls: voxelcraft::entity::saved_projectiles::OwnedPearls,
     /// Shared Overworld spawn changed by `/setworldspawn`.
     world_spawn: glam::IVec3,
     weather: weather::Weather,
@@ -256,6 +272,9 @@ struct Game {
     fps: f64,
     cpu_ms: f64,
     show_debug: bool,
+    /// A debug key combination was used while the debug key was held
+    /// (v1.0 gap track 6b), so letting it go doesn't toggle the overlay.
+    debug_key_used: bool,
     /// Short message above the hotbar (item names, mode changes).
     popup: (String, Instant),
     /// Why the last save failed, until it succeeds again.
@@ -266,6 +285,8 @@ struct Game {
     world_icon: Option<world_icon::WorldIcon>,
     /// v0.18 Track 7: `--panorama DIR` and the face being rendered.
     panorama_out: Option<std::path::PathBuf>,
+    /// v1.0 gap track 6: `--item-review`'s contact sheets in progress.
+    item_review: Option<item_review::ItemReview>,
     panorama_face: Option<usize>,
     screenshot_state: u32,
     /// When `--screenshot` first found streaming settled (see [`SCREENSHOT_FLUID_WAIT`]).
@@ -280,6 +301,8 @@ struct Game {
     decor_scene: Vec<(IVec3, IVec3, Item, Option<Item>)>,
     /// `--brush`: strokes on suspicious blocks, after `--place`.
     brush_scene: Vec<(IVec3, IVec3, u8)>,
+    /// v1.0 gap Track 8c: `--projectile` arrows and tridents to stick in blocks.
+    projectile_scene: Vec<(bool, IVec3, bool)>,
     /// `--open-block`: a container to open once placements are done.
     open_block: Option<IVec3>,
     /// `--drop`: thrown once the world has loaded.
@@ -326,10 +349,46 @@ struct Game {
     overworld_props: std::collections::BTreeMap<String, String>,
     /// Travelling: where the player goes once the ground there has loaded.
     arrival: Option<dimension::Arrival>,
-    /// Seconds spent standing in a portal.
-    portal_time: f32,
-    /// Just came out of a portal: stepping out of it rearms it.
+    /// v1.0 gap Track 8b: the server's Nether portal countdown (Java's
+    /// `PortalProcessor`), which carries on across a trip as Java's does.
+    portal: crate::world::portal::PortalProcessor,
+    /// v1.0 gap Track 8b: the client's own `insidePortalThisTick`, set as the
+    /// player moves through a Nether portal and used up by the portal look
+    /// (`LocalPlayer.handlePortalTransitionEffect`) the same tick.
+    portal_seen: bool,
+    /// A trip refused because the save failed: stepping out rearms it.
     portal_locked: bool,
+    /// Java's `portalCooldown` after a portal or gateway trip, in seconds
+    /// (`Player.getDimensionChangingDelay`, 10 ticks); touching a portal or
+    /// gateway meanwhile restarts it rather than using it.
+    portal_cooldown: f64,
+    /// v1.0 gap Track 8c: Nether portals owed by trips the
+    /// `allow_entering_nether_using_portals` rule refused (Java's
+    /// `getPortalDestination` builds the exit portal before
+    /// `teleportToPortalDestination` refuses the trip), built when the
+    /// Nether next loads ([`dimension::OwedPortal`]). Saved in the root
+    /// level file.
+    owed_portals: Vec<dimension::OwedPortal>,
+    /// v1.0 final Track F2: entities that went through portals to other
+    /// dimensions, waiting for them to load ([`portal_travel::PortalArrival`]).
+    /// Saved in the root level file.
+    portal_arrivals: Vec<portal_travel::PortalArrival>,
+    /// v1.0 final Track F2: the vehicle the host rides through a portal to
+    /// another dimension, out of the level until the host arrives.
+    carried_vehicle: Option<voxelcraft::entity::portal_travel::Departure>,
+    /// v1.0 final F11: the other dimensions that have been loaded, run in
+    /// the background as Java runs them ([`levels`]).
+    levels: Vec<levels::Level>,
+    /// v1.0 final F11: the current level's chunk tickets and empty time
+    /// (a background level carries its own).
+    tickets: voxelcraft::world::tickets::Tickets,
+    empty_time: voxelcraft::world::tickets::EmptyTime,
+    /// v1.0 final F11: a background level is swapped in and ticking: the
+    /// host and the other players aren't in it.
+    unattended: bool,
+    /// v1.0 final F11: the host's pearl landed in another level (its
+    /// dimension and where): the host goes there after the levels tick.
+    pearl_trip: Option<(Dimension, DVec3)>,
 }
 
 pub struct App {
@@ -659,6 +718,7 @@ impl ApplicationHandler for App {
                     game.death_cursor_moved();
                 }
                 game.creative_drag();
+                game.screen_drag_moved();
             }
             WindowEvent::Focused(true) => game.had_focus = true,
             WindowEvent::ModifiersChanged(m) => game.modifiers = m.state(),
@@ -750,12 +810,20 @@ impl ApplicationHandler for App {
                     // even when it's a mouse button.
                     if pressed && game.settings.keys.is(keys::Action::Inventory, input) {
                         game.toggle_inventory();
-                    } else if pressed && button == MouseButton::Middle && game.shows_palette() {
+                    } else if pressed && game.begin_screen_drag(button) {
+                    } else if pressed
+                        && button == MouseButton::Middle
+                        && (game.shows_palette() || game.session.mode.is_creative())
+                    {
                         game.creative_clone();
                     } else if pressed {
+                        game.note_screen_click(button);
                         game.inventory_click(button == MouseButton::Right);
-                    } else if button == MouseButton::Left {
-                        game.creative.dragging = false;
+                    } else {
+                        game.screen_release(button);
+                        if button == MouseButton::Left {
+                            game.creative.dragging = false;
+                        }
                     }
                     return;
                 }
@@ -770,7 +838,14 @@ impl ApplicationHandler for App {
                     game.on_release(input);
                 }
             }
-            WindowEvent::MouseWheel { .. } if game.console.open => {}
+            // v1.0 final F6: the open chat scrolls (`ChatScreen.mouseScrolled`).
+            WindowEvent::MouseWheel { delta, .. } if game.console.open => {
+                let lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y as f64,
+                    MouseScrollDelta::PixelDelta(p) => p.y / 30.0,
+                };
+                game.chat_wheel(lines);
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y as f64,
@@ -934,10 +1009,23 @@ impl Game {
 
     /// A key or mouse button let go during play.
     fn on_release(&mut self, input: keys::Input) {
+        let bindings = self.settings.keys;
+        // Java's `KeyboardHandler.keyPress`: with the debug modifier and
+        // the overlay on one key, the overlay toggles when it is let go,
+        // unless a debug key was used while it was held.
+        if !self.menu.is_open()
+            && !self.console.open
+            && self.debug_keys_shared()
+            && bindings.actions(input).any(|a| a == keys::Action::DebugModifier)
+        {
+            if !self.debug_key_used {
+                self.show_debug = !self.show_debug;
+            }
+            self.debug_key_used = false;
+        }
         if self.menu.is_open() || self.console.open || self.inventory_open || !self.mouse_grabbed {
             return;
         }
-        let bindings = self.settings.keys;
         for action in bindings.actions(input) {
             match action {
                 // A toggled button ignores the release (`ToggleKeyMapping.setDown`).
@@ -963,7 +1051,7 @@ impl Game {
         if let Some(slot) = action.hotbar() {
             // v0.17 Track D2: over a slot of an open screen, number keys
             // swap that slot with the hotbar slot instead.
-            if self.inventory_open && self.lan.client.is_none() && !dead && self.swap_under_cursor(slot) {
+            if self.inventory_open && !dead && self.swap_under_cursor(slot) {
                 return;
             }
             // v0.18 Track 4: `Minecraft.handleKeybinds` for a player with
@@ -987,6 +1075,9 @@ impl Game {
             A::PickBlock => self.pick_block(),
             A::Inventory => self.toggle_inventory(),
             A::Drop => self.drop_selected(self.modifiers.control_key()),
+            // v1.0 final track F1: over a slot of an open screen the
+            // swap-hands key swaps it with the off-hand (`SWAP`, button 40).
+            A::SwapHands if self.inventory_open && !dead => self.swap_slot_under_cursor(None),
             A::SwapHands if playing => {
                 if self.lan.client.is_some() {
                     self.lan_command("swap");
@@ -1038,7 +1129,28 @@ impl Game {
                 self.show_popup(if muted { "Sound off" } else { "Sound on" });
             }
             A::ToggleGui => self.show_hud = !self.show_hud,
-            A::DebugOverlay => self.show_debug = !self.show_debug,
+            // Java's default binds the debug modifier and the overlay to
+            // the same key: the overlay toggles when it is let go, unless a
+            // debug key was used while it was held (`usedDebugKeyAsModifier`).
+            // v1.0 gap track 6c: bound apart, the overlay key toggles it
+            // when pressed.
+            A::DebugOverlay if !self.debug_keys_shared() => self.show_debug = !self.show_debug,
+            A::DebugOverlay => {}
+            A::DebugModifier => self.debug_key_used = false,
+            // v1.0 gap track 6b: F3+H, `KeyboardHandler.handleDebugKeys`.
+            A::AdvancedTooltips if self.held(A::DebugModifier) => {
+                self.debug_key_used = true;
+                self.settings.advanced_tooltips = !self.settings.advanced_tooltips;
+                // v1.0 gap track 6c: in chat, as `debugFeedbackTranslated`
+                // puts it (`showDebugChat`).
+                self.chat_line(if self.settings.advanced_tooltips {
+                    "[Debug]: Advanced tooltips: shown"
+                } else {
+                    "[Debug]: Advanced tooltips: hidden"
+                });
+                let _ = self.save_settings();
+            }
+            A::AdvancedTooltips => {}
             A::TogglePerspective => self.camera.cycle(),
             A::Fullscreen => {
                 // Leaves whatever fullscreen the window is in, or enters the
@@ -1067,6 +1179,12 @@ impl Game {
 
     /// Whether an action's key is down: held, or toggled on for Sneak and
     /// Sprint in Toggle mode. A table lookup per call.
+    /// Java's `modifierAndOverlayIsSame`: the debug modifier and overlay
+    /// keys are bound to the same key (as by default).
+    fn debug_keys_shared(&self) -> bool {
+        self.settings.keys.get(keys::Action::DebugModifier) == self.settings.keys.get(keys::Action::DebugOverlay)
+    }
+
     fn held(&self, action: keys::Action) -> bool {
         match action {
             keys::Action::Sneak if self.settings.toggle_sneak => self.sneak_toggled,
@@ -1083,6 +1201,9 @@ impl Game {
         let lines = if s.discrete_scroll && lines != 0.0 { lines.signum() } else { lines } * s.scroll_sensitivity;
         if self.menu.is_open() {
             self.menu_wheel(lines as f32);
+        } else if self.inventory_open && self.bundle_wheel(lines) {
+            // v1.0 gap track 6: a hovered bundle takes the wheel first, as
+            // `AbstractContainerScreen.mouseScrolled` asks its slot actions.
         } else if self.inventory_open && self.shows_palette() {
             // v0.18 Track 4: `CreativeModeInventoryScreen.mouseScrolled`
             // takes the scaled wheel as it comes.
@@ -1152,13 +1273,34 @@ impl Game {
         amount: f32,
         cause: impl Into<voxelcraft::simulation::damage::Cause>,
     ) -> f32 {
-        let cause = cause.into();
+        self.hurt_player(amount, cause.into(), false).1
+    }
+
+    /// [`Game::damage_player`], through armor points too when `armored`.
+    /// The hurt cooldown sees `amount` before armor and the armor's
+    /// enchantments, as Java's `hurtServer` does (v1.0 gap Track 8d).
+    /// Returns what armor wears by (zero for `#bypasses_armor` damage or
+    /// unarmored) and the damage taken.
+    fn hurt_player(&mut self, amount: f32, cause: voxelcraft::simulation::damage::Cause, armored: bool) -> (f32, f32) {
         // Java's `Player.isInvulnerableTo` for the fall, fire and drowning rules.
         if self.gamerules.damage_immunity().blocks(cause) {
-            return 0.0;
+            return (0.0, 0.0);
         }
-        let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
-        let taken = self.session.vitals.damage(amount, cause, self.session.mode.invulnerable());
+        let invulnerable = self.session.mode.invulnerable();
+        let inv = &self.session.inventory;
+        let (points, toughness) = (inv.armor_points(), inv.armor_toughness());
+        let mut worn = false;
+        let (landed, taken) = self.session.vitals.hurt(amount, cause, invulnerable, |a| {
+            let a = if armored {
+                let (reduced, w) = voxelcraft::simulation::damage::after_armor(a, cause, points, toughness);
+                worn = w;
+                reduced
+            } else {
+                a
+            };
+            crate::enchant::protect(a, &inv.armor, cause)
+        });
+        let wear = if worn { landed } else { 0.0 };
         if taken > 0.0 {
             // A stronger hit inside the immunity window keeps the hurt direction, as Java skips it.
             if self.session.vitals.last_hit_fresh() {
@@ -1171,11 +1313,11 @@ impl Game {
             if self.session.totem_saves(self.body.actions.selected) {
                 self.show_popup("Totem of Undying");
                 self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.6, (1.4, 1.6));
-                return taken;
+                return (wear, taken);
             }
             self.on_death();
         }
-        taken
+        (wear, taken)
     }
 
     /// [`Game::damage_player_armored`] for an attack that comes from a place,
@@ -1211,16 +1353,10 @@ impl Game {
         amount: f32,
         cause: impl Into<voxelcraft::simulation::damage::Cause>,
     ) -> f32 {
-        let cause = cause.into();
-        let (reduced, worn) = voxelcraft::simulation::damage::after_armor(
-            amount,
-            cause,
-            self.session.inventory.armor_points(),
-            self.session.inventory.armor_toughness(),
-        );
-        let taken = self.damage_player(reduced, cause);
-        if taken > 0.0 && worn && self.session.mode.is_survival() {
-            for item in self.session.inventory.wear_armor(amount) {
+        let (wear, taken) = self.hurt_player(amount, cause.into(), true);
+        // `hurtArmor` wears by what landed (a stronger hit's excess).
+        if taken > 0.0 && wear > 0.0 && self.session.mode.is_survival() {
+            for item in self.session.inventory.wear_armor(wear) {
                 self.show_popup(&format!("{} broke", capitalize(item.name())));
                 let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
                 self.audio.play_in(crate::audio::SoundSource::Players, sound, None, 0.8, (1.3, 1.5));
@@ -1233,9 +1369,64 @@ impl Game {
     /// takes the shared death step (drops unless spectating or
     /// `keepInventory`, as every adapter does).
     fn on_death(&mut self) {
+        // v1.0 gap Track 8f: `ServerPlayer.die` names the killer and, with
+        // `show_death_messages`, sends the message to every player's chat.
+        // v1.0 gap Track 8g: any attacker, mob or player, as Java names them.
+        let attacker =
+            self.session.vitals.killer.as_ref().and_then(|k| self.attacker(k.owner, &self.player_attackers()));
+        self.session.vitals.name_killer(|_| attacker);
         if self.gamerules.bool("show_death_messages") {
-            log::info!("player {}", self.session.vitals.death.as_deref().unwrap_or("died"));
+            let line = format!("{} {}", self.lan.profile, self.session.vitals.death.as_deref().unwrap_or("died"));
+            log::info!("{line}");
+            // A LAN guest's death goes out from the host, which runs it.
+            if self.lan.client.is_none() {
+                self.broadcast_chat(&line);
+            }
         }
+        self.enter_death();
+    }
+
+    /// v1.0 gap Track 8g: every player as a death message names them: their
+    /// profile name and their main-hand item's custom name.
+    pub(super) fn player_attackers(
+        &self,
+    ) -> std::collections::BTreeMap<crate::entity::PlayerId, voxelcraft::simulation::death_message::Attacker> {
+        use voxelcraft::simulation::death_message::Attacker;
+        let weapon = |stack: Option<crate::inventory::Stack>| stack.and_then(|s| s.name.as_str().map(str::to_string));
+        let host = Attacker {
+            name: self.lan.profile.clone(),
+            weapon: weapon(self.session.inventory.get(self.body.actions.selected)),
+            alive: !self.session.vitals.is_dead(),
+        };
+        std::iter::once((crate::entity::PlayerId::HOST, host))
+            .chain(self.agents.players.iter().map(|(name, b)| {
+                let a = Attacker {
+                    name: name.clone(),
+                    weapon: weapon(b.agent.session.inventory.get(b.agent.selected)),
+                    alive: !b.agent.session.vitals.is_dead(),
+                };
+                (b.id, a)
+            }))
+            .collect()
+    }
+
+    /// v1.0 gap Track 8g: `owner` as a death message names them: a player
+    /// from `players`, a mob by its custom name or its kind's Java name
+    /// with its main-hand item's custom name (None once it's gone).
+    pub(super) fn attacker(
+        &self,
+        owner: crate::entity::trident::Owner,
+        players: &std::collections::BTreeMap<crate::entity::PlayerId, voxelcraft::simulation::death_message::Attacker>,
+    ) -> Option<voxelcraft::simulation::death_message::Attacker> {
+        match owner {
+            crate::entity::trident::Owner::Player(id) => players.get(&id).cloned(),
+            crate::entity::trident::Owner::Mob(uid) => self.mobs.entities.attacker(uid),
+        }
+    }
+
+    /// The death screen's side of [`Game::on_death`], also for a player
+    /// loaded dead (whose death was announced when it happened).
+    fn enter_death(&mut self) {
         if self.inventory_open {
             self.toggle_inventory();
         }
@@ -1265,6 +1456,11 @@ impl Game {
         self.sneak_toggled = false;
         self.sprint_toggled = false;
         self.distortion.reset();
+        // v1.0 gap Track 8b: the respawned player is a new `ServerPlayer`,
+        // with no portal count or cooldown.
+        self.portal = Default::default();
+        self.portal_seen = false;
+        self.portal_cooldown = 0.0;
         self.body.left_held = false;
         self.body.right_held = false;
         self.jump_pressed = false;
@@ -1438,14 +1634,21 @@ impl Game {
                 return;
             }
             if self.session.inventory.cursor.is_some() && self.cursor_off_panel() {
-                self.lan_click(lan::LAN_OUTSIDE_SLOT, right, false);
+                self.lan_click(lan::LAN_OUTSIDE_SLOT, right, false, None);
                 return;
             }
             if let Some(slot) = self.slot_under_cursor() {
                 self.recipe_slot_clicked(slot);
             }
-            if let Some(slot) = self.slot_under_cursor().and_then(lan::encode_slot) {
-                self.lan_click(slot, right, self.modifiers.shift_key());
+            let hovered = self.slot_under_cursor();
+            if let Some(slot) = hovered.and_then(lan::encode_slot) {
+                let shift = self.modifiers.shift_key();
+                let selected = hovered.and_then(|h| self.bundle_selected_at(h)).filter(|_| !shift);
+                self.lan_click(slot, right, shift, selected);
+                // The host's answer arrives later; Java clears the selection
+                // on every click but a stack going in, which the guest
+                // can't tell yet, so it clears it.
+                self.bundle_selection = None;
             }
             return;
         }
@@ -1483,6 +1686,8 @@ impl Game {
             if let Some(slot) = slot {
                 self.quick_move(slot);
             }
+            // `BundleMouseActions.onSlotClicked`: a quick move clears it.
+            self.bundle_selection = None;
             return;
         }
         if let Some(slot) = slot {
@@ -1517,10 +1722,14 @@ impl Game {
     }
 
     fn click_slot(&mut self, slot: hud::SlotRef, right: bool) {
-        self.with_screen(|s| s.click_slot(slot, right));
+        let selected = self.bundle_selected_at(slot);
+        let click = self.with_screen(|s| s.click_slot_selected(slot, right, selected));
+        self.bundle_clicked(click);
     }
 
     fn quick_move(&mut self, slot: hud::SlotRef) {
+        // `lastQuickMoved`, for a shift double-click.
+        self.screen_mouse.last_quick_moved = self.slot_stack(slot);
         self.with_screen(|s| s.quick_move(slot));
     }
 
@@ -1537,13 +1746,10 @@ impl Game {
         if self.lan.client.is_some() {
             return;
         }
-        let stack = match self.slot_under_cursor() {
-            Some(hud::SlotRef::Palette(s)) => Some(s),
-            Some(hud::SlotRef::Inventory(i)) => self.session.inventory.get(i),
-            Some(hud::SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
-            Some(hud::SlotRef::Offhand) => self.session.inventory.offhand,
-            _ => None,
-        };
+        // `CLONE` takes any slot's stack for a player with infinite
+        // materials (v1.0 final track F1: every screen, not only the
+        // creative one).
+        let stack = self.slot_under_cursor().and_then(|slot| self.slot_stack(slot));
         voxelcraft::creative::clone(&mut self.session.inventory.cursor, stack);
     }
 
@@ -1654,9 +1860,10 @@ impl Game {
             self.audio.play(sound, Some(pos), gain, pitch);
         }
         // Playing records: original tunes through the note voices
-        // (`SoundSource::Records`), heard like any positioned sound.
+        // (`SoundSource::Records`). v1.0 final Track F4: as Java's
+        // `forJukeboxSong` (volume 4, linear attenuation), heard to 64 blocks.
         for note in std::mem::take(&mut self.world.records) {
-            let sound = crate::audio::sounds::Sound::Note(crate::world::gadgets::Instrument::from_u8(note.instrument));
+            let sound = crate::audio::sounds::Sound::Disc(crate::world::gadgets::Instrument::from_u8(note.instrument));
             let hz = crate::world::gadgets::pitch_hz(note.pitch);
             self.audio.play(sound, Some(note.pos.as_dvec3() + glam::DVec3::splat(0.5)), note.gain, (hz, hz));
         }
@@ -1797,6 +2004,11 @@ impl Game {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
             }
+            // Fire in an obsidian frame lights it, as `BaseFireBlock.onPlace`
+            // does in Java (v1.0 gap Track 5c: how captures build a portal).
+            if block == Block::FIRE && self.world.light_portal(pos) {
+                continue;
+            }
             // A double plant's lower half brings its upper half, as item placement does.
             self.world.before_overworld_place(pos, block);
             if !self.world.set_block(pos, block) {
@@ -1834,6 +2046,9 @@ impl Game {
         }
         for (pos, face, item, held) in std::mem::take(&mut self.decor_scene) {
             self.place_scripted_decor(pos, face, item, held);
+        }
+        for (trident, cell, fire) in std::mem::take(&mut self.projectile_scene) {
+            self.mobs.entities.stick_scripted_projectile(trident, cell, fire);
         }
         for (pos, face, strokes) in std::mem::take(&mut self.brush_scene) {
             if !self.world.brush_scripted(pos, face, strokes) {
@@ -1970,6 +2185,12 @@ impl Game {
                     self.panorama_face = None;
                     self.panorama_out = None;
                 }
+                false
+            }
+            // v1.0 gap track 6: `--item-review`: one item a frame, then the
+            // screenshot.
+            1 if self.item_review.is_some() => {
+                self.step_item_review();
                 false
             }
             // `--world-icon` waits for the icon before the screenshot.
@@ -2163,12 +2384,21 @@ impl Game {
         let now = Instant::now();
         self.poll_lan();
         self.poll_agents();
+        // v1.0 final F6: Chat Delay's held lines (`ChatListener.tick`).
+        self.console.release(self.settings.chat.delay);
+        // v1.0 final track F1: the drag's preview for this frame's slots.
+        self.screen_mouse.preview = if self.inventory_open { self.drag_preview() } else { None };
+        // v1.0 gap Track 8d: only a pause screen pauses (`isPauseScreen`):
+        // not the sign editor, a lectern's book or the console (Java's
+        // `ChatScreen`). Track 8e: nor the End credits (`WinScreen` with
+        // its poem), during which the player has left the level.
         let paused = pauses_simulation(
-            self.menu.is_open() || self.console.open || self.credits.is_some(),
+            self.menu.pauses(),
             self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
         );
         self.respawn_if_due();
         self.sync_death_screen();
+        self.track_bundle_hover();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
@@ -2335,6 +2565,7 @@ impl Game {
                             alpha,
                             b.agent.session.inventory.armor,
                             b.agent.session.inventory.get(b.agent.selected),
+                            b.agent.session.inventory.offhand,
                         ),
                     ),
                     name.as_str(),
@@ -2342,7 +2573,9 @@ impl Game {
             })
             .collect();
         benchmark::mark(&mut self.benchmark, 2);
-        let draw = atmosphere.draw_distance(self.session.player.pos, self.world.render_distance());
+        let draw = atmosphere
+            .draw_distance(self.session.player.pos, self.world.render_distance())
+            .scaled(self.settings.entity_distance);
         self.mobs.entities.mesh(&self.world.maps, camera, forward, draw, scene.time, alpha);
         // v0.18 Track 6: ground shadows, for the players drawn in this view too.
         let mut casters = shadow_casters(&self.world, others.iter().map(|o| o.1), alpha);
@@ -2351,7 +2584,7 @@ impl Game {
                 .push(voxelcraft::entity::shadow::player(eye - (self.session.player.eye() - self.session.player.pos)));
         }
         let verts = self.mobs.entities.shadows(&self.world, camera, alpha, &casters, self.settings.entity_shadows);
-        push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
+        push_avatars(&self.world, &others, (camera, forward), fog_end, scene.time, verts);
         crate::render::signs::text(
             &mut self.mobs.sign_text,
             crate::render::signs::FONT_VERSION,
@@ -2371,8 +2604,10 @@ impl Game {
                     alpha,
                     self.session.inventory.armor,
                     self.session.inventory.get(self.body.actions.selected),
+                    self.session.inventory.offhand,
                 ),
             );
+            let look = crate::entity::model::PlayerAppearance { view: forward, ..look };
             crate::entity::model::build_player(
                 &self.session.player,
                 eye - (self.session.player.eye() - self.session.player.pos),
@@ -2390,7 +2625,7 @@ impl Game {
         self.renderer.set_entities(verts);
         benchmark::mark(&mut self.benchmark, 3);
         self.renderer.set_particles(&self.particles.pool, &self.world, camera, self.session.player.forward(), alpha);
-        weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
+        weather::sheets(&self.world, camera, scene.rain, self.settings.weather_radius as i32, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let viewports = self.viewports();
         // v0.18 Track 9: the captions as heard from the camera this frame.
@@ -2479,11 +2714,12 @@ impl Game {
                 )
             }),
             rain: scene.rain,
-            night_vision: self
-                .session
-                .vitals
-                .effects
-                .vision(scene.time, self.session.player.head_in_water(&self.world)),
+            night_vision: atmosphere.night_vision,
+            darkness: crate::render::Darkness::of(
+                &self.session.vitals.effects,
+                alpha as f32,
+                self.settings.darkness_effect_scale,
+            ),
             ui,
             // v0.18 Track 2: a menu over the world blurs what is under it.
             blur: blur_from.map_or(0, |_| self.settings.menu_blur),
@@ -2599,6 +2835,7 @@ impl Game {
             .map(|f| crate::render::BlockModel {
                 patterns: None,
                 lid: None,
+                swing: None,
                 min: f.previous_pos.lerp(f.pos, alpha),
                 size: 1.0,
                 block: f.block,
@@ -2608,12 +2845,17 @@ impl Game {
                 icon: None,
                 orient: None,
                 tint: [255; 4],
+                glint: false,
+                translucent: false,
+                mesh: None,
+                transform: None,
             })
             .chain(self.mobs.entities.tnt.iter().map(|t| {
                 let s = t.size();
                 crate::render::BlockModel {
                     patterns: None,
                     lid: None,
+                    swing: None,
                     min: t.previous_pos.lerp(t.pos, alpha)
                         - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
                     size: s,
@@ -2625,12 +2867,17 @@ impl Game {
                     icon: None,
                     orient: None,
                     tint: [255; 4],
+                    glint: false,
+                    translucent: false,
+                    mesh: None,
+                    transform: None,
                 }
             }))
             .chain(self.world.moving_piston_blocks(alpha).chain(self.world.moving_piston_heads(alpha)).map(
                 |(block, min)| crate::render::BlockModel {
                     patterns: None,
                     lid: None,
+                    swing: None,
                     min,
                     size: 1.0,
                     block,
@@ -2640,12 +2887,17 @@ impl Game {
                     icon: None,
                     orient: None,
                     tint: [255; 4],
+                    glint: false,
+                    translucent: false,
+                    mesh: None,
+                    transform: None,
                 },
             ))
-            .chain(self.item_models(alpha))
+            .chain(self.item_models(alpha, camera))
             .chain(self.banner_models(camera))
             .chain(self.shulker_models(camera, alpha))
             .chain(self.lid_models(alpha))
+            .chain(self.bell_models(alpha))
             .chain(self.decor_models(camera, view))
             .collect()
     }
@@ -2656,7 +2908,7 @@ impl Game {
 fn push_avatars(
     world: &World,
     players: &[(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)],
-    camera: DVec3,
+    (camera, forward): (DVec3, glam::Vec3),
     fog_end: f32,
     time: f32,
     verts: &mut crate::entity::model::EntityMesh,
@@ -2666,6 +2918,7 @@ fn push_avatars(
         let inside = (camera - feet).with_y(0.0).length() < 0.4 && (feet.y..feet.y + 1.9).contains(&camera.y);
         if !inside && feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
             let glow = verts.glow_start();
+            let appearance = crate::entity::model::PlayerAppearance { view: forward, ..appearance };
             crate::entity::model::build_player(
                 player,
                 feet,
@@ -2692,10 +2945,12 @@ fn capitalize(s: &str) -> String {
 }
 
 /// Single-player pause, as Java's integrated server pauses only while it is
-/// not shared: an open game menu, the console or the credits stop gameplay
-/// ticks, unless other players are in this world (the CLI agent server, a
-/// LAN host or a LAN client). Controller players' own menus never pause the
-/// world; the inventory and container screens don't either.
+/// not shared: an open pause screen (`Screen.isPauseScreen`) or the credits
+/// stop gameplay ticks, unless other players are in this world (the CLI
+/// agent server, a LAN host or a LAN client). Controller players' own menus
+/// never pause the world; the inventory and container screens, the sign
+/// editor, a lectern's book and the console (Java's `ChatScreen`) don't
+/// either (v1.0 gap Track 8d).
 fn pauses_simulation(screen_open: bool, shared: bool) -> bool {
     screen_open && !shared
 }

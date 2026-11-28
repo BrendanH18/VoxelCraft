@@ -151,10 +151,15 @@ fn a_new_wall_on_an_active_path_is_recomputed_before_the_stuck_timeout() {
     let ctx = night(target);
     let mut e = Entities::new(23);
     e.spawn(MobKind::Zombie, DVec3::new(0.5, 1.0, 0.5));
-    for _ in 0..25 {
+    // Until it has found its target (Java's search runs one full update in
+    // five) and set off: once the wall hides the player it can't find one.
+    for _ in 0..200 {
         e.update(0.05, &scene, &ctx);
+        if e.mobs[0].pos.x > 2.0 {
+            break;
+        }
     }
-    assert!(e.mobs[0].pos.x < 5.0);
+    assert!(e.mobs[0].pos.x > 2.0 && e.mobs[0].pos.x < 5.0, "{:?}", e.mobs[0].pos);
     for y in 1..=3 {
         for z in -1..=1 {
             scene.set(IVec3::new(5, y, z), Block::STONE);
@@ -163,7 +168,9 @@ fn a_new_wall_on_an_active_path_is_recomputed_before_the_stuck_timeout() {
     let mut went_around = false;
     for _ in 0..70 {
         e.update(0.05, &scene, &ctx);
-        went_around |= e.mobs[0].pos.z.abs() > 1.5;
+        // Past the wall's face beside it (the wall spans z −1..2; the
+        // zombie is 0.6 wide), which only a detour can do.
+        went_around |= e.mobs[0].pos.x > 5.5 && e.mobs[0].pos.z.abs() > 1.3;
     }
     assert!(went_around, "new wall did not trigger a detour: {:?}", e.mobs[0].pos);
 }

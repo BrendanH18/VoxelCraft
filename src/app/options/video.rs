@@ -1,13 +1,16 @@
 //! Video Settings: Java 26.3's three sections (Display, Quality &
 //! Performance, Preferences) with the options VoxelCraft can honour, in
-//! Java's order (Quality & Performance: `tests/fixtures/java/26.3/mipmap_levels.json`). Options that would need renderer work VoxelCraft doesn't
-//! have (Biome Blend, Entity Distance and the like) are left out. v0.18
-//! Track 8 adds Clouds and Cloud Distance; Entity Shadows (Track 6) switches
-//! the ground shadows.
+//! Java's order (Quality & Performance: `tests/fixtures/java/26.3/mipmap_levels.json`).
+//! Options that would need renderer work VoxelCraft doesn't have are left
+//! out: Biome Blend (block tints pick a texture layer per biome, with no
+//! colour to average), Smooth Lighting, Chunk Builder, the leaf, transparency
+//! and filtering options. v0.18 Track 8 adds Clouds and Cloud Distance;
+//! Entity Shadows (Track 6) switches the ground shadows; v1.0 final F6 adds
+//! Entity Distance and Weather Effect Radius.
 
 use super::{OptionsHost, change, close, frac, lerp};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
-use crate::app::settings::{MAX_FPS, MIPMAP_LEVELS, RENDER_DISTANCE};
+use crate::app::settings::{ENTITY_DISTANCE, MAX_FPS, MIPMAP_LEVELS, RENDER_DISTANCE, WEATHER_RADIUS};
 use crate::render::ui::Ui;
 use crate::world::activity::SIMULATION_DISTANCE_RANGE;
 use voxelcraft::atmosphere::CLOUD_RANGE;
@@ -28,8 +31,10 @@ pub(in crate::app) enum Id {
     Particles,
     MipmapLevels,
     EntityShadows,
+    EntityDistance,
     MenuBlur,
     CloudDistance,
+    WeatherRadius,
     PreferencesHeader,
     AttackIndicator,
     Fps,
@@ -156,6 +161,14 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 z,
                 format!("{}: {}", crate::entity::shadow::OPTION_LABEL, on_off(s.entity_shadows)),
             ),
+            // v1.0 final F6: `percentValueLabel`, in quarters.
+            Widget::slider(
+                Id::EntityDistance,
+                z,
+                format!("Entity Distance: {}%", (s.entity_distance * 100.0).round() as i32),
+                frac(s.entity_distance as f32, (ENTITY_DISTANCE.0 as f32, ENTITY_DISTANCE.1 as f32)),
+                18,
+            ),
             // v0.18 Track 2: Java lists it after Entity Distance.
             super::menu_blur_slider(Id::MenuBlur, s.menu_blur),
             // Java's Quality order: Clouds before Particles; Cloud Distance
@@ -167,6 +180,15 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 frac(s.cloud_range as f32, cloud_range()),
                 CLOUD_RANGE.1 - CLOUD_RANGE.0,
             ),
+            // v1.0 final F6: last in Java's Quality list.
+            Widget::slider(
+                Id::WeatherRadius,
+                z,
+                format!("Weather Effect Radius: {} Blocks", s.weather_radius),
+                frac(s.weather_radius as f32, range_u(WEATHER_RADIUS)),
+                WEATHER_RADIUS.1 - WEATHER_RADIUS.0,
+            )
+            .tooltip("Radius of the area where rain and snow effects are visible. Very low performance impact."),
         ]);
         list.wide(Widget::label(Id::PreferencesHeader, z, "Preferences"));
         // v1.0 Track 9: Java's Preferences list Attack Indicator after the
@@ -217,6 +239,11 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
             Id::MipmapLevels => change(host, |s| s.mipmap_levels = lerp(range_u(MIPMAP_LEVELS), t).round() as u32),
             Id::MenuBlur => change(host, |s| s.menu_blur = super::menu_blur_at(t)),
             Id::CloudDistance => change(host, |s| s.cloud_range = lerp(cloud_range(), t).round() as u32),
+            Id::EntityDistance => {
+                let (lo, hi) = (ENTITY_DISTANCE.0 as f32, ENTITY_DISTANCE.1 as f32);
+                change(host, |s| s.entity_distance = f64::from((lerp((lo, hi), t) * 4.0).round()) / 4.0)
+            }
+            Id::WeatherRadius => change(host, |s| s.weather_radius = lerp(range_u(WEATHER_RADIUS), t).round() as u32),
             _ => {}
         }
     }

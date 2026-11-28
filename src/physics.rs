@@ -20,6 +20,13 @@ pub trait BlockSource {
     /// each belongs to. They follow their progress, so a box can lie
     /// partly in a neighbouring cell. Only worlds have moving blocks.
     fn moving_boxes(&self, _min: DVec3, _max: DVec3, _f: &mut dyn FnMut(IVec3, DVec3, DVec3)) {}
+
+    /// v1.0 gap Track 2c: the dimension's `FAST_LAVA` environment
+    /// attribute (the Nether), which scales lava currents (`Entity`'s
+    /// `LAVA_FAST_FLOW_SCALE` 0.007 against 0.0023). Only worlds know it.
+    fn fast_lava(&self) -> bool {
+        false
+    }
 }
 
 impl BlockSource for World {
@@ -30,6 +37,10 @@ impl BlockSource for World {
 
     fn moving_boxes(&self, min: DVec3, max: DVec3, f: &mut dyn FnMut(IVec3, DVec3, DVec3)) {
         self.piston_collision_boxes(min, max, None, f);
+    }
+
+    fn fast_lava(&self) -> bool {
+        self.generator.dimension == crate::world::terrain::Dimension::Nether
     }
 }
 
@@ -107,17 +118,37 @@ fn cell_boxes<W: BlockSource + ?Sized>(world: &W, p: IVec3, f: impl FnMut(DVec3,
     cell_boxes_context(world, p, None, f);
 }
 
-/// Minimal Java `EntityCollisionContext` for the player path. `descending`
-/// is the sneak key, not negative velocity. Above checks use the entity's
-/// original feet position, even when querying a swept/step-up box.
+/// Minimal Java `EntityCollisionContext` (`CollisionContext.of(entity)`),
+/// which Java 26.3's `Entity.collide` builds for every entity, mobs and
+/// items included. `descending` is the sneak key (`isShiftKeyDown`, only
+/// ever set for players), not negative velocity. Above checks use the
+/// entity's original feet position, even when querying a swept/step-up box.
+/// `None` stands for Java's `CollisionContext.empty()`, for queries no
+/// entity makes.
 #[derive(Clone, Copy, Debug)]
 pub struct CollisionContext {
     pub feet_y: f64,
     pub descending: bool,
     pub fall_distance: f64,
+    /// `PowderSnowBlock.canEntityWalkOnPowderSnow`: leather boots in the
+    /// feet slot, or the `powder_snow_walkable_mobs` tag (rabbits,
+    /// endermites, silverfish and foxes).
     pub leather_boots: bool,
+    /// A `FallingBlockEntity`, which powder snow always holds up.
+    pub falling_block: bool,
 }
 impl CollisionContext {
+    /// v1.0 final F7: the context of a mob, item or other non-player entity
+    /// standing with its feet at `feet_y` (`isDescending` is false).
+    pub const fn entity(feet_y: f64, fall_distance: f64, walks_on_powder_snow: bool) -> Self {
+        CollisionContext {
+            feet_y,
+            descending: false,
+            fall_distance,
+            leather_boots: walks_on_powder_snow,
+            falling_block: false,
+        }
+    }
     fn above(self, p: IVec3, top: f64) -> bool {
         self.feet_y > p.y as f64 + top - f64::from(1.0e-5_f32)
     }
@@ -150,7 +181,7 @@ pub(crate) fn cell_boxes_context<W: BlockSource + ?Sized>(
             if let Some(c) = context {
                 let height = if c.fall_distance > 2.5 {
                     Some(f64::from(0.9_f32))
-                } else if c.leather_boots && c.above(p, 1.0) && !c.descending {
+                } else if c.falling_block || c.leather_boots && c.above(p, 1.0) && !c.descending {
                     Some(1.0)
                 } else {
                     None
@@ -161,6 +192,27 @@ pub(crate) fn cell_boxes_context<W: BlockSource + ?Sized>(
             }
             return;
         }
+    }
+    // v1.0 gap track 6c: bamboo collides as Java's `SHAPE_COLLISION`, a
+    // 3-wide column, moved by the stalk's offset (`world::offset`).
+    if let Some(b) = b.filter(|&b| crate::world::overworld_blocks::bamboo_stalk(b.canonical()).is_some()) {
+        let o = crate::world::offset::offset(b, p.x, p.z);
+        let (a, c) = (6.5 / 16., 9.5 / 16.);
+        f(lo + o + DVec3::new(a, 0., a), lo + o + DVec3::new(c, 1., c));
+        return;
+    }
+    // v1.0 gap Track 1: pointed dripstone and sulfur spikes collide as
+    // Java's `SpeleothemBlock` columns, so things stand and land on them
+    // (v1.0 gap track 6c: moved by their offset).
+    if let Some((s, b)) = b.and_then(|b| crate::world::speleothem::of(b).map(|s| (s, b))) {
+        let (width, bottom, top) = crate::world::speleothem::column(s);
+        let side = f64::from(8 - width / 2) / 16.;
+        let o = crate::world::offset::offset(b, p.x, p.z);
+        f(
+            lo + o + DVec3::new(side, f64::from(bottom) / 16., side),
+            lo + o + DVec3::new(1. - side, f64::from(top) / 16., 1. - side),
+        );
+        return;
     }
     if let Some((age, false)) = b.and_then(crate::world::sniffer_plants::pitcher_state) {
         let (width, height) = if age == 0 { (6., 3.) } else { (10., 5.) };
@@ -205,13 +257,22 @@ pub fn collision_top<W: BlockSource + ?Sized>(world: &W, p: IVec3) -> Option<f64
 /// Calls `f` with every solid box that could touch the box (min, max):
 /// those in the cells it covers, and in the row below (fences reach up
 /// into the next cell).
-fn boxes_near<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: DVec3, mut f: impl FnMut(DVec3, DVec3)) {
+fn boxes_near<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: DVec3, f: impl FnMut(DVec3, DVec3)) {
+    boxes_near_context(world, min, max, None, f);
+}
+fn boxes_near_context<W: BlockSource + ?Sized>(
+    world: &W,
+    min: DVec3,
+    max: DVec3,
+    context: Option<CollisionContext>,
+    mut f: impl FnMut(DVec3, DVec3),
+) {
     let lo = (min + DVec3::splat(EPS)).floor().as_ivec3();
     let hi = (max - DVec3::splat(EPS)).floor().as_ivec3();
     for y in lo.y - 1..=hi.y {
         for z in lo.z..=hi.z {
             for x in lo.x..=hi.x {
-                cell_boxes(world, IVec3::new(x, y, z), |bmin, bmax| {
+                cell_boxes_context(world, IVec3::new(x, y, z), context, |bmin, bmax| {
                     if bmin.cmplt(max - DVec3::splat(EPS)).all() && bmax.cmpgt(min + DVec3::splat(EPS)).all() {
                         f(bmin, bmax);
                     }
@@ -236,9 +297,18 @@ pub fn full_collision<W: BlockSource + ?Sized>(world: &W, p: IVec3) -> bool {
 
 /// Whether the box at `pos` overlaps any solid (or unloaded) block.
 pub fn overlaps_solid<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape) -> bool {
+    overlaps_solid_context(world, pos, shape, None)
+}
+/// [`overlaps_solid`] with an entity's collision context.
+pub fn overlaps_solid_context<W: BlockSource + ?Sized>(
+    world: &W,
+    pos: DVec3,
+    shape: Shape,
+    context: Option<CollisionContext>,
+) -> bool {
     let (min, max) = shape.aabb(pos);
     let mut hit = false;
-    boxes_near(world, min, max, |_, _| hit = true);
+    boxes_near_context(world, min, max, context, |_, _| hit = true);
     hit
 }
 
@@ -276,9 +346,20 @@ pub fn sweep_clear<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape,
 /// If the box at `pos` overlaps solid blocks, returns `pos` pushed back
 /// against them along `axis` (the direction of travel is the sign of `dir`).
 pub fn collide<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape, axis: usize, dir: f64) -> Option<DVec3> {
+    collide_context(world, pos, shape, axis, dir, None)
+}
+/// [`collide`] with an entity's collision context.
+pub fn collide_context<W: BlockSource + ?Sized>(
+    world: &W,
+    pos: DVec3,
+    shape: Shape,
+    axis: usize,
+    dir: f64,
+    context: Option<CollisionContext>,
+) -> Option<DVec3> {
     let (min, max) = shape.aabb(pos);
     let mut hit: Option<f64> = None;
-    boxes_near(world, min, max, |bmin, bmax| {
+    boxes_near_context(world, min, max, context, |bmin, bmax| {
         let edge = if dir > 0.0 { bmin[axis] } else { bmax[axis] };
         hit = Some(match hit {
             Some(h) if dir > 0.0 => h.min(edge),
@@ -306,6 +387,20 @@ pub fn move_box<W: BlockSource + ?Sized>(
     delta: DVec3,
     shape: Shape,
 ) -> Collision {
+    move_box_context(world, pos, vel, delta, shape, None)
+}
+
+/// [`move_box`] with an entity's collision context (v1.0 final F7: Java's
+/// `Entity.collide` passes `CollisionContext.of(entity)`, so scaffolding
+/// and powder snow treat mobs and items as they treat players).
+pub fn move_box_context<W: BlockSource + ?Sized>(
+    world: &W,
+    pos: &mut DVec3,
+    vel: &mut DVec3,
+    delta: DVec3,
+    shape: Shape,
+    context: Option<CollisionContext>,
+) -> Collision {
     let mut out = Collision::default();
     for axis in [1usize, 0, 2] {
         if delta[axis] == 0.0 {
@@ -313,7 +408,7 @@ pub fn move_box<W: BlockSource + ?Sized>(
         }
         let mut next = *pos;
         next[axis] += delta[axis];
-        if let Some(resolved) = collide(world, next, shape, axis, delta[axis]) {
+        if let Some(resolved) = collide_context(world, next, shape, axis, delta[axis], context) {
             match axis {
                 1 if delta[axis] < 0.0 => out.on_ground = true,
                 1 => out.ceiling = true,
@@ -339,17 +434,32 @@ pub fn move_box_stepping<W: BlockSource + ?Sized>(
     shape: Shape,
     step: f64,
 ) -> Collision {
+    move_box_stepping_context(world, pos, vel, delta, shape, step, None)
+}
+
+/// [`move_box_stepping`] with an entity's collision context, taken at the
+/// start of the move (Java's above checks read the entity's feet before it
+/// moves).
+pub fn move_box_stepping_context<W: BlockSource + ?Sized>(
+    world: &W,
+    pos: &mut DVec3,
+    vel: &mut DVec3,
+    delta: DVec3,
+    shape: Shape,
+    step: f64,
+    context: Option<CollisionContext>,
+) -> Collision {
     let (start, start_vel) = (*pos, *vel);
-    let out = move_box(world, pos, vel, delta, shape);
+    let out = move_box_context(world, pos, vel, delta, shape, context);
     if !out.horizontal || delta.y > 0.0 {
         return out;
     }
     // Retry: rise, move across, then settle back down onto whatever is there.
     let (mut p, mut v) = (start, start_vel);
-    move_box(world, &mut p, &mut v, DVec3::new(0.0, step, 0.0), shape);
-    let across = move_box(world, &mut p, &mut v, DVec3::new(delta.x, 0.0, delta.z), shape);
+    move_box_context(world, &mut p, &mut v, DVec3::new(0.0, step, 0.0), shape, context);
+    let across = move_box_context(world, &mut p, &mut v, DVec3::new(delta.x, 0.0, delta.z), shape, context);
     let fall = DVec3::new(0.0, start.y - p.y + delta.y.min(0.0), 0.0);
-    let down = move_box(world, &mut p, &mut v, fall, shape);
+    let down = move_box_context(world, &mut p, &mut v, fall, shape, context);
     let gained = |q: DVec3| (q.x - start.x).powi(2) + (q.z - start.z).powi(2);
     if !down.on_ground || p.y <= start.y + EPS || gained(p) <= gained(*pos) + 1e-9 {
         return out;
@@ -573,7 +683,11 @@ pub fn ray_shape<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DVec3,
         );
     }
     let neighbour = |side: Facing| world.block(cell + side.offset()).unwrap_or(Block::AIR);
-    let lo = cell.as_dvec3();
+    // v1.0 gap track 6c: the outlines Java moves by the block's offset.
+    let lo = cell.as_dvec3() + crate::world::offset::outline_offset(b, cell);
+    if let Some((min, max)) = crate::world::offset::bamboo_outline(b) {
+        return ray_aabb_face(origin, dir, lo + min, lo + max);
+    }
     let v = |c: [u8; 3]| DVec3::new(c[0] as f64, c[1] as f64, c[2] as f64) / 16.0;
     let below = world.block(cell - IVec3::Y).unwrap_or(Block::AIR);
     let above = shape::Above::read(b, |d| world.block(cell + d).unwrap_or(Block::AIR));
@@ -619,6 +733,33 @@ pub mod test_util {
 mod tests {
     use super::test_util::Grid;
     use super::*;
+
+    /// v1.0 gap track 6c: bamboo collides as Java's 3-wide column and is
+    /// outlined as its 6- or 10-wide one, both moved by the column's offset;
+    /// a flower's outline moves with it, a grass tuft's doesn't.
+    #[test]
+    fn bamboo_collides_and_outlines_where_javas_offset_moves_it() {
+        use crate::world::overworld_blocks::{BAMBOO, BAMBOO_LARGE_LEAVES};
+        let mut world = Grid::flat(0);
+        for (at, b) in [(IVec3::new(3, 1, -7), BAMBOO), (IVec3::new(-11, 1, 40), BAMBOO_LARGE_LEAVES)] {
+            world.set(at, b);
+            let o = crate::world::offset::offset(b, at.x, at.z);
+            assert!(o.x != 0.0 || o.z != 0.0, "pick columns with an offset");
+            let mut boxes = Vec::new();
+            cell_boxes(&world, at, |a, b| boxes.push((a, b)));
+            let [(lo, hi)] = boxes[..] else { panic!("{boxes:?}") };
+            let rel = |p: DVec3| p - at.as_dvec3() - o;
+            assert!((rel(lo) - DVec3::new(6.5, 0.0, 6.5) / 16.0).length() < 1e-9, "{lo}");
+            assert!((rel(hi) - DVec3::new(9.5, 16.0, 9.5) / 16.0).length() < 1e-9, "{hi}");
+            let half = if b == BAMBOO { 3.0 } else { 5.0 } / 16.0;
+            let centre = at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5) + o;
+            let from = centre + DVec3::new(-2.0, 0.5, 0.0);
+            let (t, _) = ray_shape(&world, at, from, DVec3::X).expect("the ray meets the stalk");
+            assert!((t - (2.0 - half)).abs() < 1e-9, "{t}");
+        }
+        assert!(crate::world::offset::moves_outline(Block::POPPY));
+        assert!(!crate::world::offset::moves_outline(Block::TALL_GRASS));
+    }
 
     #[test]
     fn fire_contact_checks_the_whole_body_and_excludes_flush_faces() {

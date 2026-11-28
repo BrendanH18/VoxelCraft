@@ -135,13 +135,21 @@ impl Game {
             self.credits_ui(&mut ui, t);
             return (ui.verts, None);
         }
+        // v1.0 gap track 6: `--item-review` labels its tiles and nothing else.
+        if self.item_review_ui(&mut ui) {
+            return (ui.verts, None);
+        }
         if self.camera.first_person() && self.session.scoping() {
             spyglass_overlay(&mut ui, sw, sh, self.session.scoping_ticks());
         }
-        if self.portal_time > 0.0 {
-            // The portal's purple swims in as it takes hold.
-            let k = (self.portal_time / self.portal_needed()).min(1.0);
-            ui.rect(0.0, 0.0, sw, sh, [0.45, 0.1, 0.75, 0.15 + 0.55 * k]);
+        let portal = self.distortion.portal(1.0);
+        if portal > 0.0 {
+            // The portal's purple swims in as it takes hold: the client's
+            // own intensity (v1.0 gap Track 8b), through
+            // `Hud.extractPortalOverlay`'s curve (`a⁴ × 0.8 + 0.2` below
+            // full), as a flat tint for the portal texture.
+            let alpha = if portal < 1.0 { portal.powi(4) * 0.8 + 0.2 } else { 1.0 };
+            ui.rect(0.0, 0.0, sw, sh, [0.45, 0.1, 0.75, 0.7 * alpha]);
         } else {
             // Java's green nausea overlay, which takes over from the warp as
             // Distortion Effects goes down (a flat tint: no nausea texture).
@@ -198,7 +206,9 @@ impl Game {
         }
         // v0.15 Track E: the raid bar (`BossBarColor.RED`, `NOTCHED_10`),
         // under any other boss bar as Java stacks them.
-        if let Some(bar) = self.mobs.entities.raids.bar_for(self.session.id) {
+        // A LAN guest's comes from the host (v1.0 final F6).
+        let raid_bar = self.mobs.entities.raids.bar_for(self.session.id);
+        if let Some(bar) = raid_bar.or(self.lan.client.as_ref().and(self.lan.raid_bar)) {
             raid_bar_ui(&mut ui, &bar.title.text(), bar.progress, sw, bar_y);
         }
         if self.show_debug {
@@ -352,13 +362,16 @@ impl Game {
                     hud.vitals.wind_charge_cooldown / (voxelcraft::entity::wind::COOLDOWN_TICKS as f32 * 0.05)
                 } else if stack.item == voxelcraft::content::chorus::CHORUS_FRUIT {
                     hud.vitals.chorus_cooldown / voxelcraft::content::chorus::COOLDOWN
+                } else if voxelcraft::content::goat_horn::instrument(stack.item).is_some() {
+                    hud.vitals.horn_cooldown / voxelcraft::content::goat_horn::cooldown_seconds()
                 } else {
                     hud.vitals.pearl_cooldown / crate::entity::pearl::COOLDOWN
                 };
-                if matches!(
+                if (matches!(
                     stack.item,
                     Item::ENDER_PEARL | crate::world::trial::WIND_CHARGE | voxelcraft::content::chorus::CHORUS_FRUIT
-                ) && cooling > 0.0
+                ) || voxelcraft::content::goat_horn::instrument(stack.item).is_some())
+                    && cooling > 0.0
                 {
                     let h = (16.0 * cooling).ceil();
                     ui.rect(sx + 2.0, y0 + 3.0 + 16.0 - h, 16.0, h, [1.0, 1.0, 1.0, 0.5]);
@@ -538,8 +551,15 @@ impl Game {
     ) -> crate::render::hand::Hand {
         let main = session.inventory.get(selected);
         hand.tint = main.map(voxelcraft::entity::wolf_armor::item_tint_bytes);
-        hand.block =
-            main.filter(|s| Some(s.item) == hand.item).and_then(voxelcraft::world::copper_golem_statue::item_model);
+        let held = main.filter(|s| Some(s.item) == hand.item);
+        hand.block = held.and_then(voxelcraft::world::copper_golem_statue::item_model);
+        hand.glint = held.is_some_and(|s| s.has_foil());
+        hand.translucent = held.as_ref().is_some_and(crate::item::translucent);
+        hand.mesh = held.filter(|s| {
+            voxelcraft::content::item_models::has_mesh(s.item)
+                || voxelcraft::content::item_models::has_in_hand_mesh(s.item)
+        });
+        hand.stack = held;
         let image = |stack: Option<Stack>| {
             let stack = stack.filter(|s| s.item.is_map() && s.item != Item::MAP)?;
             let mut map = self.world.maps.maps.get(&stack.map_id?)?.clone();
@@ -565,6 +585,25 @@ impl Game {
         hand.off_map = image(session.inventory.offhand);
         hand.map_small = session.inventory.offhand.is_some();
         hand.invisible = session.vitals.effects.has(effects::Effect::Invisibility);
+        // v1.0 final track F1: the off-hand's stack, drawn on the left
+        // (`ItemInHandRenderer.renderHandsWithItems`), raised.
+        hand.off = session.inventory.offhand.filter(|_| hand.off_map.is_none()).map(|off| {
+            Box::new(crate::render::hand::Hand {
+                item: Some(off.item),
+                block: voxelcraft::world::copper_golem_statue::item_model(off),
+                sky_light: hand.sky_light,
+                block_light: hand.block_light,
+                tint: Some(voxelcraft::entity::wolf_armor::item_tint_bytes(off)),
+                glint: off.has_foil(),
+                translucent: crate::item::translucent(&off),
+                mesh: Some(off).filter(|s| {
+                    voxelcraft::content::item_models::has_mesh(s.item)
+                        || voxelcraft::content::item_models::has_in_hand_mesh(s.item)
+                }),
+                stack: Some(off),
+                ..Default::default()
+            })
+        });
         hand
     }
 
@@ -770,18 +809,48 @@ fn shield_veil(ui: &mut Ui, stack: Stack, cooldown: f32, x: f32, y: f32) {
 }
 
 pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool, dial: crate::item::Dial) {
-    let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.icon_layer());
-    match (voxelcraft::world::copper_golem_statue::item_model(stack).or_else(|| stack.item.block()), layer) {
-        (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
+    draw_model(ui, x, y, stack, dial);
+    draw_decorations(ui, x, y, stack, counts);
+}
+
+/// A stack's model in a slot at `(x, y)`: its block icon or flat icon, with
+/// the glint and banner patterns.
+pub(super) fn draw_model(ui: &mut Ui, x: f32, y: f32, stack: Stack, dial: crate::item::Dial) {
+    draw_model_sized(ui, x, y, 16.0, stack, dial);
+    if !voxelcraft::content::item_models::has_mesh(stack.item) {
+        super::patterns::draw_icon_patterns(ui, x, y, &stack);
+    }
+}
+
+/// [`draw_model`] `size` pixels across (16 in a slot), without the banner
+/// patterns.
+pub(super) fn draw_model_sized(ui: &mut Ui, x: f32, y: f32, size: f32, stack: Stack, dial: crate::item::Dial) {
+    let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.flat_layer());
+    let px = size / 16.0;
+    // v1.0 gap track 6b: beds, banners, the shield and two plants in 3D.
+    // v1.0 gap track 6c: 3D items in Java's GUI orientation, with the glint.
+    if let Some(mesh) = voxelcraft::content::item_models::mesh(&stack) {
+        ui.item_mesh(x + px, y + px, size, &mesh, stack.has_foil());
+        return;
+    }
+    match (crate::item::model_block(&stack), layer) {
+        (Some(block), _) => ui.block_icon(x + px, y + px, size, block, stack.has_foil()),
         (None, Some(layer)) => {
-            ui.icon(x + 1.0, y + 1.0, 16.0, layer, crate::entity::wolf_armor::item_tint(stack));
-            if !stack.enchants.is_empty() || stack.item.has_glint() || stack.lodestone.is_some() {
-                glint(ui, x + 1.0, y + 1.0, 16.0, layer);
+            // A flat item's GUI transform only moves it (the amethyst buds
+            // sit two pixels up).
+            let t = voxelcraft::content::item_display::of(&stack).gui.translation;
+            let (x, y) = (x + px + t[0] * px, y + px - t[1] * px);
+            ui.icon(x, y, size, layer, crate::entity::wolf_armor::item_tint(stack));
+            if stack.has_foil() {
+                glint(ui, x, y, size, layer);
             }
         }
         (None, None) => {}
     }
-    super::patterns::draw_icon_patterns(ui, x, y, &stack);
+}
+
+/// A stack's bars and count over its model (`GuiGraphics.itemDecorations`).
+pub(super) fn draw_decorations(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
     if let Some(wear) = stack.wear() {
         // Minecraft's bar: green when new, through yellow to red.
         let w = (13.0 * wear).round().max(1.0);
@@ -812,8 +881,7 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
 /// The enchantment glint: a faint purple sheen over the icon's shape with
 /// a brighter band sweeping down it.
 fn glint(ui: &mut Ui, x: f32, y: f32, size: f32, layer: u16) {
-    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-    let t = START.get_or_init(Instant::now).elapsed().as_secs_f32();
+    let t = crate::render::ui::glint_clock();
     ui.icon_shape(x, y, size, layer, [0.0, 0.0, 1.0, 1.0], [0.55, 0.25, 1.0, 0.3]);
     let band = 0.3;
     let top = (t * 0.6).fract() * (1.0 + band) - band;
@@ -847,6 +915,11 @@ impl Game {
                 .and_then(|m| m.villager.as_ref())
                 .map_or(46.0, |v| 26.0 + if v.wandering { 60.0 } else { v.level as f32 * 20.0 });
         }
+        // v1.0 gap Track 3b: a mount's screen has the survival
+        // inventory's height (`imageHeight` 166, the inventory at y 84).
+        if self.mount_screen().is_some() {
+            return SURVIVAL_TOP;
+        }
         match self.open_container_count() {
             5 => return SLOT + 14.0,
             // A double chest's six rows (`ContainerScreen`, 54 slots).
@@ -858,6 +931,15 @@ impl Game {
             // v0.18 Track 4: `InventoryScreen`'s main grid starts at y 84.
             (true, true) => SURVIVAL_TOP,
             (true, false) => CRAFT_H,
+        }
+    }
+
+    /// v1.0 gap Track 3b: the open mount's screen layout (Java's
+    /// `HorseInventoryScreen` or `NautilusInventoryScreen`).
+    pub(super) fn mount_screen(&self) -> Option<crate::entity::mounts::MountScreen> {
+        match self.body.container {
+            Container::Minecart(id) => self.mobs.entities.mount_screen(id),
+            _ => None,
         }
     }
 
@@ -923,6 +1005,15 @@ impl Game {
             for i in 0..crate::world::crafter::SLOTS {
                 let (x, y) = super::crafter::grid_slot(i);
                 out.push((SlotRef::Chest(i), px + x, py + y));
+            }
+            self.top_h()
+        } else if let Some(screen) = self.mount_screen() {
+            // v1.0 gap Track 3b: `HorseInventoryMenu`'s and
+            // `NautilusInventoryMenu`'s slots (frames a pixel up and left of
+            // Java's corners): saddle and body down the left, the chest's
+            // columns right of the mount.
+            for (i, x, y) in screen.slots() {
+                out.push((SlotRef::Chest(i), px + x - 1.0, py + y - 1.0));
             }
             self.top_h()
         } else if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
@@ -1092,7 +1183,13 @@ impl Game {
         }
         let py = py + self.search_h();
         let top_py = py;
+        // v1.0 gap Track 3b: Java titles a mount's screen with its name.
+        let mount_name = match self.body.container {
+            Container::Minecart(id) if self.mount_screen().is_some() => self.mobs.entities.mount_name(id),
+            _ => None,
+        };
         let title = match (self.body.container, self.session.mode) {
+            _ if mount_name.is_some() => mount_name.as_deref().unwrap_or_default(),
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(p), _) if self.world.chest_partner(p).is_some() => "Large Chest",
@@ -1169,6 +1266,17 @@ impl Game {
             ui.rect(px + 25.0, top_py + 7.0, 50.0, 71.0, style::srgb(token::OUTLINE));
             super::preview::player(ui, (px + 26.0, top_py + 8.0, px + 75.0, top_py + 78.0), 30.0, 0.0625, mouse);
         }
+        if let (Some(_), Container::Minecart(id)) = (self.mount_screen(), self.body.container) {
+            // v1.0 gap Track 3b: `AbstractMountInventoryScreen`'s mount in
+            // the dark box (26, 18) to (78, 70), size 17, turning toward the
+            // pointer.
+            let mouse = (self.cursor_px.0 / ui.scale, self.cursor_px.1 / ui.scale);
+            ui.rect(px + 25.0, top_py + 17.0, 54.0, 54.0, style::srgb(token::OUTLINE));
+            ui.rect(px + 26.0, top_py + 18.0, 52.0, 52.0, style::srgb(0x000000));
+            if let Some(m) = self.mobs.entities.mount(id) {
+                super::preview::mob(ui, m, (px + 26.0, top_py + 18.0, px + 78.0, top_py + 70.0), 17.0, 0.25, mouse);
+            }
+        }
         self.slots_ui(ui, px, top_py);
     }
 
@@ -1178,6 +1286,7 @@ impl Game {
     pub(super) fn slots_ui(&self, ui: &mut Ui, px: f32, top_py: f32) {
         let (sw, sh) = ui.size();
         let hovered = self.slot_under_cursor();
+        let mount = self.mount_screen();
         for (r, x, y) in self.inventory_slots((sw, sh)) {
             // v0.18 Track 2: Java's slot frame, and the bigger frame of a
             // crafting or furnace result.
@@ -1185,23 +1294,19 @@ impl Game {
                 style::big_slot(ui, x, y);
             }
             style::slot(ui, x, y);
-            let stack = match r {
-                SlotRef::Inventory(i) => self.session.inventory.get(i),
-                SlotRef::Palette(stack) => Some(stack),
-                SlotRef::PaletteEmpty | SlotRef::Destroy => None,
-                SlotRef::Craft(i) => self.craft.cells[i],
-                SlotRef::CraftResult => super::screen::crafting_result(
-                    &self.craft,
-                    &self.world,
-                    &self.session,
-                    self.gamerules.bool("limited_crafting"),
-                ),
-                SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
-                SlotRef::Offhand => self.session.inventory.offhand,
-                f => self.container_slot(f),
-            };
+            // v1.0 final track F1: a dragged slot shows what it will hold
+            // over Java's white highlight (`renderSlot` while quick crafting).
+            let dragged = self.screen_mouse.preview.as_ref().and_then(|(p, _)| p.iter().find(|(s, _)| *s == r));
+            if dragged.is_some() {
+                ui.rect(x + 1.0, y + 1.0, 16.0, 16.0, [1.0, 1.0, 1.0, 0.5]);
+            }
+            let stack = dragged.map(|(_, s)| *s).or_else(|| self.slot_stack(r));
             // Faint outline of what goes in an empty armor or lapis slot.
             let outline = match (r, stack) {
+                // v1.0 gap Track 3b: a mount's saddle and body slots
+                // (`container/slot/saddle`, `horse_armor`, `llama_armor`,
+                // `nautilus_armor_inventory`).
+                (SlotRef::Chest(i @ (0 | 1)), None) if mount.is_some() => mount_slot_sprite(mount, i),
                 (SlotRef::Armor(p), None) => Item::armor(p, ArmorMaterial::Iron).icon_layer(),
                 (SlotRef::Offhand, None) => Item::SHIELD.icon_layer(),
                 (SlotRef::EnchantLapis, None) => Item::LAPIS_LAZULI.icon_layer(),
@@ -1217,7 +1322,12 @@ impl Game {
                 ui.icon_shape(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 1.0, 1.0], style::srgba(0xE0E0E0, 0.5));
             }
             if let Some(stack) = stack {
-                if matches!(self.body.container, Container::Trading(_)) {
+                // v1.0 gap track 6: a hovered bundle holds up its selection.
+                let chosen = (hovered == Some(r)).then(|| self.bundle_selected_stack(r, &stack)).flatten();
+                if let Some(chosen) = chosen {
+                    let dial = self.dial_of(&self.session.player);
+                    super::bundles::draw_open_bundle(ui, x, y, stack, chosen, dial);
+                } else if matches!(self.body.container, Container::Trading(_)) {
                     draw_stack(ui, x, y, stack, true, self.dial_of(&self.session.player));
                 } else {
                     self.stack_ui(ui, x, y, stack);
@@ -1246,26 +1356,10 @@ impl Game {
         if let Some(p) = crafter {
             self.crafter_ui(ui, p, px, top_py);
         }
-        let hovered_stack = match hovered {
-            Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
-            Some(SlotRef::Palette(stack)) => Some(stack),
-            Some(SlotRef::PaletteEmpty) => None,
-            Some(SlotRef::Destroy) => {
-                self.tooltip(ui, "Destroy Item");
-                None
-            }
-            Some(SlotRef::Craft(i)) => self.craft.cells[i],
-            Some(SlotRef::CraftResult) => super::screen::crafting_result(
-                &self.craft,
-                &self.world,
-                &self.session,
-                self.gamerules.bool("limited_crafting"),
-            ),
-            Some(SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
-            Some(SlotRef::Offhand) => self.session.inventory.offhand,
-            Some(f) => self.container_slot(f),
-            None => None,
-        };
+        if hovered == Some(SlotRef::Destroy) {
+            self.tooltip(ui, "Destroy Item");
+        }
+        let hovered_stack = hovered.and_then(|h| self.slot_stack(h));
         // v0.18 Track 5: the recipe book, its button and the ghost recipe.
         let recipe_hint = self
             .recipe_book_ui(ui, Instant::now())
@@ -1289,7 +1383,13 @@ impl Game {
             self.tooltip(ui, "Click to disable slot");
         } else if let Some(SlotRef::EnchantOffer(i)) = hovered {
             self.offer_tooltip(ui, i);
-        } else if let Some(stack) = hovered_stack {
+        } else if let Some(stack) = hovered_stack.filter(|s| {
+            // v1.0 gap track 6b: `AbstractContainerScreen.extractTooltip`
+            // shows a hovered stack's tooltip only with nothing held, or
+            // when its tooltip image asks to (`showTooltipWithItemInHand`:
+            // only the bundle's does).
+            self.session.inventory.cursor.is_none() || voxelcraft::content::bundle::is_bundle(s.item)
+        }) {
             match stack
                 .item
                 .as_potion()
@@ -1297,7 +1397,13 @@ impl Game {
                 .or(stack.lingering_contents())
                 .or(stack.arrow_potion())
             {
-                Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
+                Some(potion) => self.potion_tooltip(ui, stack, potion),
+                // v1.0 gap track 6: a bundle's contents (`ClientBundleTooltip`).
+                None if voxelcraft::content::bundle::is_bundle(stack.item) => {
+                    let selected = hovered.and_then(|h| self.bundle_selected_at(h));
+                    let colour = if stack.enchants.is_empty() { WHITE } else { [0.33, 1.0, 1.0, 1.0] };
+                    self.bundle_tooltip(ui, stack, selected, colour)
+                }
                 // v0.15 Track D: armor trims and trim templates.
                 None if stack.trim.is_some() || voxelcraft::content::trim::template_pattern(stack.item).is_some() => {
                     self.trim_tooltip(ui, stack)
@@ -1314,18 +1420,42 @@ impl Game {
                 }
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
                 // Java's `Rarity.RARE` names are aqua.
-                None if stack.item.is_rare() => self.tooltip_coloured(ui, stack.display_name(), [0.33, 1.0, 1.0, 1.0]),
+                None if stack.item.is_rare() => self.item_tooltip(ui, stack, [0.33, 1.0, 1.0, 1.0]),
                 // `Rarity.UNCOMMON` names are yellow.
-                None if stack.item.is_uncommon() => {
-                    self.tooltip_coloured(ui, stack.display_name(), [1.0, 1.0, 0.33, 1.0])
-                }
-                None => self.tooltip(ui, stack.display_name()),
+                None if stack.item.is_uncommon() => self.item_tooltip(ui, stack, [1.0, 1.0, 0.33, 1.0]),
+                None => self.item_tooltip(ui, stack, WHITE),
             }
         }
         // The held stack follows the mouse.
-        if let Some(stack) = self.session.inventory.cursor {
+        // v1.0 final track F1: during a drag it shows what will be left.
+        let cursor = match &self.screen_mouse.preview {
+            Some((_, left)) => {
+                self.session.inventory.cursor.and_then(|c| (*left > 0).then_some(Stack { count: *left, ..c }))
+            }
+            None => self.session.inventory.cursor,
+        };
+        if let Some(stack) = cursor {
             let scale = ui.scale;
             self.stack_ui(ui, self.cursor_px.0 / scale - 9.0, self.cursor_px.1 / scale - 9.0, stack);
+        }
+    }
+
+    /// The stack a slot of the open screen shows.
+    pub(super) fn slot_stack(&self, slot: SlotRef) -> Option<Stack> {
+        match slot {
+            SlotRef::Inventory(i) => self.session.inventory.get(i),
+            SlotRef::Palette(stack) => Some(stack),
+            SlotRef::PaletteEmpty | SlotRef::Destroy => None,
+            SlotRef::Craft(i) => self.craft.cells[i],
+            SlotRef::CraftResult => super::screen::crafting_result(
+                &self.craft,
+                &self.world,
+                &self.session,
+                self.gamerules.bool("limited_crafting"),
+            ),
+            SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
+            SlotRef::Offhand => self.session.inventory.offhand,
+            f => self.container_slot(f),
         }
     }
 
@@ -1375,6 +1505,45 @@ impl Game {
 
     pub(super) fn tooltip(&self, ui: &mut Ui, text: &str) {
         self.tooltip_coloured(ui, text, WHITE);
+    }
+
+    /// v1.0 gap track 6b: the lines Java's advanced tooltips (F3+H) end a
+    /// stack's tooltip with, when they are on (`content::advanced_tooltip`).
+    pub(super) fn advanced_lines(&self, stack: &Stack) -> Vec<(String, Color)> {
+        if !self.settings.advanced_tooltips {
+            return Vec::new();
+        }
+        voxelcraft::content::advanced_tooltip::lines(stack)
+            .into_iter()
+            .map(|(line, c)| {
+                let [r, g, b] = c.rgb().map(|v| f32::from(v) / 255.0);
+                (line, [r, g, b, 1.0])
+            })
+            .collect()
+    }
+
+    /// A stack's name in `colour` (its rarity's), with the advanced lines
+    /// under it when they are on.
+    fn item_tooltip(&self, ui: &mut Ui, stack: Stack, colour: Color) {
+        let lines = self.advanced_lines(&stack);
+        if lines.is_empty() {
+            return self.tooltip_coloured(ui, stack.display_name(), colour);
+        }
+        self.lines_tooltip(ui, &capitalize(stack.display_name()), colour, &lines);
+    }
+
+    /// A title over lines of text, each in its own colour.
+    fn lines_tooltip(&self, ui: &mut Ui, title: &str, colour: Color, lines: &[(String, Color)]) {
+        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(title), f32::max);
+        let h = 14.0 + 11.0 * lines.len() as f32;
+        let (sw, sh) = ui.size();
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
+        style::tooltip_box(ui, x.floor(), y.floor(), w, h - 6.0);
+        ui.text(x, y, title, colour);
+        for (i, (line, c)) in lines.iter().enumerate() {
+            ui.text(x, y + 11.0 * (i + 1) as f32, line, *c);
+        }
     }
 
     /// [`Self::tooltip`] with the name in `colour` (an item's rarity colour).
@@ -1501,19 +1670,15 @@ impl Game {
     /// grey line per enchantment, curses in red, like Java.
     pub(super) fn enchant_tooltip(&self, ui: &mut Ui, stack: Stack) {
         let title = capitalize(stack.display_name());
-        let lines = stack.enchants.lines();
-        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
-        let h = 14.0 + 11.0 * lines.len() as f32;
-        let (sw, sh) = ui.size();
-        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
-        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
-        style::tooltip_box(ui, x.floor(), y.floor(), w, h - 6.0);
+        let mut lines: Vec<(String, Color)> = stack
+            .enchants
+            .lines()
+            .into_iter()
+            .map(|(line, curse)| (line, if curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] }))
+            .collect();
+        lines.extend(self.advanced_lines(&stack));
         let colour = if stack.item == Item::ENCHANTED_BOOK { [1.0, 1.0, 0.33, 1.0] } else { [0.33, 1.0, 1.0, 1.0] };
-        ui.text(x, y, &title, colour);
-        for (i, (line, curse)) in lines.iter().enumerate() {
-            let c = if *curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] };
-            ui.text(x, y + 11.0 * (i + 1) as f32, line, c);
-        }
+        self.lines_tooltip(ui, &title, colour, &lines);
     }
 
     /// v0.15 Track D: a trimmed piece of armor (`ArmorTrim.addToTooltip`:
@@ -1533,6 +1698,7 @@ impl Game {
         for (line, curse) in stack.enchants.lines() {
             lines.push((line, if curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] }));
         }
+        lines.extend(self.advanced_lines(&stack));
         let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
         let h = 14.0 + 11.0 * lines.len() as f32;
         let (sw, sh) = ui.size();
@@ -1566,6 +1732,7 @@ impl Game {
         for (line, curse) in stack.enchants.lines() {
             lines.push((line, if curse { [1.0, 0.33, 0.33, 1.0] } else { grey }));
         }
+        lines.extend(self.advanced_lines(&stack));
         let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
         let h = 14.0 + 11.0 * lines.len() as f32;
         let (sw, sh) = ui.size();
@@ -1580,12 +1747,18 @@ impl Game {
 
     /// A potion's name with Java's effect line under it: blue for good
     /// effects, red for harmful, grey for none.
-    fn potion_tooltip(&self, ui: &mut Ui, name: &str, potion: voxelcraft::potion::Potion) {
-        let title = capitalize(name);
+    fn potion_tooltip(&self, ui: &mut Ui, stack: Stack, potion: voxelcraft::potion::Potion) {
+        let title = capitalize(stack.display_name());
         let details = potion.describe_lines();
         let effects: Vec<_> = potion.effects().collect();
-        let w = details.iter().map(|s| Ui::text_width(s)).fold(Ui::text_width(&title), f32::max);
-        let h = 11.0 * (details.len() + 1) as f32 + 3.0;
+        // v1.0 gap track 6b: the advanced lines (F3+H) after the effects.
+        let extra = self.advanced_lines(&stack);
+        let w = details
+            .iter()
+            .map(|s| Ui::text_width(s))
+            .chain(extra.iter().map(|(l, _)| Ui::text_width(l)))
+            .fold(Ui::text_width(&title), f32::max);
+        let h = 11.0 * (details.len() + extra.len() + 1) as f32 + 3.0;
         let (sw, sh) = ui.size();
         let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h).max(3.0));
@@ -1598,6 +1771,9 @@ impl Game {
                 Some(_) => [0.33, 0.33, 1.0, 1.0],
             };
             ui.text(x, y + 11.0 * (i + 1) as f32, detail, colour);
+        }
+        for (i, (line, c)) in extra.iter().enumerate() {
+            ui.text(x, y + 11.0 * (details.len() + i + 1) as f32, line, *c);
         }
     }
 
@@ -1734,6 +1910,21 @@ fn hash(a: u32, b: u32) -> u32 {
     h ^= h >> 15;
     h = h.wrapping_mul(0x2C1B_3C6D);
     h ^ (h >> 12)
+}
+
+/// v1.0 gap Track 3b: the empty sprite of a mount screen's saddle (`slot`
+/// 0) or body slot (1), as the item it takes, drawn as the armor slots' are.
+pub(super) fn mount_slot_sprite(screen: Option<crate::entity::mounts::MountScreen>, slot: usize) -> Option<u16> {
+    use crate::entity::mounts::MountArmor;
+    let item = match (slot, screen?.armor) {
+        (0, _) => Item::SADDLE,
+        (_, Some(MountArmor::Horse)) => Item::IRON_HORSE_ARMOR,
+        // White carpet (block 576), the shape of Java's `llama_armor` sprite.
+        (_, Some(MountArmor::Llama)) => Item::from_block(crate::world::block::Block(576)),
+        (_, Some(MountArmor::Nautilus)) => voxelcraft::equipment::IRON_NAUTILUS_ARMOR,
+        (_, None) => return None,
+    };
+    item.icon_layer()
 }
 
 fn capitalize(s: &str) -> String {

@@ -76,6 +76,9 @@ struct Voice {
     step: f64,
     gain: f32,
     spatial: Option<[f32; 3]>,
+    /// v1.0 final Track F4: Java's linear range in blocks ([`Sound::java_range`]),
+    /// or 0 for the usual falloff.
+    range: f32,
     source: u8,
     /// Gains applied at the end of the last block (ramp start).
     cur: (f32, f32),
@@ -94,6 +97,13 @@ struct Loop {
 pub fn attenuation(dist: f32) -> f32 {
     let x = ((dist - NEAR) / (FAR - NEAR)).clamp(0.0, 1.0);
     (1.0 - x) * (1.0 - x)
+}
+
+/// v1.0 final Track F4: Java's `Attenuation.LINEAR` (OpenAL's linear
+/// distance model with reference distance 0): full at the source, silent
+/// at `range`.
+pub fn linear_attenuation(dist: f32, range: f32) -> f32 {
+    (1.0 - dist / range.max(1.0)).clamp(0.0, 1.0)
 }
 
 /// Left/right gains for a source at `rel` (source minus listener) heard by a
@@ -117,7 +127,8 @@ fn voice_gains(v: &Voice, listener: [f32; 3], yaw: f32) -> (f32, f32) {
     let Some(p) = v.spatial else { return (v.gain, v.gain) };
     let rel = [p[0] - listener[0], p[1] - listener[1], p[2] - listener[2]];
     let dist = (rel[0] * rel[0] + rel[1] * rel[1] + rel[2] * rel[2]).sqrt();
-    let a = attenuation(dist) * v.gain;
+    let fall = if v.range > 0.0 { linear_attenuation(dist, v.range) } else { attenuation(dist) };
+    let a = fall * v.gain;
     let (l, r) = pan_gains(rel, yaw);
     (l * a, r * a)
 }
@@ -276,6 +287,7 @@ impl Mixer {
             step: pitch as f64 * RATE as f64 / self.out_rate as f64,
             gain,
             spatial: pos,
+            range: sound.java_range().unwrap_or(0.0),
             source: source.index() as u8,
             cur: (0.0, 0.0),
         };

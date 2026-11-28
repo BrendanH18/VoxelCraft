@@ -92,6 +92,13 @@ impl Screen<Game> for SignEdit {
         Some(SignId::Line(0))
     }
 
+    /// v1.0 gap Track 8c: `AbstractSignEditScreen.isPauseScreen` is false,
+    /// so a Nether portal closes it, keeping the text; and (Track 8d) an
+    /// unshared world goes on while it is open.
+    fn pauses(&self) -> bool {
+        false
+    }
+
     /// The screen closes if the sign goes. (Each line refuses typing past
     /// the sign's width, as Java's `TextFieldHelper` does, but keeps a
     /// wider line it was opened with.)

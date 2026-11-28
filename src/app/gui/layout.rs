@@ -84,6 +84,17 @@ impl<Id> OptionList<Id> {
         self.y += ROW;
     }
 
+    /// The widgets, then two buttons side by side in the footer (Java's
+    /// 150-pixel buttons, 8 apart), as World Options' Apply Changes and Cancel.
+    pub fn footer_pair(mut self, mut a: Widget<Id>, mut b: Widget<Id>, (sw, sh): Size) -> Vec<Widget<Id>> {
+        let y = (sh - FOOTER + (FOOTER - BUTTON_H) / 2.0).floor();
+        let left = ((sw - 2.0 * OPTION_W - 8.0) / 2.0).floor();
+        a.rect = [left, y, OPTION_W, BUTTON_H];
+        b.rect = [left + OPTION_W + 8.0, y, OPTION_W, BUTTON_H];
+        self.widgets.extend([a, b]);
+        self.widgets
+    }
+
     /// The widgets, then Done in the footer.
     pub fn done(mut self, done: Widget<Id>, (sw, sh): Size) -> Vec<Widget<Id>> {
         let mut done = done;

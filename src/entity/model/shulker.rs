@@ -39,10 +39,16 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
         let a = s.amount_before + (s.amount - s.amount_before) * (time * 20.0).fract().clamp(0.0, 1.0);
         (s.attach, a)
     });
-    // `ShulkerModel.setupAnim`: the lid lifts with the physical peek and
-    // twists a quarter turn as it opens.
-    let lift = crate::entity::shulker::physical_peek(amount) * 8.0;
-    let twist = Quat::from_rotation_y(amount * std::f32::consts::FRAC_PI_2 * 0.5);
+    // v1.0 gap Track 7b: `ShulkerModel.setupAnim`: the lid rises `8 - 8 *
+    // sin((0.5 + peek) * pi)` pixels (twice the physical peek's 8),
+    // bobbing `sin(ageInTicks * 0.1) * 0.7` once more than half open, and
+    // past 0.3 open twists by `q^4 * pi / 8`, `q = sin(..) - 1` (Java's
+    // `yRot` on this model's sides).
+    let bs = (0.5 + amount) * std::f32::consts::PI;
+    let extra = if bs > std::f32::consts::PI { (age_ticks(time) * 0.1).sin() * 0.7 } else { 0.0 };
+    let lift = crate::entity::shulker::physical_peek(amount) * 16.0 - extra;
+    let q = bs.sin() - 1.0;
+    let twist = Quat::from_rotation_y(if amount > 0.3 { -q * q * q * q * std::f32::consts::PI * 0.125 } else { 0.0 });
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch * amount);
     let whole = clinging(attach);
     let centre = Vec3::new(0.0, 8.0, 0.0);

@@ -75,32 +75,39 @@ const FOLLOW_ADULT: f64 = 5.0;
 /// Most stacks a piglin's pocket holds (Java's inventory has 8 slots).
 const POCKET_SLOTS: usize = 8;
 
-/// What a nether mob holds in its main hand.
+/// What a nether mob holds in its main hand. Saved by [`Weapon::name`];
+/// new weapons are appended (v1.0 gap Track 2b: the golden spear).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Weapon {
     None,
     GoldenSword,
     Crossbow,
     GoldenAxe,
+    /// `Items.GOLDEN_SPEAR`: Java's piglins roll it in one of ten melee
+    /// weapons (`Piglin.createSpawnWeapon`), zombified piglins in one of
+    /// twenty (`ZombifiedPiglin.populateDefaultEquipmentSlots`).
+    GoldenSpear,
 }
 
 impl Weapon {
-    fn item(self) -> Option<Item> {
+    pub(super) fn item(self) -> Option<Item> {
         match self {
             Weapon::None => None,
             Weapon::GoldenSword => Some(Item::tool(crate::item::ToolKind::Sword, Tier::Gold)),
             Weapon::Crossbow => Some(Item::CROSSBOW),
             Weapon::GoldenAxe => Some(Item::tool(crate::item::ToolKind::Axe, Tier::Gold)),
+            Weapon::GoldenSpear => Some(crate::weapons::spear(Tier::Gold)),
         }
     }
 
     /// Attack added to the holder's base (Java's `minecraft:attack_damage`
-    /// modifier: sword 3, axe 6; a crossbow adds nothing).
+    /// modifier: sword 3, axe 6; a crossbow adds nothing, and a golden
+    /// spear's `0 + attackDamageBonus` is 0).
     pub(super) fn attack_bonus(self) -> f32 {
         match self {
             Weapon::GoldenSword => 3.0,
             Weapon::GoldenAxe => 6.0,
-            Weapon::None | Weapon::Crossbow => 0.0,
+            Weapon::None | Weapon::Crossbow | Weapon::GoldenSpear => 0.0,
         }
     }
 
@@ -110,11 +117,12 @@ impl Weapon {
             Weapon::GoldenSword => "golden_sword",
             Weapon::Crossbow => "crossbow",
             Weapon::GoldenAxe => "golden_axe",
+            Weapon::GoldenSpear => "golden_spear",
         }
     }
 
     pub(super) fn from_name(name: &str) -> Self {
-        [Weapon::GoldenSword, Weapon::Crossbow, Weapon::GoldenAxe]
+        [Weapon::GoldenSword, Weapon::Crossbow, Weapon::GoldenAxe, Weapon::GoldenSpear]
             .into_iter()
             .find(|w| w.name() == name)
             .unwrap_or(Weapon::None)
@@ -175,6 +183,8 @@ pub struct NetherMob {
     /// Where a bastion resident stays near (Java's brute `HOME` memory).
     pub home: Option<DVec3>,
     pub(super) foe: Option<Foe>,
+    /// The attack target's eye height, refreshed with its position.
+    pub(super) foe_eye: f64,
     pub(super) foe_left: f32,
     /// Java's `UNIVERSAL_ANGER` memory: seconds left (600 ticks).
     pub(super) universal: f32,
@@ -216,6 +226,11 @@ pub struct NetherMob {
     pub dancing: bool,
     /// Where the last target stood and whether it was a hoglin, to tell if it died.
     pub(super) prey: Option<(DVec3, bool)>,
+    /// v1.0 gap Track 2: a baby piglin's riding memories (not saved).
+    pub(super) ride: super::piglin_ride::Ride,
+    /// v1.0 gap Track 2b: the piglin's spear behaviours and `SPEAR_*`
+    /// memories (not saved, as in Java).
+    pub(crate) spear: super::mob::spear::PiglinSpear,
 }
 
 impl NetherMob {
@@ -233,6 +248,7 @@ impl NetherMob {
                     cannot_hunt: false,
                     home: None,
                     foe: None,
+                    foe_eye: 1.2,
                     foe_left: 0.0,
                     universal: 0.0,
                     universal_pick: false,
@@ -258,6 +274,8 @@ impl NetherMob {
                     celebrate_at: DVec3::ZERO,
                     dancing: false,
                     prey: None,
+                    ride: Default::default(),
+                    spear: Default::default(),
                 })
             })
     }
@@ -464,7 +482,7 @@ pub fn is_hoglin_repellent(block: Block) -> bool {
     let named = NAMED.get_or_init(|| {
         ["warped fungus", "potted warped fungus", "respawn anchor"].into_iter().filter_map(Block::from_name).collect()
     });
-    block == Block::NETHER_PORTAL || named.iter().any(|b| b.base() == block.base())
+    block.is_nether_portal() || named.iter().any(|b| b.base() == block.base())
 }
 
 /// Nearest hoglin repellent around `cell`, scanning Java's box.
@@ -499,12 +517,35 @@ pub(super) struct Seen {
     pub kind: MobKind,
     pub pos: DVec3,
     pub baby: bool,
+    /// `getEyeHeight` (Track 2d).
+    pub eye: f64,
     /// A hoglin piglins may hunt.
     pub huntable: bool,
 }
 
+/// `Piglin.createSpawnWeapon` and `ZombifiedPiglin.populateDefaultEquipmentSlots`
+/// draw a golden spear instead of a golden sword one time in 10 and 20.
+const PIGLIN_SPEAR_ONE_IN: u32 = 10;
+const ZOMBIFIED_SPEAR_ONE_IN: u32 = 20;
+
+/// The spear roll's own random draw, seeded by the spawn, so the shared
+/// stream (and every seeded spawn sequence) is unchanged, as for
+/// `CanPickUpLoot`.
+fn spear_roll(mob: &Mob, one_in: u32) -> bool {
+    let seed = mob.pos.x.to_bits().rotate_left(29) ^ mob.pos.z.to_bits() ^ u64::from(mob.yaw.to_bits()) ^ 0x5bea;
+    Rng::new(seed).next_int(one_in) == 0
+}
+
 /// Gear a freshly spawned piglin rolls (Java's `finalizeSpawn`).
 pub(super) fn on_spawn(mob: &mut Mob, rng: &mut Rng) {
+    if mob.kind == MobKind::ZombifiedPiglin {
+        // `populateDefaultEquipmentSlots`: a golden spear one time in 20,
+        // else the golden sword (babies too, as in Java).
+        let spear = spear_roll(mob, ZOMBIFIED_SPEAR_ONE_IN);
+        mob.held = Some(if spear { Weapon::GoldenSpear } else { Weapon::GoldenSword });
+        return;
+    }
+    let spear = spear_roll(mob, PIGLIN_SPEAR_ONE_IN);
     let Some(n) = mob.nether.as_mut() else { return };
     if mob.kind == MobKind::Hoglin {
         // Java: a fifth of spawned hoglins are babies.
@@ -522,7 +563,15 @@ pub(super) fn on_spawn(mob: &mut Mob, rng: &mut Rng) {
         mob.baby = true;
         return;
     }
-    n.weapon = if rng.next_f32() < CROSSBOW_CHANCE { Weapon::Crossbow } else { Weapon::GoldenSword };
+    // `createSpawnWeapon`: a crossbow half the time, else a golden spear
+    // one time in 10 and a golden sword otherwise.
+    n.weapon = if rng.next_f32() < CROSSBOW_CHANCE {
+        Weapon::Crossbow
+    } else if spear {
+        Weapon::GoldenSpear
+    } else {
+        Weapon::GoldenSword
+    };
     for piece in ArmorPiece::ALL {
         if rng.chance(ARMOR_CHANCE) {
             mob.equipment.wear(piece, super::armor::ArmorKind::Gold, crate::enchant::Enchants::NONE);
@@ -559,6 +608,7 @@ impl Entities {
             kind: m.kind,
             pos: m.pos,
             baby: m.baby,
+            eye: m.eye_height(),
             huntable: m.kind == MobKind::Hoglin && m.nether.as_ref().is_some_and(|n| !n.cannot_hunt),
         }));
         let (mobs, view, items, rng) = (&mut self.mobs, &self.nether_view, &self.items, &mut self.rng);
@@ -635,18 +685,36 @@ impl Entities {
 
     /// Mob melee and projectile hits share retaliation and kill attribution.
     pub(super) fn resolve_mob_hits(&mut self, events: &mut Vec<EntityEvent>) {
+        // v1.0 gap Track 2b: a mob's spear contact that deals damage is a
+        // melee hit (`hurtServer` with the weapon's damage source, pushed
+        // away from the attacker); its facing push and dismount follow.
+        let stab_push = |s: &super::weapon_hits::MobStab, pos: Option<DVec3>| {
+            let away = pos.map_or(DVec3::ZERO, |p| (p - s.origin).with_y(0.0).normalize_or_zero());
+            away * 6.0 + DVec3::Y * 5.0
+        };
         let hits: Vec<_> = events
             .iter()
-            .filter_map(|e| match *e {
-                EntityEvent::MobHit { target, attacker, damage, knockback } => {
-                    Some((target, attacker, damage, knockback))
+            .filter_map(|e| match e {
+                &EntityEvent::MobHit { target, attacker, damage, knockback, melee } => {
+                    Some((target, attacker, damage, knockback, melee))
                 }
+                EntityEvent::MobStab(s) => s.damage.map(|damage| {
+                    let pos = self.mobs.iter().find(|m| m.uid == s.target).map(|m| m.pos);
+                    (s.target, s.attacker, damage, stab_push(s, pos), true)
+                }),
                 _ => None,
             })
             .collect();
-        if !hits.is_empty() {
-            events.retain(|e| !matches!(e, EntityEvent::MobHit { .. }));
-            for (target, attacker, damage, knockback) in hits {
+        let stabs: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                EntityEvent::MobStab(s) => Some(*s),
+                _ => None,
+            })
+            .collect();
+        if !hits.is_empty() || !stabs.is_empty() {
+            events.retain(|e| !matches!(e, EntityEvent::MobHit { .. } | EntityEvent::MobStab(_)));
+            for (target, attacker, damage, knockback, melee) in hits {
                 let Some(i) = self.mobs.iter().position(|m| m.uid == target && m.alive()) else { continue };
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
                 // v0.16 Track H: `WitherBoss.hurtServer` refuses hits from
@@ -658,23 +726,39 @@ impl Entities {
                     }
                     self.wither_hurt_by_mob(i, attacker);
                 }
+                // `Mob.doHurtTarget`: `EnchantmentHelper.modifyDamage` adds the
+                // main-hand weapon's Smite or Bane of Arthropods when the target
+                // is sensitive to it (Sharpness is already in the attack).
+                let weapon = if melee {
+                    self.mobs
+                        .iter()
+                        .find(|m| m.uid == attacker)
+                        .and_then(|a| a.main_hand())
+                        .map(|s| s.active_enchants())
+                } else {
+                    None
+                };
+                let damage = damage + weapon.map_or(0.0, |w| crate::enchant::creature_damage_bonus(w, kind.creature()));
+                // v1.0 gap Track 8d: a hit the hurt cooldown (or anything
+                // else in `hurtServer`) refuses leaves no trace.
+                if self.mobs[i].refuses_hit(damage) {
+                    continue;
+                }
                 let anger = self.mobs[i].provocation();
+                let before = self.mobs[i].health;
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
+                // `doPostAttackEffects` on a hit that hurt: Bane's Slowness IV.
+                if let Some(w) = weapon
+                    && self.mobs[i].health < before
+                {
+                    self.bane_slowness(i, w);
+                }
                 if kind == MobKind::Enderman
                     && self.mobs.iter().any(|m| m.uid == attacker && m.kind == MobKind::Endermite)
                 {
                     self.mobs[i].set_provocation(anger);
                 }
-                self.warden_hurt(i, crate::world::vibration::EntityRef::Mob(attacker), true);
-                self.nether_hurt(i, Foe::Mob(attacker));
-                self.polar_hurt(i, Foe::Mob(attacker));
-                self.panda_hurt(i, Foe::Mob(attacker));
-                self.armadillo_hurt(i, Foe::Mob(attacker));
-                self.endermite_hurt(i, Foe::Mob(attacker));
-                self.illager_hurt(i, Foe::Mob(attacker));
-                if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
-                    self.animals_defend_owner(attacker, owner);
-                }
+                self.hurt_by_mob(i, attacker, true);
                 let wolf_kill = self.mobs.iter().any(|m| {
                     m.uid == attacker && m.kind == MobKind::Wolf && m.animal.as_ref().is_some_and(|a| a.owner.is_some())
                 });
@@ -683,6 +767,27 @@ impl Entities {
                     self.creeper_disc(kind, pos, attacker);
                 }
             }
+            for stab in stabs {
+                self.finish_mob_stab(stab);
+            }
+        }
+    }
+
+    /// What mob `attacker`'s damage to mob `i` leaves behind
+    /// (`setLastHurtByMob`, read by each mob's `HurtByTargetGoal` and
+    /// brain): the warden's, nether mobs', polar bears', pandas',
+    /// armadillos', endermites' and raiders' anger, and a tamed animal's
+    /// owner's wolves. `direct` as for [`Entities::warden_hurt`].
+    pub(super) fn hurt_by_mob(&mut self, i: usize, attacker: u32, direct: bool) {
+        self.warden_hurt(i, crate::world::vibration::EntityRef::Mob(attacker), direct);
+        self.nether_hurt(i, Foe::Mob(attacker));
+        self.polar_hurt(i, Foe::Mob(attacker));
+        self.panda_hurt(i, Foe::Mob(attacker));
+        self.armadillo_hurt(i, Foe::Mob(attacker));
+        self.endermite_hurt(i, Foe::Mob(attacker));
+        self.illager_hurt(i, Foe::Mob(attacker));
+        if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
+            self.animals_defend_owner(attacker, owner);
         }
     }
 
@@ -694,7 +799,7 @@ impl Entities {
             if m.kind != MobKind::Piglin || !m.alive() || (at - m.pos).abs().cmpgt(DVec3::splat(ANGER_RANGE)).any() {
                 continue;
             }
-            let eye = m.pos + DVec3::Y * (m.shape().height * 0.9);
+            let eye = m.look_eye();
             let Some(n) = m.nether.as_mut() else { continue };
             if n.idle() && (!only_if_seen || super::mob::line_of_sight(world, eye, at + DVec3::Y * 1.5)) {
                 n.anger(Foe::Player(player));
@@ -1315,11 +1420,17 @@ fn sense<W: MobWorld + ?Sized>(
 ) -> Option<u32> {
     let (pos, baby, kind, uid) = (m.pos, m.baby, m.kind, m.uid);
     let brute = kind == MobKind::PiglinBrute;
-    let eye = pos + DVec3::Y * (m.shape().height * 0.9);
+    let eye = m.look_eye();
     let n = m.nether.as_mut()?;
     let locate = |foe: Foe| locate(foe, view, ctx);
     // Java's `StartCelebratingIfTargetDead`: a dead attack target sets the celebrate
     // location for 300 ticks; hoglin kills sometimes start a dance.
+    if let Goal::Attack { foe, .. } = n.goal {
+        n.foe_eye = match foe {
+            Foe::Player(id) => ctx.players.iter().find(|t| t.id == id).map_or(1.2, |t| t.eye_height()),
+            Foe::Mob(u) => view.iter().find(|s| s.uid == u).map_or(1.2, |s| s.eye),
+        };
+    }
     if let Goal::Attack { foe, pos: last } = n.goal
         && !brute
     {
@@ -1453,8 +1564,10 @@ fn sense<W: MobWorld + ?Sized>(
             if n.celebrate_at.distance_squared(pos) > slack * slack { Goal::Walk(n.celebrate_at) } else { Goal::None };
         return None;
     }
+    // v1.0 gap Track 2f: a brute strolls back to and around its `HOME` in
+    // its idle `RunOne` (`StrollToPoi`, `StrollAroundPoi`) instead.
     n.goal = match n.home {
-        Some(home) if home.distance_squared(pos) > HOME_RANGE * HOME_RANGE => Goal::Walk(home),
+        Some(home) if !brute && home.distance_squared(pos) > HOME_RANGE * HOME_RANGE => Goal::Walk(home),
         _ => Goal::None,
     };
     None
@@ -1634,6 +1747,10 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if m.age_locked {
         v["age_locked"] = true.into();
     }
+    // v1.0 gap Track 3b: `ForcedAge`, written only once a feeding forced it.
+    if m.forced_age != 0 {
+        v["forced_age"] = m.forced_age.into();
+    }
 
     // Optional additions preserve legacy records byte-for-byte when absent.
     // v0.15 Track D: a chicken's, cow's or pig's variant by registry name.
@@ -1725,6 +1842,10 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.ocelot {
         v["ocelot"] = json!({"trusting":s.trusting});
     }
+    // v1.0 gap Track 2e: `Fox`'s `Sleeping`, `Sitting` and `Crouching`, only when set.
+    if let Some(s) = &m.fox {
+        s.save_into(&mut v, m.animal.as_ref().is_some_and(|a| a.sleeping));
+    }
     if let Some(s) = &m.armadillo {
         v["armadillo"] = s.save();
     }
@@ -1755,6 +1876,11 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
         if let Some(s) = d.hand {
             v["hand"] = json!(crate::inventory::stack_to_string(Some(s)));
         }
+    }
+    // v1.0 gap Track 1: Java's `fall_distance`, written only mid-fall.
+    let fall = m.saved_fall_distance();
+    if fall > 0.0 {
+        v["fall_distance"] = json!(fall);
     }
     v
 }
@@ -1790,8 +1916,11 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     m.age_locked = v["age_locked"] == true;
     // Snifflets take twice as long as other babies to grow up.
     let youngest = if kind == MobKind::Sniffer { -48000 } else { -24000 };
-    m.age = v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(youngest, 6000)
+    // A forced dolphin comes of age at up to 24000 (v1.0 gap Track 3b).
+    let oldest = if kind == MobKind::Dolphin { 24000 } else { 6000 };
+    m.age = v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(youngest, oldest)
         as i32;
+    m.forced_age = v["forced_age"].as_i64().unwrap_or(0).clamp(0, 24000) as i32;
     if matches!(kind, MobKind::Frog | MobKind::Tadpole) {
         m.baby = false;
         m.age = m.age.max(0);
@@ -1872,6 +2001,12 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(s) = &mut m.ocelot {
         s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);
+    }
+    if let Some(s) = &mut m.fox
+        && s.load(v)
+        && let Some(a) = &mut m.animal
+    {
+        a.sleeping = true;
     }
     if let Some(s) = &mut m.armadillo {
         s.load(&v["armadillo"]);
@@ -1968,6 +2103,7 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
             h.is_finite().then_some(h)
         });
     }
+    m.restore_fall_distance(v["fall_distance"].as_f64().unwrap_or(0.0));
     Some(m)
 }
 
@@ -2063,7 +2199,9 @@ mod tests {
             })
             .collect();
         assert!(!causes.is_empty(), "the crossbow hit the player");
-        assert!(causes.iter().all(|&c| c == crate::simulation::damage::Cause::PIGLIN_ARROW), "{causes:?}");
+        // v1.0 gap Track 8g: naming the piglin that shot it.
+        let piglin = |c: crate::simulation::damage::Cause| crate::simulation::damage::Cause { by: None, ..c };
+        assert!(causes.iter().all(|&c| piglin(c) == crate::simulation::damage::Cause::PIGLIN_ARROW), "{causes:?}");
     }
 
     /// One adult piglin with a golden sword at the origin of a flat floor.

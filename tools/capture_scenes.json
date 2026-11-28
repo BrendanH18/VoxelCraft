@@ -6819,6 +6819,118 @@
    ]
   },
   {
+   "group": "ui",
+   "matrix": {
+    "size": [
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     2
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    0.5,
+    90,
+    -20
+   ],
+   "render_distance": 4,
+   "name": "options-menu",
+   "description": "Options (v1.0 final F6: Chat Settings, no Difficulty)",
+   "args": [
+    "--open-menu",
+    "options"
+   ]
+  },
+  {
+   "group": "ui",
+   "matrix": {
+    "size": [
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     2
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    0.5,
+    90,
+    -20
+   ],
+   "render_distance": 4,
+   "name": "sound-settings",
+   "description": "Options > Music & Sounds (v1.0 final F6: Narrator/Voice)",
+   "args": [
+    "--open-menu",
+    "sound"
+   ]
+  },
+  {
+   "group": "ui",
+   "matrix": {
+    "size": [
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     2
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    0.5,
+    90,
+    -20
+   ],
+   "render_distance": 4,
+   "name": "chat-settings",
+   "description": "Options > Chat Settings (v1.0 final F6)",
+   "args": [
+    "--open-menu",
+    "chat"
+   ]
+  },
+  {
+   "group": "ui",
+   "matrix": {
+    "size": [
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     2
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    0.5,
+    90,
+    -20
+   ],
+   "render_distance": 4,
+   "name": "world-options",
+   "description": "Pause > World Options (v1.0 final F6: Difficulty and its lock)",
+   "args": [
+    "--open-menu",
+    "world"
+   ]
+  },
+  {
    "group": "title",
    "matrix": {
     "size": [
@@ -8706,6 +8818,1254 @@
     "advance_time=false",
     "advance_weather=false",
     "random_tick_speed=0"
+   ]
+  },
+  {
+   "name": "material-amethyst-bamboo",
+   "group": "materials",
+   "description": "v1.0 gap Track 7: amethyst buds (small, medium, large) and the cluster standing on budding amethyst, hanging from an amethyst ledge and on its wall; bamboo bare and with small and large leaves on posts one to three blocks tall; the potted bamboo beside a potted fern, from in front at noon; random ticks off",
+   "pose": [
+    0.5,
+    153.5,
+    14.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -8,
+     149,
+     16,
+     8,
+     149,
+     26,
+     "dirt"
+    ],
+    [
+     -8,
+     150,
+     16,
+     8,
+     150,
+     26,
+     "grass"
+    ],
+    [
+     -7,
+     150,
+     20,
+     -1,
+     150,
+     20,
+     "budding amethyst"
+    ],
+    [
+     -7,
+     154,
+     20,
+     -1,
+     154,
+     22,
+     "block of amethyst"
+    ],
+    [
+     -7,
+     151,
+     22,
+     -1,
+     153,
+     22,
+     "budding amethyst"
+    ]
+   ],
+   "place": [
+    "-7,151,20,1926",
+    "-5,151,20,1927",
+    "-3,151,20,1928",
+    "-1,151,20,1929",
+    "-7,153,20,1930",
+    "-5,153,20,1931",
+    "-3,153,20,1932",
+    "-1,153,20,1933",
+    "-6,152,21,2404",
+    "-4,152,21,2405",
+    "-2,152,21,2406",
+    "2,151,20,2022",
+    "2,152,20,2022",
+    "2,153,20,2022",
+    "4,151,20,2022",
+    "4,152,20,2023",
+    "6,151,20,2022",
+    "6,152,20,2022",
+    "6,153,20,2024",
+    "3,151,18,potted bamboo",
+    "5,151,18,potted fern"
+   ],
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "random_tick_speed=0"
+   ]
+  },
+  {
+   "name": "portals",
+   "group": "materials",
+   "description": "Two lit Nether portals on a stone floor in the sky at noon, one along X and one along Z, seen at an angle: the thin plane along each axis, its animated texture and the obsidian frame around it (v1.0 gap Track 5c)",
+   "pose": [
+    -4.5,
+    151.5,
+    -6.5,
+    75,
+    -6
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -8,
+     149,
+     -8,
+     8,
+     149,
+     8,
+     "stone"
+    ]
+   ],
+   "place": [
+    "-5,150,0,obsidian",
+    "-5,151,0,obsidian",
+    "-5,152,0,obsidian",
+    "-5,153,0,obsidian",
+    "-5,154,0,obsidian",
+    "-4,150,0,obsidian",
+    "-4,154,0,obsidian",
+    "-3,150,0,obsidian",
+    "-3,154,0,obsidian",
+    "-2,150,0,obsidian",
+    "-2,151,0,obsidian",
+    "-2,152,0,obsidian",
+    "-2,153,0,obsidian",
+    "-2,154,0,obsidian",
+    "1,150,2,obsidian",
+    "1,151,2,obsidian",
+    "1,152,2,obsidian",
+    "1,153,2,obsidian",
+    "1,154,2,obsidian",
+    "1,150,3,obsidian",
+    "1,154,3,obsidian",
+    "1,150,4,obsidian",
+    "1,154,4,obsidian",
+    "1,150,5,obsidian",
+    "1,151,5,obsidian",
+    "1,152,5,obsidian",
+    "1,153,5,obsidian",
+    "1,154,5,obsidian",
+    "-4,151,0,fire",
+    "1,151,3,fire"
+   ]
+  },
+  {
+   "name": "portal-close",
+   "group": "materials",
+   "description": "The portal along X from three blocks away at an angle: the plane 4/16 thick through the middle of the frame's cells (v1.0 gap Track 5c)",
+   "pose": [
+    -1.5,
+    151,
+    -2.5,
+    129,
+    -8
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -8,
+     149,
+     -8,
+     8,
+     149,
+     8,
+     "stone"
+    ]
+   ],
+   "place": [
+    "-5,150,0,obsidian",
+    "-5,151,0,obsidian",
+    "-5,152,0,obsidian",
+    "-5,153,0,obsidian",
+    "-5,154,0,obsidian",
+    "-4,150,0,obsidian",
+    "-4,154,0,obsidian",
+    "-3,150,0,obsidian",
+    "-3,154,0,obsidian",
+    "-2,150,0,obsidian",
+    "-2,151,0,obsidian",
+    "-2,152,0,obsidian",
+    "-2,153,0,obsidian",
+    "-2,154,0,obsidian",
+    "1,150,2,obsidian",
+    "1,151,2,obsidian",
+    "1,152,2,obsidian",
+    "1,153,2,obsidian",
+    "1,154,2,obsidian",
+    "1,150,3,obsidian",
+    "1,154,3,obsidian",
+    "1,150,4,obsidian",
+    "1,154,4,obsidian",
+    "1,150,5,obsidian",
+    "1,151,5,obsidian",
+    "1,152,5,obsidian",
+    "1,153,5,obsidian",
+    "1,154,5,obsidian",
+    "-4,151,0,fire",
+    "1,151,3,fire"
+   ]
+  },
+  {
+   "group": "atmosphere",
+   "hud": false,
+   "pose": [
+    0,
+    190,
+    0,
+    45,
+    -35
+   ],
+   "name": "night-vision-night",
+   "description": "The night landscape with Night Vision: lightmap.fsh's max(ambient, #999999) added before sky and block light (v1.0 gap Track 5c)",
+   "time": 0.75,
+   "args": [
+    "--effect",
+    "night_vision,600"
+   ]
+  },
+  {
+   "name": "night-vision-cave",
+   "group": "atmosphere",
+   "description": "The torch-lit stone room at midnight with Night Vision (v1.0 gap Track 5c)",
+   "pose": [
+    -7.5,
+    142.6,
+    -7.5,
+    45,
+    35
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -10,
+     140,
+     -10,
+     10,
+     140,
+     10,
+     "stone"
+    ],
+    [
+     -10,
+     147,
+     -10,
+     10,
+     147,
+     10,
+     "stone"
+    ],
+    [
+     -10,
+     141,
+     -10,
+     10,
+     146,
+     -10,
+     "stone"
+    ],
+    [
+     -10,
+     141,
+     10,
+     10,
+     146,
+     10,
+     "stone"
+    ],
+    [
+     -10,
+     141,
+     -9,
+     -10,
+     146,
+     9,
+     "stone"
+    ],
+    [
+     10,
+     141,
+     -9,
+     10,
+     146,
+     9,
+     "stone"
+    ]
+   ],
+   "place": [
+    "-9,147,-9,andesite",
+    "-9,147,-8,granite",
+    "-9,147,-2,andesite",
+    "-8,147,-6,granite",
+    "-8,147,-1,granite",
+    "-8,147,1,diorite",
+    "-8,147,3,iron ore",
+    "-7,147,-9,diorite",
+    "-7,147,-6,coal ore",
+    "-7,147,-4,granite",
+    "-7,147,-2,coal ore",
+    "-7,147,0,gravel",
+    "-7,147,3,diorite",
+    "-7,147,9,copper ore",
+    "-6,147,-3,diorite",
+    "-6,147,7,andesite",
+    "-5,147,-1,granite",
+    "-4,147,-5,gravel",
+    "-4,147,-3,andesite",
+    "-4,147,6,diorite",
+    "-3,147,-6,granite",
+    "-3,147,9,granite",
+    "-2,147,-7,granite",
+    "-2,147,-5,gravel",
+    "-2,147,-1,coal ore",
+    "-2,147,5,diorite",
+    "-2,147,6,copper ore",
+    "-2,147,8,granite",
+    "-1,147,-4,andesite",
+    "-1,147,-1,coal ore",
+    "-1,147,5,granite",
+    "-1,147,7,andesite",
+    "0,147,-9,granite",
+    "0,147,-8,diorite",
+    "0,147,-5,diorite",
+    "0,147,-3,coal ore",
+    "0,147,-1,andesite",
+    "0,147,0,andesite",
+    "0,147,2,andesite",
+    "0,147,8,gravel",
+    "0,147,9,iron ore",
+    "1,147,-8,copper ore",
+    "1,147,-7,andesite",
+    "1,147,-6,granite",
+    "1,147,-5,granite",
+    "1,147,1,coal ore",
+    "2,147,-6,copper ore",
+    "2,147,0,coal ore",
+    "2,147,8,andesite",
+    "2,147,9,iron ore",
+    "3,147,-9,granite",
+    "3,147,-6,andesite",
+    "3,147,-4,granite",
+    "4,147,-1,andesite",
+    "4,147,7,gravel",
+    "5,147,-8,copper ore",
+    "5,147,0,iron ore",
+    "5,147,1,granite",
+    "5,147,4,andesite",
+    "5,147,6,andesite",
+    "6,147,-5,granite",
+    "6,147,-1,copper ore",
+    "6,147,3,andesite",
+    "6,147,9,andesite",
+    "7,147,-9,copper ore",
+    "7,147,-3,diorite",
+    "7,147,2,andesite",
+    "7,147,6,andesite",
+    "7,147,8,andesite",
+    "7,147,9,diorite",
+    "8,147,-4,diorite",
+    "8,147,-3,andesite",
+    "8,147,6,coal ore",
+    "8,147,7,andesite",
+    "9,147,9,andesite",
+    "-6,141,-6,torch",
+    "6,141,-6,torch",
+    "-6,141,6,torch",
+    "6,141,6,torch",
+    "0,141,0,torch"
+   ],
+   "time": 0.75,
+   "args": [
+    "--effect",
+    "night_vision,600"
+   ]
+  },
+  {
+   "group": "atmosphere",
+   "hud": false,
+   "name": "night-vision-nether",
+   "description": "The Nether arrival view with Night Vision, against the Nether's own ambient colour (v1.0 gap Track 5c)",
+   "dimension": "nether",
+   "args": [
+    "--effect",
+    "night_vision,600"
+   ]
+  },
+  {
+   "name": "mobs-still-held-hands",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7b: humanoids holding their weapons at noon, pinned with --still-mobs and facing the camera, so each holds it in its own right hand (the viewer's left): zombie with an iron sword, husk with an iron shovel, drowned with a trident, skeleton with its bow, stray with an iron sword, pillager with its crossbow, piglin, zombified piglin and wither skeleton with their own weapons",
+   "pose": [
+    0.5,
+    154.0,
+    14.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "zombie,-8,151,21,iron_sword",
+    "husk,-6,151,21,iron_shovel",
+    "drowned,-4,151,21,trident",
+    "skeleton,-2,151,21",
+    "stray,0,151,21,iron_sword",
+    "pillager,2,151,21",
+    "piglin,4,151,21",
+    "zombified_piglin,6,151,21",
+    "wither_skeleton,8,151,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-babies",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7b: babies at noon, pinned with --still-mobs and facing the camera; front row chicken, pig, cow, sheep, wolf, cat, fox and rabbit, back row villager, zombie, piglin, hoglin, horse, llama, panda and polar bear",
+   "pose": [
+    0.5,
+    153.2,
+    15.0,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "chicken,-7,151,19,baby",
+    "pig,-5,151,19,baby",
+    "cow,-3,151,19,baby",
+    "sheep,-1,151,19,baby",
+    "wolf,1,151,19,baby",
+    "cat,3,151,19,baby",
+    "fox,5,151,19,baby",
+    "rabbit,7,151,19,baby",
+    "villager,-9,151,22,baby",
+    "zombie,-7,151,22,baby",
+    "piglin,-5,151,22,baby",
+    "hoglin,-3,151,22,baby",
+    "horse,0,151,22,baby",
+    "llama,3,151,22,baby",
+    "panda,6,151,22,baby",
+    "polar_bear,9,151,22,baby"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-babies-all",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7c: a baby of every kind Java 26.3 draws with a baby model of its own, at noon, pinned with --still-mobs and facing the camera; rows front to back: chicken, pig, cow, mooshroom, sheep, wolf, cat, ocelot, fox, rabbit, armadillo; villager, zombie, husk, drowned, zombie villager, piglin, zombified piglin, hoglin, zoglin, strider, bee; horse, donkey, mule, skeleton and zombie horse, llama, trader llama, camel; panda, polar bear, sniffer, goat, the ghastling and turtle, then in the pool dolphin, squid, glow squid, axolotl and nautilus",
+   "pose": [
+    0.5,
+    156.0,
+    10.0,
+    90,
+    -24
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     33,
+     "grass"
+    ],
+    [
+     2,
+     148,
+     28,
+     12,
+     148,
+     31,
+     "stone"
+    ],
+    [
+     2,
+     149,
+     28,
+     12,
+     150,
+     31,
+     "water"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "chicken,-10,151,19,baby",
+    "pig,-8,151,19,baby",
+    "cow,-6,151,19,baby",
+    "mooshroom,-4,151,19,baby",
+    "sheep,-2,151,19,baby",
+    "wolf,0,151,19,baby",
+    "cat,2,151,19,baby",
+    "ocelot,4,151,19,baby",
+    "fox,6,151,19,baby",
+    "rabbit,8,151,19,baby",
+    "armadillo,10,151,19,baby",
+    "villager,-10,151,22,baby",
+    "zombie,-8,151,22,baby",
+    "husk,-6,151,22,baby",
+    "drowned,-4,151,22,baby",
+    "zombie_villager,-2,151,22,baby",
+    "piglin,0,151,22,baby",
+    "zombified_piglin,2,151,22,baby",
+    "hoglin,4,151,22,baby",
+    "zoglin,6,151,22,baby",
+    "strider,8,151,22,baby",
+    "bee,10,151,22,baby",
+    "horse,-10,151,25,baby",
+    "donkey,-7,151,25,baby",
+    "mule,-4,151,25,baby",
+    "skeleton_horse,-1,151,25,baby",
+    "zombie_horse,2,151,25,baby",
+    "llama,5,151,25,baby",
+    "trader_llama,7,151,25,baby",
+    "camel,10,151,25,baby",
+    "panda,-10,151,29,baby",
+    "polar_bear,-8,151,29,baby",
+    "sniffer,-5,151,29,baby",
+    "goat,-2,151,29,baby",
+    "happy_ghast,0,152,29,baby",
+    "turtle,1,151,29,baby",
+    "dolphin,3,150,29,baby",
+    "squid,5,150,29,baby",
+    "glow_squid,7,150,29,baby",
+    "axolotl,9,150,29,baby",
+    "nautilus,11,150,29,baby"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-joints",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7c: the adults whose models gained Java's joints, at noon, pinned with --still-mobs: rabbit, bat, parrot, horse, donkey and a phantom on land and in the air, then in the pool a guardian, an elder guardian and a pufferfish",
+   "pose": [
+    0.5,
+    155.0,
+    11.0,
+    90,
+    -20
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -10,
+     150,
+     13,
+     10,
+     150,
+     30,
+     "grass"
+    ],
+    [
+     1,
+     146,
+     20,
+     10,
+     146,
+     28,
+     "stone"
+    ],
+    [
+     1,
+     147,
+     20,
+     10,
+     150,
+     28,
+     "water"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "rabbit,-8,151,17",
+    "bat,-6,153,17",
+    "parrot,-4,151,17",
+    "horse,-7,151,22",
+    "donkey,-3,151,22",
+    "phantom,-5,154,26",
+    "guardian,3,148,22",
+    "elder_guardian,7,148,24",
+    "pufferfish,4,149,18"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-model-details",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7d: from above at noon, pinned with --still-mobs and facing the camera: front row an adult nautilus, a zombie nautilus and a baby nautilus (shell first, the body and mouth trailing behind); back row a llama cria, a camel calf, an armadillo pup, a snifflet, two horse foals (their markings random) and a trader llama cria in its blanket",
+   "pose": [
+    0.5,
+    158.0,
+    11.0,
+    90,
+    -45
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     12,
+     11,
+     150,
+     28,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "nautilus,-3,151,16",
+    "zombie_nautilus,0,151,16",
+    "nautilus,3,151,16,baby",
+    "llama,-7,151,20,baby",
+    "camel,-4,151,20,baby",
+    "armadillo,-2,151,20,baby",
+    "sniffer,0,151,20,baby",
+    "horse,3,151,20,baby",
+    "horse,5,151,20,baby",
+    "trader_llama,7,151,20,baby"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-nautilus-swim",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7d: seen from inside a glass-roofed stone tank at noon, three nautiluses and two zombie nautiluses swimming freely (not pinned, so they turn their sides to the camera; their places vary from run to run)",
+   "pose": [
+    0.5,
+    148.2,
+    12.5,
+    90,
+    -4
+   ],
+   "hud": false,
+   "wait": 4.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -8,
+     144,
+     10,
+     8,
+     150,
+     28,
+     "stone"
+    ],
+    [
+     -8,
+     151,
+     10,
+     8,
+     151,
+     28,
+     "glass"
+    ],
+    [
+     -7,
+     145,
+     11,
+     7,
+     150,
+     27,
+     "water"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "nautilus,-3,147,17",
+    "nautilus,0,147,19",
+    "nautilus,3,147,17",
+    "zombie_nautilus,-2,147,22",
+    "zombie_nautilus,2,147,22"
+   ],
+   "args": []
+  },
+  {
+   "group": "materials",
+   "pose": [
+    -2.0,
+    150.0,
+    0.5,
+    0,
+    -28
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -4,
+     149,
+     -3,
+     4,
+     149,
+     3,
+     "stone"
+    ]
+   ],
+   "place": [],
+   "name": "burning-projectiles",
+   "description": "Two burning arrows and a burning trident stuck in a stone floor in the sky at noon, a plain arrow beside them, from two blocks away: Java's flame (`FlameFeatureRenderer`: two camera-facing fire quads over each 0.5 by 0.5 box) on the burning ones (v1.0 gap Track 8c)",
+   "args": [
+    "--projectile",
+    "arrow,0,149,-1,fire",
+    "--projectile",
+    "arrow,1,149,1,fire",
+    "--projectile",
+    "trident,0,149,1,fire",
+    "--projectile",
+    "arrow,1,149,-1"
+   ]
+  },
+  {
+   "group": "materials",
+   "pose": [
+    -2.0,
+    150.0,
+    0.5,
+    0,
+    -28
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -4,
+     149,
+     -3,
+     4,
+     149,
+     3,
+     "stone"
+    ]
+   ],
+   "place": [],
+   "name": "unlit-projectiles",
+   "description": "The burning-projectiles scene with none of them burning, as every burning arrow and trident was drawn before v1.0 gap Track 8c",
+   "args": [
+    "--projectile",
+    "arrow,0,149,-1",
+    "--projectile",
+    "arrow,1,149,1",
+    "--projectile",
+    "trident,0,149,1",
+    "--projectile",
+    "arrow,1,149,-1"
+   ]
+  },
+  {
+   "name": "mobs-still-villager-types",
+   "description": "v1.0 gap Track 7e: villager type outfits at noon, pinned with --still-mobs and facing the camera; desert, jungle, plains, savanna, snow, swamp and taiga from right to left on screen; rows front to back: jobless adult villagers, zombie villagers, then a villager child and a zombie villager cub of each type side by side",
+   "pose": [
+    0.5,
+    155.0,
+    10.0,
+    90,
+    -18
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     27,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-9,151,17,desert",
+    "villager,-6,151,17,jungle",
+    "villager,-3,151,17,plains",
+    "villager,0,151,17,savanna",
+    "villager,3,151,17,snow",
+    "villager,6,151,17,swamp",
+    "villager,9,151,17,taiga",
+    "zombie_villager,-9,151,20,desert",
+    "zombie_villager,-6,151,20,jungle",
+    "zombie_villager,-3,151,20,plains",
+    "zombie_villager,0,151,20,savanna",
+    "zombie_villager,3,151,20,snow",
+    "zombie_villager,6,151,20,swamp",
+    "zombie_villager,9,151,20,taiga",
+    "villager,-9,151,23,baby,desert",
+    "villager,-6,151,23,baby,jungle",
+    "villager,-3,151,23,baby,plains",
+    "villager,0,151,23,baby,savanna",
+    "villager,3,151,23,baby,snow",
+    "villager,6,151,23,baby,swamp",
+    "villager,9,151,23,baby,taiga",
+    "zombie_villager,-8,151,23,baby,desert",
+    "zombie_villager,-5,151,23,baby,jungle",
+    "zombie_villager,-2,151,23,baby,plains",
+    "zombie_villager,1,151,23,baby,savanna",
+    "zombie_villager,4,151,23,baby,snow",
+    "zombie_villager,7,151,23,baby,swamp",
+    "zombie_villager,10,151,23,baby,taiga"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-villager-jobs",
+   "description": "v1.0 gap Track 7e: villager layers at noon, pinned with --still-mobs and facing the camera; front row: a desert farmer and butcher (their hats hide the desert wrap), a desert zombie villager butcher (its wrap shows), a snow librarian, jungle fisherman, savanna fletcher and taiga shepherd; back row: a plains nitwit (no badge), a swamp cleric, a plains mason holding up an emerald, a zombie villager in iron armor, a snow zombie armorer, a wandering trader and an adult fox",
+   "pose": [
+    0.5,
+    155.0,
+    11.0,
+    90,
+    -16
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     26,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-9,151,17,desert:farmer:2",
+    "villager,-6,151,17,desert:butcher:2",
+    "zombie_villager,-3,151,17,desert:butcher:2",
+    "villager,0,151,17,snow:librarian:3",
+    "villager,3,151,17,jungle:fisherman:4",
+    "villager,6,151,17,savanna:fletcher:5",
+    "villager,9,151,17,taiga:shepherd:2",
+    "villager,-9,151,21,plains:nitwit",
+    "villager,-6,151,21,swamp:cleric:3",
+    "villager,-3,151,21,plains:mason:5,emerald",
+    "zombie_villager,0,151,21,plains,iron",
+    "zombie_villager,3,151,21,snow:armorer:4",
+    "wandering_trader,6,151,21",
+    "fox,9,151,21"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-villager-professions",
+   "description": "v1.0 gap Track 7f: every profession on plains villagers at noon, pinned with --still-mobs and facing the camera; front row left to right on screen right to left: armorer (stone badge), butcher, cartographer, cleric, farmer, fisherman, fletcher; back row: leatherworker, librarian, mason, shepherd, toolsmith, weaponsmith, nitwit (no badge); levels cycle 1 to 5 along each row",
+   "pose": [
+    0.5,
+    155.0,
+    11.0,
+    90,
+    -16
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     26,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-9,151,17,plains:armorer:1",
+    "villager,-6,151,17,plains:butcher:2",
+    "villager,-3,151,17,plains:cartographer:3",
+    "villager,0,151,17,plains:cleric:4",
+    "villager,3,151,17,plains:farmer:5",
+    "villager,6,151,17,plains:fisherman:1",
+    "villager,9,151,17,plains:fletcher:2",
+    "villager,-9,151,21,plains:leatherworker:1",
+    "villager,-6,151,21,plains:librarian:2",
+    "villager,-3,151,21,plains:mason:3",
+    "villager,0,151,21,plains:shepherd:4",
+    "villager,3,151,21,plains:toolsmith:5",
+    "villager,6,151,21,plains:weaponsmith:1",
+    "villager,9,151,21,plains:nitwit"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-zombie-villager-professions",
+   "description": "v1.0 gap Track 7f: the same professions and rows as mobs-still-villager-professions on snow zombie villagers (their clothes rotted), at noon, pinned with --still-mobs",
+   "pose": [
+    0.5,
+    155.0,
+    11.0,
+    90,
+    -16
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     26,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "zombie_villager,-9,151,17,snow:armorer:1",
+    "zombie_villager,-6,151,17,snow:butcher:2",
+    "zombie_villager,-3,151,17,snow:cartographer:3",
+    "zombie_villager,0,151,17,snow:cleric:4",
+    "zombie_villager,3,151,17,snow:farmer:5",
+    "zombie_villager,6,151,17,snow:fisherman:1",
+    "zombie_villager,9,151,17,snow:fletcher:2",
+    "zombie_villager,-9,151,21,snow:leatherworker:1",
+    "zombie_villager,-6,151,21,snow:librarian:2",
+    "zombie_villager,-3,151,21,snow:mason:3",
+    "zombie_villager,0,151,21,snow:shepherd:4",
+    "zombie_villager,3,151,21,snow:toolsmith:5",
+    "zombie_villager,6,151,21,snow:weaponsmith:1",
+    "zombie_villager,9,151,21,snow:nitwit"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-villager-faces",
+   "description": "v1.0 gap Track 7f: close-up at noon, pinned with --still-mobs: front row (on screen right to left) a taiga armorer in its welding mask, a plains cartographer with its monocle, a desert weaponsmith with its eyepatch, a swamp cleric; back row a jungle leatherworker and a savanna toolsmith",
+   "pose": [
+    0.5,
+    152.9,
+    13.6,
+    90,
+    -12
+   ],
+   "fill": [
+    [
+     -6,
+     150,
+     13,
+     6,
+     150,
+     22,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-2,151,16,taiga:armorer:5",
+    "villager,-1,151,16,plains:cartographer:3",
+    "villager,0,151,16,desert:weaponsmith:4",
+    "villager,1,151,16,swamp:cleric:2",
+    "villager,-2,151,18,jungle:leatherworker:2",
+    "villager,1,151,18,savanna:toolsmith:1"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-fox-held",
+   "description": "v1.0 gap Track 7f: foxes holding items in their mouths (FoxHeldItemLayer) at noon, pinned with --still-mobs, on screen right to left: an adult fox with an emerald, a fox kit with a feather, an adult fox with wheat",
+   "pose": [
+    0.5,
+    152.4,
+    13.8,
+    90,
+    -18
+   ],
+   "fill": [
+    [
+     -6,
+     150,
+     13,
+     6,
+     150,
+     22,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "fox,-1,151,17,emerald",
+    "fox,0,151,17,baby,feather",
+    "fox,1,151,17,wheat"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-villagers-plain",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7e before/after: at noon, pinned with --still-mobs and facing the camera; front row a villager, a villager holding an emerald, a zombie villager, one in iron armor and a wandering trader; back row a villager child, a zombie villager cub, an adult fox and a fox kit (types from the capture world's biome)",
+   "pose": [
+    0.5,
+    154.5,
+    12.0,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -9,
+     150,
+     13,
+     9,
+     150,
+     25,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-6,151,17",
+    "villager,-3,151,17,emerald",
+    "zombie_villager,0,151,17",
+    "zombie_villager,3,151,17,iron",
+    "wandering_trader,6,151,17",
+    "villager,-5,151,20,baby",
+    "zombie_villager,-2,151,20,baby",
+    "fox,1,151,20",
+    "fox,4,151,20,baby"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "burning-mobs",
+   "group": "materials",
+   "description": "Two zombies, a skeleton and a pig pinned with --still-mobs and held alight with --burning (capture-only), on stone at noon: Java's flame (`FlameFeatureRenderer`: camera-facing fire quads over each mob's box) on burning mobs (v1.0 gap Track 8d; before it, rising cubes and an orange tint). Without --burning, as on older commits, the same mobs stand unlit",
+   "pose": [
+    0.5,
+    153.0,
+    12.5,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -6,
+     150,
+     14,
+     6,
+     150,
+     24,
+     "stone"
+    ]
+   ],
+   "place": [
+    "3,151,18,fire"
+   ],
+   "spawn": [
+    "zombie,-3,151,19",
+    "skeleton,-1,151,19",
+    "zombie,1,151,19",
+    "pig,3,151,18"
+   ],
+   "args": [
+    "--still-mobs",
+    "--burning"
+   ]
+  },
+  {
+   "name": "burning-player",
+   "group": "materials",
+   "description": "A survival player standing in a fire on netherrack (which keeps it lit through a slow capture), on stone, at noon (`fire_damage` off, so a slow software capture can't kill them), seen in third person from behind: Java's flame over the player's box (v1.0 gap Track 8d; before it a burning player wasn't drawn on fire)",
+   "mode": "survival",
+   "pose": [
+    0.5,
+    151.0,
+    0.5,
+    30,
+    10
+   ],
+   "hud": false,
+   "wait": 1.0,
+   "fill": [
+    [
+     -4,
+     150,
+     -4,
+     4,
+     150,
+     4,
+     "stone"
+    ]
+   ],
+   "place": [
+    "0,150,0,netherrack",
+    "0,151,0,fire"
+   ],
+   "args": [
+    "--camera",
+    "third"
+   ],
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "fire_damage=false"
    ]
   }
  ]

@@ -75,6 +75,22 @@ impl SoundSource {
         }
     }
 
+    /// Java's `SoundSource.getName`, in its `soundCategory_<name>` key.
+    pub fn java_name(self) -> &'static str {
+        match self {
+            SoundSource::Master => "master",
+            SoundSource::Music => "music",
+            SoundSource::Records => "record",
+            SoundSource::Weather => "weather",
+            SoundSource::Blocks => "block",
+            SoundSource::Hostile => "hostile",
+            SoundSource::Neutral => "neutral",
+            SoundSource::Players => "player",
+            SoundSource::Ambient => "ambient",
+            SoundSource::Ui => "ui",
+        }
+    }
+
     pub fn from_option_key(key: &str) -> Option<SoundSource> {
         Self::ALL.into_iter().find(|s| s.option_key() == key)
     }

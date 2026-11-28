@@ -31,7 +31,11 @@ fn surface(g: &Generator, x: i32, z: i32) -> i32 {
 pub(super) fn build(g: &Generator, centre: IVec2, seed: u64) -> Built {
     let lib = jigsaw::outposts();
     let surface = |x, z| surface(g, x, z);
-    let placed = jigsaw::assemble_enveloped(lib, &SETTINGS, centre, &surface, seed, &|ps, p| g.beard_fit(lib, ps, p));
+    let placed = if g.generation >= crate::world::terrain::Generation::V7 {
+        jigsaw::assemble_adapted(lib, &SETTINGS, centre, &surface, seed)
+    } else {
+        jigsaw::assemble_enveloped(lib, &SETTINGS, centre, &surface, seed, &|ps, p| g.beard_fit(lib, ps, p))
+    };
     let bounds = placed
         .iter()
         .map(|p| p.bounds)
@@ -66,7 +70,11 @@ pub(super) fn paint(g: &Generator, built: &Built, blocks: &mut [Block; CHUNK_VOL
     jigsaw::paint(
         jigsaw::outposts(),
         &built.placed,
-        &OutpostPalette,
+        if g.generation >= crate::world::terrain::Generation::V7 {
+            &jigsaw::NoFoundation(&OutpostPalette)
+        } else {
+            &OutpostPalette
+        },
         &jigsaw::Ground {
             surface: &|x, z| g.terrain_column(x, z).height.max(SEA_LEVEL - 1),
             solid: &|x, z| g.terrain_column(x, z).height,

@@ -733,7 +733,7 @@ impl World {
             Behaviour::BoneMeal => {
                 // Java `BoneMealDispenseItemBehavior`: it fertilises the block in front and is only
                 // used up when that grew something; otherwise the stack stays in the slot.
-                if self.apply_bone_meal(front) {
+                if self.use_bone_meal(front) {
                     self.set_container_stack(p, slot, rest);
                 }
                 return;

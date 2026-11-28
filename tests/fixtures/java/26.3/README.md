@@ -1256,6 +1256,119 @@ both ways, and `entity::shulker` its constants and loot. The
 `src/world/loot_tables.json` (added to `tools/extract_java_structure_loot.py`'s
 list).
 
+## The End's islands (v1.0 gap-closing Track 4)
+
+`end_islands.json` holds Java 26.3's End terrain for three seeds (0, 42
+and -4172144997902289642), written by
+`tools/extract_java_end_islands_fixtures.py`, which compiles
+`tools/JavaEndIslands.java` against the pinned server (SHA-1 checked) and
+runs the jar's own End noise router (`RandomState.create` with
+`NoiseGeneratorSettings.END`): `EndIslandFunction`
+(`DensityFunctions.endOuterIslands`) and the router's `erosion`
+(`end/islands`) as raw float bits on a 31 x 31 grid of points, and the
+noise columns `NoiseBasedChunkGenerator.getBaseColumn` generates for every
+column of five chunks per seed (the central island, its edge and the first
+island chunks along rays past the void) as solid y ranges. Regenerate and
+compare with (JDK 25 on `PATH`):
+
+```sh
+python3 tools/extract_java_end_islands_fixtures.py /path/to/server.jar --output target/java-end-islands.json
+diff tests/fixtures/java/26.3/end_islands.json target/java-end-islands.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib world::end_islands'
+```
+
+`world::end_islands` (generation 7's End) must match every value bit for
+bit and every column block for block
+([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-04-the-end.md)).
+
+## The End's decoration (v1.0 gap-closing Track 4b)
+
+`end_decoration.json` holds what Java 26.3 builds in the outer End for
+seeds 0 and 42, written by `tools/extract_java_end_decoration_fixtures.py`,
+which runs the pinned dedicated server itself (SHA-1 checked) on a new
+world per seed, force-loads End chunks (`execute in minecraft:the_end run
+forceload add`), saves and reads the region files back (26.3's chunk
+format, palettes included):
+
+- `chunks`: every chunk of a 34 x 34 grid out past the void (the interior
+  of the 36 x 36 force-loaded, so every neighbour was decorated too), with
+  the biome Java stored at its middle, the count and an FNV-1a hash of its
+  end stone (the terrain and `end_island_decorated`), the count and hash of
+  its chorus blocks, and whether any other block (an End city) is there
+  (none is);
+- `chorus_bases`: the grid's chorus plants standing on end stone;
+- `gateways`: every `end_gateway` in the grid and in `gateway_chunks`, the
+  fully generated chunks within 128 of the centre where
+  `end_gateway_return`'s rarity filter passes (computed by the tool with
+  `WorldgenRandom`).
+
+Regenerate and compare with (JDK 25 on `PATH`, 10 GB of memory, a few
+minutes):
+
+```sh
+python3 tools/extract_java_end_decoration_fixtures.py /path/to/server.jar --output target/java-end-decoration.json
+diff tests/fixtures/java/26.3/end_decoration.json target/java-end-decoration.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib world::end::decoration'
+```
+
+Generation 7 must match every chunk's end stone and every return gateway,
+and the chorus of every chunk whose plants can't meet a neighbour's (where
+they can, Java's result depends on the order its server decorated the two
+chunks; the test reports those). See the
+[record](../../../../docs/verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md).
+
+## Decoration beside End cities (v1.0 gap-closing Track 4c)
+
+`end_city_decoration.json` extends the End's decoration to grids that
+contain End cities. The same tool, run with `--cities`, starts the pinned
+server on a new world per seed (0 and 42), finds the End city nearest two
+points per seed with Java's own `locate structure minecraft:end_city`,
+force-loads the 15 x 15 chunks around each city's start chunk, saves and
+reads back:
+
+- `cities`: every `end_city` start the compared 13 x 13 chunks reference,
+  with its pieces in Java's order (template, rotation, `OW`, box);
+- `chunks`: the rows of `end_decoration.json`, plus the end stone and the
+  chorus of the columns outside every piece's box;
+- `chorus_bases` and `gateways` in the grid (there are none).
+
+```sh
+python3 tools/extract_java_end_decoration_fixtures.py /path/to/server.jar --cities --output target/java-end-cities.json
+diff tests/fixtures/java/26.3/end_city_decoration.json target/java-end-cities.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib world::end::decoration'
+```
+
+Generation 7 must lay out every piece exactly as Java's, match the end
+stone outside the pieces everywhere and in full away from the cities, and
+match the chorus of every chunk whose plants can't meet a neighbour's,
+beside and under the cities included. See the
+[record](../../../../docs/verification/2026-11-27-v1.0-gap-track-04c-end-final.md).
+
+## The Ender Dragon's flight (v1.0 gap-closing Track 4b)
+
+`dragon_flight.json` holds Java 26.3's `EnderDragon.aiStep` flight, tick by
+tick, written by `tools/extract_java_dragon_flight_fixtures.py`, which runs
+the pinned server on a new superflat world with ticking frozen (and
+`pause-when-empty-seconds=-1`, so the empty server keeps ticking), summons
+dragons with a `DragonPhase`, `Motion` and `Rotation`, and after each `tick
+step 1` reads their `Pos`, `Motion`, `Rotation` and `Health`:
+
+- `hover`: `HOVERING` (fly speed 1), summoned moving and turned away,
+  flying back to where it stood on its first tick, 400 ticks;
+- `dying`: `DYING` (fly speed 3) with no fight, flying to the top of
+  (0, 0) (the grass, y -60) until it dies within 10 blocks, 379 ticks.
+
+Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_dragon_flight_fixtures.py /path/to/server.jar --output target/java-dragon-flight.json
+diff tests/fixtures/java/26.3/dragon_flight.json target/java-dragon-flight.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib entity::dragon::tests::the_dragon_flies_as_javas_ai_step'
+```
+
+The flight must match every tick's position and motion within 1e-9 and yaw
+within 1e-4 degrees.
+
 ## Generation 5 Overworld (v0.16 Track D)
 
 `gen5_overworld.json` holds the generation 5 facts v0.16 Track D follows:
@@ -1712,6 +1825,42 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib nether_generati
 and the tags against the file both ways
 ([record](../../../../docs/verification/2026-11-25-v1.0-track-08-generation.md)).
 
+v1.0 gap Track 5 added the Nether's surface rules to the same file: 26.3's
+`worldgen/material_rule/nether.json` with the `bedrock_floor` and
+`bedrock_roof` rules and the `on_floor`, `under_floor` and `under_ceiling`
+conditions it names (`material_rules`, `material_conditions`),
+`worldgen/noise_settings/nether.json` without its noise router
+(`noise_settings`), and the seven noises the rules read (`surface_noises`).
+The earlier keys regenerate unchanged. `nether_surface_tests` runs the rule
+JSON as `MaterialSystem` would over a million combinations of biome,
+height, stone depths, surface depth and noise values and compares
+`world::nether_surface`, checks each noise's 26.3 parameters are the
+1.21 layout's parity parameters, and `nether_order_tests` sorts the biomes'
+feature lists as `FeatureSorter` does and compares generation 7's order
+([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-05-nether-portals.md)).
+
+## Portal travel (v1.0 gap Track 5)
+
+`portals.json` is `tools/extract_java_portal_fixtures.py`, which compiles
+`tools/JavaPortalVectors.java` against the jar and records what the jar's
+own code returns: `PortalForcer`'s search radii, the default
+`WorldBorder`'s bounds with `isWithinBounds` and `clampToBounds` for sample
+positions, `PortalShape.getRelativePosition` for sample entry rectangles,
+positions and entity sizes, and `BlockUtil.getLargestRectangleAround` for
+sample portal shapes; and each dimension type's coordinate scale and
+heights. It needs `javac` and `java` (JDK 25):
+
+```sh
+python3 tools/extract_java_portal_fixtures.py /path/to/server.jar --output target/java-portals.json
+diff tests/fixtures/java/26.3/portals.json target/java-portals.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib portal'
+```
+
+`world::portal`'s `java_tests` check the border, the rectangles and the
+relative positions against it; `terrain::portal_corpus` takes a trip each
+way on the corpus seeds
+([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-05-nether-portals.md)).
+
 ## The bastion catalogue (v1.0 Track 8)
 
 `bastion_catalogue.json` is `tools/extract_java_structure_catalogues.py`
@@ -1733,3 +1882,28 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib structure_catal
 Java's pools; `structure_catalogue_tests` checks both against this file,
 and the painted templates' counts and connector positions against the
 piece lines ([record](../../../../docs/verification/2026-11-25-v1.0-track-08-generation.md)).
+
+## Item models
+
+`item_models.json` records how Java 26.3 draws every item in a slot with
+no components set: the GUI leaf of its item model definition
+(`assets/minecraft/items/<id>.json`, following a `select`'s `gui` case or
+fallback, a `condition`'s `on_false`, a `range_dispatch`'s fallback and a
+`composite`'s first model), as `flat` (its `models/` parent chain reaches
+`builtin/generated`, with the `layer0` texture), `block` (it reaches a model
+with elements) or `special` (a special renderer: chests, beds' heads,
+banners, shields, heads, shulker boxes, the conduit, the decorated pot,
+copper golem statues). The extractor reads only the pinned client jar
+([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-06-items-utilities.md)).
+
+```sh
+python3 tools/extract_java_item_model_fixtures.py /path/to/client.jar --output target/item-models.json
+diff tests/fixtures/java/26.3/item_models.json target/item-models.json
+```
+
+`tests/java_item_models.rs` checks every Java item id the game resolves
+against it: each is a sprite or 3D exactly as in Java, except the listed
+items that still differ (doors, lanterns, chains and a dozen more Java
+draws as sprites of item textures the game doesn't have; beds, banners,
+the shield and two plants Java draws in 3D), and the list stays exact.
+

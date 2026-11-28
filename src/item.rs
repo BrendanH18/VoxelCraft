@@ -363,6 +363,10 @@ pub enum Sprite {
     FireworkStar,
     /// v0.16 Track C: the Wither's Nether star.
     NetherStar,
+    /// v1.0 gap track 6: the back and the front of an open bundle of this
+    /// colour, drawn behind and over its selected stack in a slot.
+    BundleOpenBack([u8; 3]),
+    BundleOpenFront([u8; 3]),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1753,6 +1757,10 @@ impl Item {
     /// Texture layer of the flat inventory icon (non-block items only), in
     /// the item icon range from `tex::ITEM_BASE`.
     pub fn icon_layer(self) -> Option<u16> {
+        // v1.0 gap track 6b: block items Java draws as sprites of their own.
+        if let Some(i) = crate::content::block_item_sprites::index(self) {
+            return Some(tex::item_layer(block_item_icon_base() + i));
+        }
         if self == crate::world::trial::TRIAL_CHAMBERS_MAP {
             return Some(crate::world::trial::MAP_TEX);
         }
@@ -2384,10 +2392,78 @@ impl Item {
     }
 }
 
+/// v1.0 gap track 6: the block whose model a stack is drawn with as an
+/// icon, a dropped item, a held item or a framed one (a copper golem statue
+/// in its pose), or `None` when it is drawn as a flat sprite: its item
+/// icon, or the block's own sprite for a flat block item.
+pub fn model_block(stack: &crate::inventory::Stack) -> Option<crate::world::block::Block> {
+    if crate::content::item_models::has_mesh(stack.item) {
+        return None;
+    }
+    crate::world::copper_golem_statue::item_model(*stack).or_else(|| stack.item.block()).filter(|b| !b.flat_icon())
+}
+
+/// v1.0 gap track 6b: whether a stack is drawn in 3D (a block model or an
+/// item mesh, `content::item_models`) rather than as a flat sprite.
+pub fn drawn_3d(stack: &crate::inventory::Stack) -> bool {
+    model_block(stack).is_some() || crate::content::item_models::has_mesh(stack.item)
+}
+
 /// Layer of a status effect's icon: in the item icon array, after every
 /// item and the compass and clock frames.
 pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
     tex::item_layer(icon_count() as u16 + animated_icons() as u16 + effect as u16)
+}
+
+/// v1.0 gap track 6: the open-bundle icons, after the status effects: each
+/// bundle's back then front, plain first (`bundle_open_back` and
+/// `bundle_open_front` in Java's item models).
+pub const OPEN_BUNDLE_ICONS: u32 = 2 * (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST) as u32;
+
+/// The first open-bundle icon's index in the item icon array.
+pub fn open_bundle_icon_base() -> u16 {
+    (icon_count() + animated_icons() + crate::simulation::effects::Effect::ALL.len() as u32) as u16
+}
+
+/// v1.0 gap track 6: the layers of bundle `item`'s open back and front.
+pub fn open_bundle_layers(item: Item) -> Option<(u16, u16)> {
+    let i =
+        item.0.checked_sub(crate::content::bundle::ITEM_FIRST).filter(|_| crate::content::bundle::is_bundle(item))?;
+    let back = open_bundle_icon_base() + 2 * i;
+    Some((tex::item_layer(back), tex::item_layer(back + 1)))
+}
+
+/// The open-bundle sprite on item icon `index` past the status effects.
+pub fn open_bundle_sprite(index: u16) -> Option<Sprite> {
+    let i = index.checked_sub(open_bundle_icon_base())?;
+    let item = Item(crate::content::bundle::ITEM_FIRST + i / 2);
+    let Sprite::Bundle(c) = crate::content::bundle::is_bundle(item).then(|| item.info().sprite)? else { return None };
+    Some(if i % 2 == 0 { Sprite::BundleOpenBack(c) } else { Sprite::BundleOpenFront(c) })
+}
+
+/// v1.0 gap track 6b: the first icon of the block items Java draws as
+/// sprites (`content::block_item_sprites`), after the open bundles.
+pub fn block_item_icon_base() -> u16 {
+    open_bundle_icon_base() + OPEN_BUNDLE_ICONS as u16
+}
+
+impl Item {
+    /// The layer an item drawn flat shows (a slot icon, a held or dropped
+    /// sprite): its own icon, or a flat block item's block sprite.
+    pub fn flat_layer(self) -> Option<u16> {
+        if let Some(i) = crate::content::block_item_sprites::index(self) {
+            return Some(tex::item_layer(block_item_icon_base() + i));
+        }
+        self.block().map(|b| b.info().tex[0]).or_else(|| self.icon_layer())
+    }
+}
+
+/// v1.0 gap track 6b: whether a stack draws translucent held, dropped or
+/// framed: Java gives a block item its block's chunk layer
+/// (`ItemBlockRenderTypes`), so stained glass and its panes, tinted glass,
+/// ice, slime and honey blocks blend; plain glass is cut out.
+pub fn translucent(stack: &crate::inventory::Stack) -> bool {
+    stack.item.block().is_some_and(crate::world::block::Block::item_translucent)
 }
 
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
@@ -2588,12 +2664,24 @@ mod tests {
 
     #[test]
     fn icon_layers_fit_the_texture_array() {
+        // v1.0 gap track 6b: the oak door (the one plain item among the block
+        // items drawn as sprites) shows its new sprite, after the open
+        // bundles; its old icon keeps its slot in the array.
+        let door = crate::content::block_item_sprites::index(Item::OAK_DOOR).unwrap();
+        assert_eq!(Item::OAK_DOOR.icon_layer(), Some(tex::item_layer(block_item_icon_base() + door)));
+        let layer = |i: Item| {
+            if crate::content::block_item_sprites::index(i).is_some() {
+                sprite_index(i).map(tex::item_layer)
+            } else {
+                i.icon_layer()
+            }
+        };
         // Maps and v0.16 Track A's items draw their own texture layers.
         // So does v0.16 Track G's End crystal.
         for i in Item::all_items().filter(|i| {
             !i.is_map() && !crate::content::chorus::is_item(*i) && *i != crate::entity::crystal::END_CRYSTAL
         }) {
-            let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
+            let index = tex::item_index(layer(i).unwrap()).unwrap();
             assert!((index as u32) < icon_count());
 
             assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
@@ -2603,7 +2691,7 @@ mod tests {
             .filter(|i| {
                 !i.is_map() && !crate::content::chorus::is_item(*i) && *i != crate::entity::crystal::END_CRYSTAL
             })
-            .map(|i| i.icon_layer().unwrap())
+            .map(|i| layer(i).unwrap())
             .collect();
         assert_eq!(layers.len() as u32, icon_count());
         assert_eq!(Item::SUSPICIOUS_STEW.icon_layer(), Item::MUSHROOM_STEW.icon_layer());

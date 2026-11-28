@@ -30,6 +30,7 @@ impl Entities {
             if let Some(v) = &mut mob.villager {
                 v.sleeping = false;
                 v.trading = false;
+                v.customer = None;
                 v.fleeing = false;
                 v.goal = None;
             }

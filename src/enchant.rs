@@ -702,6 +702,7 @@ impl Enchants {
 
 /// Java's `java.util.Random` (and Minecraft's legacy random source): the
 /// enchanting table's offers come from it, seeded per player.
+#[derive(Clone)]
 pub struct JavaRandom(u64);
 
 const MULTIPLIER: u64 = 0x5_DEEC_E66D;
@@ -746,6 +747,13 @@ impl JavaRandom {
 
     pub fn next_float(&mut self) -> f32 {
         self.next(24) as f32 / (1 << 24) as f32
+    }
+
+    /// `Random.nextDouble`: 26 then 27 bits, scaled by 2^-53.
+    pub fn next_double(&mut self) -> f64 {
+        let high = i64::from(self.next(26));
+        let low = i64::from(self.next(27));
+        ((high << 27) + low) as f64 * (1.0 / (1u64 << 53) as f64)
     }
 }
 
@@ -1281,13 +1289,19 @@ pub enum Creature {
 /// sharpness 0.5 per level + 0.5; smite and bane 2.5 per level).
 pub fn damage_bonus(held: Enchants, target: Creature) -> f32 {
     let sharp = held.level(Enchantment::Sharpness);
-    let mut bonus = if sharp > 0 { 0.5 * sharp as f32 + 0.5 } else { 0.0 };
-    bonus += match target {
+    let bonus = if sharp > 0 { 0.5 * sharp as f32 + 0.5 } else { 0.0 };
+    bonus + creature_damage_bonus(held, target)
+}
+
+/// The part of [`damage_bonus`] the target decides: Smite's 2.5 a level
+/// against `#sensitive_to_smite` and Bane of Arthropods' against
+/// `#sensitive_to_bane_of_arthropods`.
+pub fn creature_damage_bonus(held: Enchants, target: Creature) -> f32 {
+    match target {
         Creature::Undead => 2.5 * held.level(Enchantment::Smite) as f32,
         Creature::Arthropod => 2.5 * held.level(Enchantment::BaneOfArthropods) as f32,
         Creature::Other => 0.0,
-    };
-    bonus
+    }
 }
 
 /// Extra mining speed from efficiency (Java: level² + 1, on the right tool).

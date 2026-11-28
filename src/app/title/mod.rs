@@ -38,6 +38,7 @@ mod home;
 mod multiplayer;
 mod prompts;
 mod recover;
+mod rules;
 mod select;
 mod update;
 mod worlds;
@@ -58,6 +59,8 @@ pub(crate) struct NewWorld {
     pub mode: GameMode,
     pub difficulty: Difficulty,
     pub hardcore: bool,
+    /// v1.0 final F6: the More tab's game rules (boxed: they are large).
+    pub rules: Box<voxelcraft::rules::GameRules>,
 }
 
 /// What the title screen asks the app to do.
@@ -668,6 +671,7 @@ impl Title {
             ui,
             rain: 0.0,
             night_vision: 0.0,
+            darkness: crate::render::Darkness::default(),
             // v0.18 Track 2: Java blurs what is behind the title screens
             // (`Screen.extractBlurredBackground`) by Menu Background Blur.
             blur: self.blur(),

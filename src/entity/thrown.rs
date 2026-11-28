@@ -52,6 +52,40 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// v1.0 gap Track 8e: the saved id (append-only).
+    fn id(self) -> u8 {
+        match self {
+            Kind::Snowball => 0,
+            Kind::Egg => 1,
+            Kind::LlamaSpit => 2,
+            Kind::WindCharge => 3,
+            Kind::BreezeWindCharge => 4,
+            Kind::ExperienceBottle => 5,
+            Kind::BlueEgg => 6,
+            Kind::BrownEgg => 7,
+        }
+    }
+
+    fn from_id(id: u64) -> Option<Self> {
+        Some(match id {
+            0 => Kind::Snowball,
+            1 => Kind::Egg,
+            2 => Kind::LlamaSpit,
+            3 => Kind::WindCharge,
+            4 => Kind::BreezeWindCharge,
+            5 => Kind::ExperienceBottle,
+            6 => Kind::BlueEgg,
+            7 => Kind::BrownEgg,
+            _ => return None,
+        })
+    }
+
+    /// v1.0 gap Track 8d: the box (`EntityTypes`): 0.25 square, a wind
+    /// charge's 0.3125.
+    pub fn size(self) -> f64 {
+        if self.is_wind() { 0.3125 } else { 0.25 }
+    }
+
     pub fn is_wind(self) -> bool {
         matches!(self, Kind::WindCharge | Kind::BreezeWindCharge)
     }
@@ -157,15 +191,74 @@ pub struct Thrown {
     pub shooter: Option<u32>,
     pub pos: DVec3,
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(crate) vel: DVec3,
     age: f32,
     origin: DVec3,
+    /// v1.0 gap Track 8b: who llama spit already hit on its way through
+    /// (mob uids, players as `u32::MAX - id`), standing in for their hurt
+    /// cooldown (`invulnerableTime`), which refuses the same spit's 1 again.
+    spat_on: [Option<u32>; 4],
+    /// v1.0 gap Track 8d: `remainingFireTicks`. Every kind but llama spit
+    /// applies block effects (`ThrowableProjectile.tick`,
+    /// `AbstractHurtingProjectile.tick`), so fire and lava set it alight,
+    /// and water and rain put it out; a burning one is drawn with Java's
+    /// flame and lights what its block hit lights. Saved (v1.0 gap Track
+    /// 8e), as Java's `Fire`.
+    fire: u16,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 impl Thrown {
+    /// v1.0 gap Track 8e: the level file's copy, with its fire.
+    pub(super) fn save(&self) -> serde_json::Value {
+        use super::saved_projectiles::{owner_json, v3};
+        serde_json::json!({
+            "kind": self.kind.id(),
+            "owner": owner_json(super::projectile::owner_of(self.owner, None)),
+            "shooter": self.shooter,
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "age": self.age,
+            "origin": v3(self.origin),
+            "fire": self.fire,
+        })
+    }
+
+    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        let pos = s::read_v3(&v["pos"])?;
+        Some(Self {
+            portal_cooldown: 0,
+            kind: Kind::from_id(v["kind"].as_u64()?)?,
+            owner: s::player_of(s::read_owner(&v["owner"])),
+            shooter: v["shooter"].as_u64().and_then(|u| u32::try_from(u).ok()),
+            pos,
+            previous_pos: pos,
+            vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
+            age: s::read_f32(v, "age", 0.0).clamp(0.0, MAX_FLIGHT),
+            origin: s::read_v3(&v["origin"]).unwrap_or(pos),
+            spat_on: [None; 4],
+            fire: s::read_fire(v),
+        })
+    }
+
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(kind: Kind, pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { kind, owner: None, shooter: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0, origin: pos }
+        Self {
+            portal_cooldown: 0,
+            kind,
+            owner: None,
+            shooter: None,
+            pos,
+            previous_pos,
+            vel: DVec3::ZERO,
+            age: 0.0,
+            origin: pos,
+            spat_on: [None; 4],
+            fire: 0,
+        }
     }
 
     /// A llama spits from `from` at `target` (Java: 1.5 blocks a tick, inaccuracy 10).
@@ -176,6 +269,7 @@ impl Thrown {
         let mut wobble = || rng.range(-0.0172, 0.0172) as f64 * 10.0 * 0.5;
         let dir = aim.normalize_or(DVec3::X) + DVec3::new(wobble(), wobble(), wobble()) * 0.1;
         Self {
+            portal_cooldown: 0,
             kind: Kind::LlamaSpit,
             owner: None,
             shooter: Some(shooter),
@@ -184,6 +278,8 @@ impl Thrown {
             vel: dir.normalize() * SPEED,
             age: 0.0,
             origin: from,
+            spat_on: [None; 4],
+            fire: 0,
         }
     }
 
@@ -199,6 +295,7 @@ impl Thrown {
         let d = dir.normalize_or(DVec3::X);
         let aim = d + DVec3::new(gauss(), gauss(), gauss()) * 0.0075 * inaccuracy;
         Self {
+            portal_cooldown: 0,
             kind: Kind::BreezeWindCharge,
             owner: None,
             shooter: Some(shooter),
@@ -207,6 +304,8 @@ impl Thrown {
             vel: aim * super::wind::BREEZE_SPEED,
             age: 0.0,
             origin: from,
+            spat_on: [None; 4],
+            fire: 0,
         }
     }
 
@@ -219,6 +318,7 @@ impl Thrown {
             let vel = shot_movement(heading, BOTTLE_POWER, BOTTLE_UNCERTAINTY, rng) * 20.0 + carry;
             let pos = eye - DVec3::Y * 0.1;
             return Self {
+                portal_cooldown: 0,
                 kind,
                 owner: Some(owner),
                 shooter: None,
@@ -227,12 +327,15 @@ impl Thrown {
                 vel,
                 age: 0.0,
                 origin: pos,
+                spat_on: [None; 4],
+                fire: 0,
             };
         }
         let mut wobble = || rng.range(-0.017, 0.017) as f64;
         let aim = dir.normalize_or(DVec3::X) + DVec3::new(wobble(), wobble(), wobble());
         let pos = eye - DVec3::Y * 0.1;
         Self {
+            portal_cooldown: 0,
             kind,
             owner: Some(owner),
             shooter: None,
@@ -241,6 +344,8 @@ impl Thrown {
             vel: aim.normalize() * SPEED + carry,
             age: 0.0,
             origin: pos,
+            spat_on: [None; 4],
+            fire: 0,
         }
     }
 
@@ -248,7 +353,19 @@ impl Thrown {
     /// along the facing `step`.
     pub fn dispensed(kind: Kind, pos: DVec3, step: DVec3, power: f64, uncertainty: f64, rng: &mut Rng) -> Self {
         let vel = shot_movement(step, power, uncertainty, rng) * 20.0;
-        Self { kind, owner: None, shooter: None, pos, previous_pos: pos, vel, age: 0.0, origin: pos }
+        Self {
+            portal_cooldown: 0,
+            kind,
+            owner: None,
+            shooter: None,
+            pos,
+            previous_pos: pos,
+            vel,
+            age: 0.0,
+            origin: pos,
+            spat_on: [None; 4],
+            fire: 0,
+        }
     }
 
     /// Velocity in blocks per second.
@@ -256,14 +373,25 @@ impl Thrown {
         self.vel
     }
 
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
+    /// v1.0 gap Track 8d: a LAN client's copy burns as the host says.
+    pub fn set_burning(&mut self, burning: bool) {
+        self.fire = if burning { self.fire.max(1) } else { 0 };
+    }
+
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn update<W: BlockSource + ?Sized>(
+    pub(super) fn update<W: super::MobWorld + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
         mobs: &mut [Mob],
         index: &super::mob_index::MobIndex,
         players: &[super::Target],
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -287,12 +415,34 @@ impl Thrown {
             self.vel.y -= self.kind.gravity() * 400.0 * dt;
         }
         let delta = self.vel * dt;
+        // v1.0 gap Track 8d: `applyEffectsFromBlocks` along the move, then
+        // `baseTick` burns it down a tick.
+        if self.kind != Kind::LlamaSpit {
+            let size = self.kind.size();
+            super::projectile::tick_fire(&mut self.fire, world, self.pos, self.pos + delta, size / 2.0, size);
+        }
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
+        // v1.0 gap Track 8: the End crystal this spit broke this tick.
+        let mut spat = None;
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
+                // v1.0 gap Track 8d: `Projectile.onHitBlock`'s
+                // `onProjectileHit` (a burning one lights candles and
+                // campfires and primes TNT).
+                let (at, normal) = face_hit(world, self.pos, next);
+                if self.kind != Kind::LlamaSpit {
+                    events.push(EntityEvent::ProjectileBlockHit {
+                        cell: next.floor().as_ivec3(),
+                        pos: at,
+                        normal: normal.as_ivec3(),
+                        arrow: false,
+                        burning: self.burning(),
+                        mob_owned: self.shooter.is_some(),
+                        by: super::projectile::owner_of(self.owner, self.shooter),
+                    });
+                }
                 if self.kind == Kind::ExperienceBottle {
-                    let (at, normal) = face_hit(world, self.pos, next);
                     self.pos = at;
                     self.bottle_burst(at, normal, rng, events);
                     return false;
@@ -327,25 +477,42 @@ impl Thrown {
                         knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
                         cause: if self.kind == Kind::BreezeWindCharge {
                             crate::simulation::damage::Cause::BREEZE_WIND_CHARGE
+                        } else if let Some(owner) = self.owner {
+                            // v1.0 gap Track 8f: named after its thrower.
+                            crate::simulation::damage::Cause::PLAYER_WIND_CHARGE
+                                .by(Some(crate::entity::trident::Owner::Player(owner)))
                         } else {
                             crate::simulation::damage::Cause::WIND_CHARGE
                         },
                     });
+                    // v1.0 gap Track 2g: the breeze is the player's `lastHurtByMob`.
+                    if let Some(attacker) = self.shooter {
+                        events.push(EntityEvent::OwnerHurt { player: t.id, attacker });
+                    }
                 }
                 self.burst(self.pos, events);
                 return false;
             }
+            // v1.0 gap Track 8b: `LlamaSpit.onHitEntity` hurts a player and
+            // never discards the spit, which flies on (only blocks stop it).
             if self.kind == Kind::LlamaSpit
-                && let Some(t) = players.iter().find(|t| t.targetable && t.contains(next))
+                && let Some(t) =
+                    players.iter().find(|t| t.targetable && t.contains(next) && !self.spat_on(u32::MAX - t.id.0))
             {
-                events.push(EntityEvent::PlayerHit {
-                    java: None,
-                    player: t.id,
-                    damage: 1.0,
-                    knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
-                    cause: crate::simulation::damage::Cause::LLAMA_SPIT,
-                });
-                return false;
+                self.spit_on(u32::MAX - t.id.0);
+                if self.llama_lives(mobs) {
+                    events.push(EntityEvent::PlayerHit {
+                        java: None,
+                        player: t.id,
+                        damage: 1.0,
+                        knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
+                        cause: crate::simulation::damage::Cause::LLAMA_SPIT,
+                    });
+                    if let Some(attacker) = self.shooter {
+                        events.push(EntityEvent::OwnerHurt { player: t.id, attacker });
+                    }
+                }
+                continue;
             }
             let mut hit = None;
             // All mob boxes are at most four blocks high/two blocks wide.
@@ -361,6 +528,7 @@ impl Thrown {
                 if m.alive()
                     && !source
                     && Some(m.uid) != self.shooter
+                    && !(self.kind == Kind::LlamaSpit && self.spat_on(m.uid))
                     && next.cmpge(min).all()
                     && next.cmple(max).all()
                     && hit.is_none_or(|j| i < j)
@@ -368,6 +536,58 @@ impl Thrown {
                     hit = Some(i);
                 }
             });
+            // v1.0 gap Track 8: `LlamaSpit.onHitEntity` hurts what it hits
+            // by 1 (`spit`) while its llama lives (`getOwner` is a
+            // `LivingEntity`), and isn't stopped by it: an End crystal
+            // breaks (`EndCrystal.hurtServer`, any source but a dragon) and
+            // the spit flies on. It can't hurt a dragon (not a player's), so
+            // passes its parts.
+            if hit.is_none()
+                && self.kind == Kind::LlamaSpit
+                && let Some(crystal) = boss.crystal_at(next).filter(|&c| spat != Some(c))
+                && self.llama_lives(mobs)
+            {
+                spat = Some(crystal);
+                // v1.0 gap Track 8b: the crystal's blast names the llama
+                // (`explosion(crystal, llama)`).
+                let llama = mobs.iter().find(|m| Some(m.uid) == self.shooter).map(|m| m.kind);
+                let blow = super::dragon::Blow::projectile(1.0, false).blamed_on(llama);
+                events.push(EntityEvent::DragonStruck { hit: crystal, blow, by: None });
+            }
+            // v1.0 gap Track 4c: an End crystal or a dragon part
+            // (`EnderDragonPart` is pickable; wind charges pass crystals,
+            // `AbstractWindCharge.canHitEntity`).
+            if hit.is_none()
+                && self.kind != Kind::LlamaSpit
+                && let Some(struck) = boss.hit_at(next, !self.kind.is_wind())
+            {
+                self.pos = next;
+                // `ThrownExperienceBottle` has no `onHitEntity`: it only bursts.
+                if self.kind == Kind::ExperienceBottle {
+                    self.bottle_burst(next, -self.vel, rng, events);
+                    return false;
+                }
+                // `Snowball`, `ThrownEgg`: `hurt(thrown, 0)`, which breaks a
+                // crystal and does nothing to a dragon (`EnderDragon.hurt`
+                // refuses under 0.01); a wind charge's one point, which only
+                // a player's takes from the dragon.
+                let blow = match self.kind {
+                    Kind::WindCharge | Kind::BreezeWindCharge => {
+                        super::dragon::Blow::wind_charge(self.kind == Kind::BreezeWindCharge, self.owner.is_some())
+                    }
+                    _ => super::dragon::Blow::projectile(0.0, self.owner.is_some()),
+                };
+                // v1.0 gap Track 8b: a mob's (a snow golem's snowball, a
+                // breeze's charge) names it in a crystal's blast.
+                let thrower =
+                    self.shooter.and_then(|uid| mobs.iter().find(|m| m.uid == uid && m.alive()).map(|m| m.kind));
+                let blow = blow.blamed_on(thrower);
+                if !struck.is_dragon() || blow.damage > 0.0 {
+                    events.push(EntityEvent::DragonStruck { hit: struck, blow, by: self.owner });
+                }
+                self.impact(next, rng, events);
+                return false;
+            }
             if let Some(i) = hit {
                 let mob = &mut mobs[i];
                 // `Breeze.deflection`: every projectile but wind charges
@@ -399,7 +619,13 @@ impl Thrown {
                 };
                 let kind = mob.kind;
                 let pos = mob.pos;
-                let killed = mob.damage(damage, Some(push), rng);
+                // v1.0 gap Track 8b: spit hurts a mob only while its llama
+                // lives (`getOwner() instanceof LivingEntity`), and flies on.
+                let spit = self.kind == Kind::LlamaSpit;
+                let uid = mob.uid;
+                let lives = spit && self.shooter.is_some_and(|s| mobs.iter().any(|m| m.uid == s && m.alive()));
+                let mob = &mut mobs[i];
+                let killed = (!spit || lives) && mob.damage(damage, Some(push), rng);
                 if killed {
                     events.push(EntityEvent::MobKilled {
                         kind,
@@ -409,11 +635,29 @@ impl Thrown {
                         looting: 0,
                     });
                 }
+                if spit {
+                    self.spit_on(uid);
+                    continue;
+                }
                 self.impact(pos, rng, events);
                 return false;
             }
         }
         self.age < MAX_FLIGHT && self.pos.y > -128.0
+    }
+
+    /// Llama spit's llama is still there (`getOwner()` resolves).
+    fn llama_lives(&self, mobs: &[Mob]) -> bool {
+        self.shooter.is_some_and(|uid| mobs.iter().any(|m| m.uid == uid && m.alive()))
+    }
+
+    fn spat_on(&self, key: u32) -> bool {
+        self.spat_on.contains(&Some(key))
+    }
+
+    fn spit_on(&mut self, key: u32) {
+        self.spat_on.rotate_right(1);
+        self.spat_on[0] = Some(key);
     }
 
     fn burst(&self, pos: DVec3, events: &mut Vec<EntityEvent>) {
@@ -437,6 +681,26 @@ impl Thrown {
         if self.kind.is_wind() {
             self.burst(pos, events);
             return;
+        }
+        // v1.0 gap Track 2g: entity event 3: eight `ItemParticleOption`
+        // particles of the thrown item (`Snowball` still, `ThrownEgg` up to
+        // 0.04 a tick each way), drawn from the client's own random.
+        let item = match self.kind {
+            Kind::Snowball => Some(Item::SNOWBALL),
+            Kind::Egg => Some(Item::EGG),
+            Kind::BlueEgg => Some(crate::content::farm_variant::BLUE_EGG),
+            Kind::BrownEgg => Some(crate::content::farm_variant::BROWN_EGG),
+            _ => None,
+        };
+        if let Some(item) = item {
+            let mut local =
+                Rng::new(pos.x.to_bits() ^ pos.y.to_bits().rotate_left(13) ^ pos.z.to_bits().rotate_left(29));
+            for _ in 0..8 {
+                let mut spread =
+                    || if item == Item::SNOWBALL { 0.0 } else { (f64::from(local.next_f32()) - 0.5) * 0.08 };
+                let vel = DVec3::new(spread(), spread(), spread());
+                events.push(EntityEvent::ItemParticle { pos, vel, item });
+            }
         }
         if let Some(variant) = self.kind.egg_variant()
             && let count = hatch_count(rng)
@@ -472,7 +736,16 @@ mod tests {
             index.rebuild(std::slice::from_ref(&mob));
             let mut hit = false;
             for _ in 0..8 {
-                if !thrown.update(0.05, &world, std::slice::from_mut(&mut mob), &index, &[], rng, &mut events) {
+                if !thrown.update(
+                    0.05,
+                    &world,
+                    std::slice::from_mut(&mut mob),
+                    &index,
+                    &[],
+                    &Default::default(),
+                    rng,
+                    &mut events,
+                ) {
                     hit = true;
                     break;
                 }
@@ -511,7 +784,7 @@ mod tests {
         index.rebuild(&mobs);
         let mut events = Vec::new();
         for _ in 0..8 {
-            if !t.update(0.05, &world, &mut mobs, &index, &[], &mut rng, &mut events) {
+            if !t.update(0.05, &world, &mut mobs, &index, &[], &Default::default(), &mut rng, &mut events) {
                 break;
             }
         }
@@ -535,7 +808,7 @@ mod tests {
         let index = super::super::mob_index::MobIndex::default();
         let mut events = Vec::new();
         let mut steps = 0;
-        while t.update(0.05, &world, &mut [], &index, &[], &mut rng, &mut events) {
+        while t.update(0.05, &world, &mut [], &index, &[], &Default::default(), &mut rng, &mut events) {
             steps += 1;
             assert!(steps < 40);
         }
@@ -560,7 +833,16 @@ mod tests {
         let mut events = Vec::new();
         for _ in 0..4 {
             let index = index_for(&breeze);
-            if !t.update(0.05, &world, std::slice::from_mut(&mut breeze), &index, &[], &mut rng, &mut events) {
+            if !t.update(
+                0.05,
+                &world,
+                std::slice::from_mut(&mut breeze),
+                &index,
+                &[],
+                &Default::default(),
+                &mut rng,
+                &mut events,
+            ) {
                 break;
             }
         }
@@ -577,7 +859,16 @@ mod tests {
         let mut events = Vec::new();
         for _ in 0..4 {
             let index = index_for(&breeze);
-            if !w.update(0.05, &world, std::slice::from_mut(&mut breeze), &index, &[], &mut rng, &mut events) {
+            if !w.update(
+                0.05,
+                &world,
+                std::slice::from_mut(&mut breeze),
+                &index,
+                &[],
+                &Default::default(),
+                &mut rng,
+                &mut events,
+            ) {
                 break;
             }
         }
@@ -616,7 +907,7 @@ mod tests {
         for _ in 0..200 {
             let mut index = super::super::mob_index::MobIndex::default();
             index.rebuild(mobs);
-            if !t.update(0.05, world, mobs, &index, players, &mut rng, &mut events) {
+            if !t.update(0.05, world, mobs, &index, players, &Default::default(), &mut rng, &mut events) {
                 return events;
             }
         }
@@ -648,7 +939,7 @@ mod tests {
         let index = super::super::mob_index::MobIndex::default();
         let mut events = Vec::new();
         for tick in 0..40 {
-            assert!(t.update(0.05, &world, &mut [], &index, &[], &mut rng, &mut events));
+            assert!(t.update(0.05, &world, &mut [], &index, &[], &Default::default(), &mut rng, &mut events));
             v.y -= gravity;
             v *= 0.99;
             pos += v;
@@ -814,5 +1105,42 @@ mod tests {
         // Straight down: x and z stay 0, yd = -sin(90 - 20 degrees).
         let h = heading_from_rotation(DVec3::NEG_Y, -20.0);
         assert!(h.x.abs() < 1e-12 && h.z.abs() < 1e-12 && (h.y + 70f64.to_radians().sin()).abs() < 1e-9, "{h}");
+    }
+
+    /// v1.0 gap Track 8d: a snowball applies block effects
+    /// (`ThrowableProjectile.tick`): through lava it catches fire, and its
+    /// block hit (`onProjectileHit`) carries that, so the TNT it hits is
+    /// primed; water puts it out.
+    #[test]
+    fn a_snowball_through_lava_burns_and_lights_what_it_hits() {
+        use crate::world::block::Block;
+        for (through, lit) in [(Block::LAVA, true), (Block::FIRE, true), (Block::WATER, false), (Block::AIR, false)] {
+            let mut world = Grid::flat(0);
+            world.set(glam::IVec3::new(2, 1, 0), through);
+            world.set(glam::IVec3::new(6, 1, 0), Block::TNT);
+            let mut rng = Rng::new(1);
+            let mut t = Thrown::launch(
+                Kind::Snowball,
+                PlayerId::HOST,
+                DVec3::new(0.5, 1.6, 0.5),
+                DVec3::X,
+                DVec3::ZERO,
+                &mut rng,
+            );
+            if through == Block::WATER {
+                t.fire = 100;
+            }
+            let (index, mut events) = (super::super::mob_index::MobIndex::default(), Vec::new());
+            for _ in 0..10 {
+                if !t.update(0.05, &world, &mut [], &index, &[], &Default::default(), &mut rng, &mut events) {
+                    break;
+                }
+            }
+            let hit = events.iter().find_map(|e| match e {
+                EntityEvent::ProjectileBlockHit { cell, burning, .. } => Some((*cell, *burning)),
+                _ => None,
+            });
+            assert_eq!(hit, Some((glam::IVec3::new(6, 1, 0), lit)), "through {through:?}");
+        }
     }
 }

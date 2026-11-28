@@ -2,12 +2,15 @@
 //! the current tab's settings, and Create New World and Cancel in the
 //! footer. VoxelCraft has the Game tab's name, game mode (Survival,
 //! Hardcore, Creative, cycled as in Java) and difficulty, and the World
-//! tab's seed. Allow Commands, World Type, Customize, Generate Structures,
-//! Bonus Chest and the More tab (Game Rules, Experiments, Data Packs) have
-//! nothing behind them yet and are left out. Re-Create opens it filled from
-//! an existing world.
+//! tab's seed. Allow Commands, World Type, Customize, Generate Structures
+//! and Bonus Chest have nothing behind them yet and are left out. v1.0 final
+//! F6 adds the More tab: Game Rules opens Java's Edit Game Rules, whose
+//! rules the new world starts with; Experiments and Data Packs are greyed
+//! (VoxelCraft has neither). Re-Create opens it filled from an existing
+//! world.
 
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use super::worlds::{Summary, folder_for, parse_seed, seed_text};
 use super::{Action, NewWorld, TitleHost};
@@ -28,15 +31,17 @@ const FOOTER: f32 = 33.0;
 pub(in crate::app) enum Tab {
     Game,
     World,
+    More,
 }
 
 impl Tab {
-    const ALL: [Tab; 2] = [Tab::Game, Tab::World];
+    const ALL: [Tab; 3] = [Tab::Game, Tab::World, Tab::More];
 
     fn title(self) -> &'static str {
         match self {
             Tab::Game => "Game",
             Tab::World => "World",
+            Tab::More => "More",
         }
     }
 }
@@ -103,6 +108,9 @@ pub(in crate::app) enum Id {
     Mode,
     Difficulty,
     Seed,
+    GameRules,
+    Experiments,
+    DataPacks,
     Create,
     Cancel,
 }
@@ -113,6 +121,8 @@ pub(in crate::app) struct CreateWorld {
     seed: TextField,
     mode: Mode,
     difficulty: Difficulty,
+    /// The More tab's game rules, shared with Edit Game Rules.
+    rules: Rc<RefCell<voxelcraft::rules::GameRules>>,
     /// The name and save folder last shown in the tooltip, so drawing
     /// doesn't look at the disk every frame.
     shown_folder: RefCell<(String, String)>,
@@ -126,6 +136,7 @@ impl CreateWorld {
             seed: TextField::new(SEED_MAX).hint("Leave blank for a random seed"),
             mode: Mode::Survival,
             difficulty: Difficulty::Normal,
+            rules: Rc::default(),
             shown_folder: RefCell::default(),
         }
     }
@@ -180,6 +191,7 @@ impl CreateWorld {
             mode: if self.mode == Mode::Creative { GameMode::Creative } else { GameMode::Survival },
             difficulty: self.difficulty(),
             hardcore: self.mode == Mode::Hardcore,
+            rules: Box::new(self.rules.borrow().clone()),
         };
         Action::Play(self.folder(host), Some(new))
     }
@@ -198,6 +210,8 @@ impl CreateWorld {
         let height = match self.tab {
             Tab::Game => 33.0 + 8.0 + BUTTON_H + 8.0 + BUTTON_H,
             Tab::World => 33.0,
+            // Java's More tab: three rows 8 apart.
+            Tab::More => 3.0 * BUTTON_H + 16.0,
         };
         let area = sh - TAB_H - FOOTER;
         (TAB_H + ((area - height) / 6.0).max(2.0)).floor()
@@ -234,6 +248,20 @@ impl<H: TitleHost> Screen<H> for CreateWorld {
                 );
             }
             Tab::World => out.push(Widget::field(Id::Seed, [cx - 154.0, top + 13.0, 308.0, BUTTON_H])),
+            Tab::More => {
+                let row = |i: f32| [cx - 105.0, top + i * (BUTTON_H + 8.0), 210.0, BUTTON_H];
+                out.push(Widget::button(Id::GameRules, row(0.0), "Game Rules"));
+                out.push(
+                    Widget::button(Id::Experiments, row(1.0), "Experiments")
+                        .enabled(false)
+                        .tooltip("VoxelCraft has no experimental features to turn on."),
+                );
+                out.push(
+                    Widget::button(Id::DataPacks, row(2.0), "Data Packs")
+                        .enabled(false)
+                        .tooltip("VoxelCraft has no data packs."),
+                );
+            }
         }
         let y = (sh - FOOTER + (FOOTER - BUTTON_H) / 2.0).floor();
         out.push(Widget::button(Id::Create, [cx - 154.0, y, 150.0, BUTTON_H], "Create New World"));
@@ -247,6 +275,8 @@ impl<H: TitleHost> Screen<H> for CreateWorld {
             Id::Name | Id::Seed | Id::Create => return Step::Out(self.world(host)),
             Id::Mode => self.mode = self.mode.next(),
             Id::Difficulty => self.difficulty = self.difficulty.next(),
+            Id::GameRules => return Step::push(super::rules::EditGameRules::new(Rc::clone(&self.rules))),
+            Id::Experiments | Id::DataPacks => {}
             Id::Cancel => return Step::Pop,
         }
         Step::Stay
@@ -292,6 +322,7 @@ impl<H: TitleHost> Screen<H> for CreateWorld {
         let label = match self.tab {
             Tab::Game => ("World Name", cx - 103.0),
             Tab::World => ("Seed for the world generator", cx - 153.0),
+            Tab::More => return,
         };
         ui.text(label.1, top, label.0, GREY);
     }

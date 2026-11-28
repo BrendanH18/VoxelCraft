@@ -73,6 +73,22 @@ impl Actor<'_> {
         let eye = self.session.player.eye();
         // Java plays the item-break sound as the player (`PLAYERS`).
         self.audio.play_in(SoundSource::Players, Sound::Break(Material::Wood), Some(eye), 0.8, (1.3, 1.5));
+        // v1.0 gap Track 2g: `breakItem`'s five item particles.
+        let forward = self.session.player.forward().as_dvec3();
+        let seed = eye.x.to_bits() ^ eye.z.to_bits().rotate_left(21) ^ u64::from(item.0);
+        for p in crate::particles::living_item_particles(item, eye, forward, 5, seed) {
+            self.world.particles.push(p);
+        }
+    }
+
+    /// v1.0 gap Track 2g: `Consumable.emitParticlesAndSounds`' item particles
+    /// for food (drinks have none).
+    fn eating_particles(&mut self, item: Item, count: u32, seed: u64) {
+        let eye = self.session.player.eye();
+        let forward = self.session.player.forward().as_dvec3();
+        for p in crate::particles::living_item_particles(item, eye, forward, count, seed ^ eye.x.to_bits()) {
+            self.world.particles.push(p);
+        }
     }
 
     /// Attack/mine button pressed or released. `hit_player` is whether the
@@ -177,7 +193,16 @@ impl Actor<'_> {
             if self.held().is_none_or(|i| i.food().is_none()) {
                 self.hand.swing();
             }
-            let did = self.use_held();
+            let mut did = self.use_held();
+            // v1.0 final track F1: a bow or crossbow in the off-hand draws
+            // when the main hand's use passed.
+            if !did
+                && let Some(shot) =
+                    self.session.start_offhand_draw(self.body.actions.selected, self.world, self.entities)
+            {
+                self.present_shot(shot);
+                did = true;
+            }
             // A click nothing answered raises a spyglass (`SpyglassItem.use`)
             // or a shield held in either hand.
             if !did && self.session.start_scoping(self.body.actions.selected) {
@@ -236,6 +261,7 @@ impl Actor<'_> {
             && !self.session.scoping()
             && !self.session.consuming()
             && !self.session.brushing()
+            && !self.session.bundle_in_use()
             // Buckets, snowballs, eggs and rods act once per click, in either hand.
             && !self.held().is_some_and(once_per_click)
             && !self.body.used_once
@@ -254,9 +280,16 @@ impl Actor<'_> {
             self.hand.swing();
             brush_sound(self.audio, stroke);
         }
+        // v1.0 gap track 6: held use throws a bundle's contents out.
+        if let Some(out) =
+            self.session.tick_bundle_use(self.body.actions.selected, acting && self.body.right_held, self.entities)
+        {
+            bundle_thrown(self.hand, self.audio, out);
+        }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.session.tick_scoping(self.body.actions.selected, acting && self.body.right_held);
-        self.eat(acting, dt);
+        self.session.tick_tooting(self.body.actions.selected, acting && self.body.right_held);
+        self.eat(acting);
         if let Some(shot) = self.session.tick_draw(self.body.actions.selected, acting, self.world, self.entities) {
             self.present_shot(shot);
         }
@@ -270,7 +303,7 @@ impl Actor<'_> {
             Ok(Outcome::Broken { cell, block, tool_broken, .. }) => {
                 self.audio.block_break(block, cell);
                 if let Some(item) = tool_broken {
-                    self.popup(format!("{} broke", capitalize(item.name())));
+                    self.tool_broke(item);
                 }
             }
             Ok(Outcome::TeleportedEgg { destination, .. }) => {
@@ -286,7 +319,7 @@ impl Actor<'_> {
     }
 
     /// Held use advances the shared fixed-tick consumption clock.
-    fn eat(&mut self, acting: bool, dt: f64) {
+    fn eat(&mut self, acting: bool) {
         let slot = self.body.actions.selected;
         // Java uses the off-hand only when the main hand's use passes: a
         // click that placed a block doesn't also eat off-hand food.
@@ -321,15 +354,22 @@ impl Actor<'_> {
         };
         // This field is presentation only; progress belongs to the session.
         self.body.actions.eat_timer = f64::from(step.progress) * EAT_TIME;
-        if (before / 0.25).floor() != ((before + dt) / 0.25).floor() {
+        // v1.0 gap Track 2h: on Java's rhythm (`shouldEmitParticlesAndSounds`).
+        if step.effects {
             let eye = self.session.player.eye();
             if held == Some(Item::HONEY_BOTTLE) {
                 self.audio.play(Sound::HoneyDrink, Some(eye), 0.7, (0.9, 1.1));
             } else {
                 self.audio.play(Sound::Step(Material::Snow), Some(eye), 0.7, (1.4, 1.7));
             }
+            if let Some(item) = held.filter(|_| !drink) {
+                self.eating_particles(item, 5, before.to_bits());
+            }
         }
         if let Some(consumed) = step.completed {
+            if !drink {
+                self.eating_particles(consumed.item, 16, before.to_bits() ^ 0x16);
+            }
             // v0.16 Track A: chorus fruit teleports (`CHORUS_FRUIT_TELEPORT`, `PLAYERS`).
             if consumed.item == voxelcraft::content::chorus::CHORUS_FRUIT
                 && let Some(from) = self.session.chorus_teleport(self.world, self.entities)
@@ -380,7 +420,7 @@ impl Actor<'_> {
     fn present_shot(&mut self, shot: Shot) {
         items::shot_sound(self.audio, shot.ranged);
         if let Some(item) = shot.tool_broken {
-            self.popup(format!("{} broke", capitalize(item.name())));
+            self.tool_broke(item);
         }
     }
 
@@ -435,6 +475,7 @@ impl Actor<'_> {
                 audio.play_in(SoundSource::Neutral, Sound::Bow, Some(from), throw.0, throw.1)
             }
             Used::PotionThrown { from } => audio.play(Sound::Bow, Some(from), throw.0, throw.1),
+            Used::HornPlayed { instrument, from } => super::items::horn_sound(audio, instrument, from),
             Used::WindChargeThrown { from } => {
                 let cue = Sound::Breeze(voxelcraft::entity::breeze::Cue::Throw);
                 audio.play_in(SoundSource::Neutral, cue, Some(from), 0.5, throw.1)
@@ -465,7 +506,16 @@ impl Actor<'_> {
             Used::TntPrimed { cell } => {
                 audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05))
             }
-            Used::Ignited { cell, portal } => {
+            // v1.0 gap Track 8f: a fire charge's `FIRECHARGE_USE` (the
+            // blaze's shot, `mob/ghast/fireball4` in Java's sound set), pitch
+            // `(r - r) * 0.2 + 1`.
+            Used::Ignited { cell, portal, charge: true } => {
+                audio.play_in(SoundSource::Blocks, Sound::Fireball, Some(cell.as_dvec3()), 1.0, (0.8, 1.2));
+                if portal {
+                    audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.5, 0.6));
+                }
+            }
+            Used::Ignited { cell, portal, charge: false } => {
                 audio.play(Sound::Place(Material::Stone), Some(cell.as_dvec3()), 0.7, (1.6, 1.9));
                 if portal {
                     audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.5, 0.6));
@@ -479,7 +529,7 @@ impl Actor<'_> {
             // Nearest shared sound for `item.axe.scrape`: a high, scratchy stone step.
             Used::Waxed { cell } => audio.play(Sound::Place(Material::Snow), Some(centre(cell)), 1.0, (0.9, 1.1)),
             Used::Scraped { cell } => audio.play(Sound::Step(Material::Stone), Some(centre(cell)), 1.0, (1.5, 1.8)),
-            Used::Statue { .. } | Used::BrushStarted => {}
+            Used::Statue { .. } | Used::BrushStarted | Used::BundleStarted => {}
             // `CANDLE_EXTINGUISH` and `CAKE_ADD_CANDLE`, from the shared sound set.
             Used::CandleExtinguished { cell } => {
                 audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(centre(cell)), 0.3, (1.8, 2.0))
@@ -499,7 +549,8 @@ impl Actor<'_> {
                 audio.play_in(SoundSource::Blocks, Sound::Step(Material::Gravel), Some(centre(cell)), 1.0, (0.8, 0.9))
             }
             Used::Carved { cell } => audio.play(Sound::Break(Material::Wood), Some(centre(cell)), 0.8, (0.9, 1.1)),
-            Used::BoneMeal { cell } => audio.play(Sound::Place(Material::Grass), Some(centre(cell)), 0.8, (1.2, 1.4)),
+            // v1.0 gap Track 2h: level event 1505's sound is the world's.
+            Used::BoneMeal { .. } => {}
             Used::Utility { cell, effect } => {
                 super::utilities::feedback(audio, cell, effect);
                 self.requests.push(Request::Open(done.used));
@@ -541,15 +592,23 @@ impl Actor<'_> {
 
 /// Buckets, snowballs, eggs and rods act once per click, not again while
 /// the button is held.
-/// Java `BrushItem` plays the block's brush sound each stroke and level
-/// event 3008 the completion sound. These are the nearest original shared
-/// sounds: a light, high scrape of the block's material, then its break.
-fn brush_sound(audio: &mut Audio, stroke: voxelcraft::session::Stroke) {
-    let material = crate::audio::sounds::material(stroke.block);
+/// Java `BrushItem.onUseTick` plays the brushed block's brush sound each
+/// stroke (`BrushableBlock.getBrushSound`, else `BRUSH_GENERIC`; `BLOCKS`,
+/// volume and pitch 1), and level event 3008 its completed sound
+/// (`PLAYERS`, volume and pitch 1) as the find comes free.
+pub(super) fn brush_sound(audio: &mut Audio, stroke: voxelcraft::session::Stroke) {
+    use crate::audio::horns::BrushCue;
     let at = Some(stroke.pos.as_dvec3() + DVec3::splat(0.5));
-    audio.play_in(SoundSource::Blocks, Sound::Step(material), at, 0.6, (1.4, 1.6));
+    let gravel = voxelcraft::world::archaeology::decode(stroke.block).map(|(gravel, _)| gravel);
+    let cue = match gravel {
+        Some(true) => BrushCue::Gravel,
+        Some(false) => BrushCue::Sand,
+        None => BrushCue::Generic,
+    };
+    audio.play_in(SoundSource::Blocks, Sound::Brush(cue), at, 1.0, (1.0, 1.0));
     if stroke.completed {
-        audio.play_in(SoundSource::Blocks, Sound::Break(material), at, 1.0, (0.85, 1.0));
+        let done = if gravel == Some(true) { BrushCue::GravelComplete } else { BrushCue::SandComplete };
+        audio.play_in(SoundSource::Players, Sound::Brush(done), at, 1.0, (1.0, 1.0));
     }
 }
 
@@ -557,4 +616,16 @@ fn once_per_click(i: Item) -> bool {
     (i != Item::GLASS_BOTTLE && voxelcraft::survival_items::bucket::handles(i))
         || matches!(i, Item::SNOWBALL | Item::FISHING_ROD)
         || voxelcraft::content::farm_variant::is_egg(i)
+}
+
+/// v1.0 gap track 6: a stack thrown out of a bundle in use. `Player.drop`
+/// swings the main hand; `removeOneItemFromBundle` plays the remove sound
+/// at the player and `dropContent` the drop-contents sound at the player's
+/// block.
+pub(super) fn bundle_thrown(hand: &mut HandAnim, audio: &mut Audio, out: voxelcraft::session::bundles::Emptied) {
+    use voxelcraft::content::bundle::Cue;
+    hand.swing();
+    items::bundle_sound(audio, Cue::RemoveOne, Some(out.at));
+    let block = out.at.floor() + DVec3::splat(0.5);
+    items::bundle_sound(audio, Cue::DropContents, Some(block));
 }

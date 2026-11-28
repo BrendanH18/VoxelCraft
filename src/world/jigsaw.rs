@@ -48,7 +48,7 @@ use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
 use super::block::{Block, Facing};
-use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, index};
+use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::noise::hash3;
 use super::structure::{Bounds, Rng};
 
@@ -664,7 +664,43 @@ pub fn assemble_enveloped(
         let c = (b.min + b.max) / 2;
         IVec3::new(at.x, surface(c.x, c.z), at.y)
     };
-    assemble_impl(lib, settings, &place, surface, seed, Some(validate))
+    assemble_impl(lib, settings, &place, surface, seed, Mode::Enveloped(validate))
+}
+
+/// v1.0 final F5 (generation 7): Java's `JigsawPlacement` for surface
+/// structures adapted by `beard_thin`. The start's floor is projected to
+/// the heightmap at its box's centre; a rigid child of a terrain-matching
+/// parent stands at the heightmap at the parent's connector
+/// (`getFirstFreeHeight(WORLD_SURFACE_WG)`), rigid-to-rigid joins keep
+/// their parent's plane, and nothing is dropped for steep ground: only
+/// the free-space checks reject a piece, and the beard shapes the ground.
+pub fn assemble_adapted(
+    lib: &Library,
+    settings: &Settings,
+    at: IVec2,
+    surface: &dyn Fn(i32, i32) -> i32,
+    seed: u64,
+) -> Vec<Placed> {
+    let place = |t: &Template, r| {
+        let b = bounds_of(t, IVec3::new(at.x, 0, at.y), r);
+        let c = (b.min + b.max) / 2;
+        IVec3::new(at.x, surface(c.x, c.z), at.y)
+    };
+    assemble_aliased(lib, settings, &place, surface, seed, Mode::Java, &|p| p)
+}
+
+/// How the assembler fits surface pieces to the ground.
+#[derive(Clone, Copy)]
+enum Mode<'a> {
+    /// Rigid children of terrain parents pinned at vertical joins
+    /// (structures without terrain adaptation, and generations 1 to 6's
+    /// non-surface jigsaws).
+    Legacy,
+    /// Generations 3 to 6's ±6-block envelope and combined-density check,
+    /// which drop pieces that don't fit.
+    Enveloped(&'a PlacementCheck<'a>),
+    /// Java's projection with no envelope (generation 7).
+    Java,
 }
 
 /// A conservative subinterval of the 24-block beard support. Ground farther
@@ -700,7 +736,7 @@ pub fn assemble_with(
     surface: &dyn Fn(i32, i32) -> i32,
     seed: u64,
 ) -> Vec<Placed> {
-    assemble_impl(lib, settings, place, surface, seed, None)
+    assemble_impl(lib, settings, place, surface, seed, Mode::Legacy)
 }
 
 fn assemble_impl(
@@ -709,9 +745,9 @@ fn assemble_impl(
     place: &dyn Fn(&Template, u8) -> IVec3,
     surface: &dyn Fn(i32, i32) -> i32,
     seed: u64,
-    validate: Option<&PlacementCheck<'_>>,
+    mode: Mode<'_>,
 ) -> Vec<Placed> {
-    assemble_aliased(lib, settings, place, surface, seed, validate, &|p| p)
+    assemble_aliased(lib, settings, place, surface, seed, mode, &|p| p)
 }
 
 /// Java's `PoolAliasLookup`: the pool a connector (or the start) names
@@ -727,7 +763,7 @@ pub fn assemble_with_aliases(
     seed: u64,
     aliases: &Aliases<'_>,
 ) -> Vec<Placed> {
-    assemble_aliased(lib, settings, place, surface, seed, None, aliases)
+    assemble_aliased(lib, settings, place, surface, seed, Mode::Legacy, aliases)
 }
 
 /// The assembler behind every entry point; `aliases` maps pool names
@@ -738,10 +774,15 @@ fn assemble_aliased(
     place: &dyn Fn(&Template, u8) -> IVec3,
     surface: &dyn Fn(i32, i32) -> i32,
     seed: u64,
-    validate: Option<&PlacementCheck<'_>>,
+    mode: Mode<'_>,
     aliases: &Aliases<'_>,
 ) -> Vec<Placed> {
-    let bounded = validate.is_some();
+    let validate = match mode {
+        Mode::Enveloped(check) => Some(check),
+        Mode::Legacy | Mode::Java => None,
+    };
+    let java = matches!(mode, Mode::Java);
+    let bounded = !matches!(mode, Mode::Legacy);
     let mut rng = Rng(seed);
     let mut max_heights: FxHashMap<String, i32> = FxHashMap::default();
     let Some(start_pool) = lib.pools.get(aliases(settings.start_pool)) else { return Vec::new() };
@@ -848,7 +889,10 @@ fn assemble_aliased(
                         // structures instead project rigid children of terrain
                         // parents at the connector, including outpost plates.
                         let project = bounded && !rigid && ct.projection == Projection::Rigid;
-                        let y = if (jig.vertical != 0 && !project) || rigid && ct.projection == Projection::Rigid {
+                        // Java projects every join but a rigid-to-rigid one
+                        // to the heightmap at the parent's connector.
+                        let pinned = if java { false } else { jig.vertical != 0 && !project };
+                        let y = if pinned || rigid && ct.projection == Projection::Rigid {
                             target.y - local.y
                         } else {
                             *ground_at.get_or_insert_with(|| surface(p.x, p.z) + 1) - local.y
@@ -859,7 +903,7 @@ fn assemble_aliased(
                         let child_delta =
                             if ct.projection == Projection::Rigid { parent_delta - relative_y } else { 0 };
                         let ground = origin.y + child_delta;
-                        let options = if bounded && ct.projection == Projection::Rigid {
+                        let options = if validate.is_some() && ct.projection == Projection::Rigid {
                             let b = bounds_of(ct, origin, r);
                             let Some((mut lo, mut hi)) = envelope(b, surface) else { continue };
                             // Template air/floors replace density inside boxes.
@@ -1029,6 +1073,37 @@ fn pick(pool: &Pool, rng: &mut Rng) -> Option<u16> {
     None
 }
 
+/// v1.0 final F5 (generation 7): `palette` without the fallback
+/// foundation under rigid pieces. Java's `JigsawStructure` adds none: the
+/// `beard_thin` terrain adaptation alone fills under a building, and where
+/// the ground falls away farther than its kernel reaches, the building
+/// overhangs as Java's does.
+pub struct NoFoundation<'a>(pub &'a dyn Palette);
+
+impl Palette for NoFoundation<'_> {
+    fn role(&self, role: &str) -> Option<Block> {
+        if role == "foundation" { None } else { self.0.role(role) }
+    }
+    fn job(&self, piece: &Placed) -> Block {
+        self.0.job(piece)
+    }
+    fn crop(&self, hash: u64) -> Block {
+        self.0.crop(hash)
+    }
+    fn on_water(&self, block: Block) -> Block {
+        self.0.on_water(block)
+    }
+    fn process(&self, block: Block, at: IVec3, piece: &Placed) -> Option<Block> {
+        self.0.process(block, at, piece)
+    }
+    fn process_at(&self, block: Block, at: IVec3, piece: &Placed, existing: Block) -> Option<Block> {
+        self.0.process_at(block, at, piece, existing)
+    }
+    fn clear_above(&self) -> i32 {
+        self.0.clear_above()
+    }
+}
+
 /// What a structure's blocks are made of.
 pub trait Palette {
     /// The block for a `$role` (`None` leaves the world as it is).
@@ -1121,12 +1196,10 @@ impl Canvas<'_> {
         if p.cmplt(self.base).any() || p.cmpgt(self.top).any() {
             return None;
         }
-        let l = p - self.base;
-        Some(if self.blocks.len() == CHUNK_VOLUME {
-            index(l.x as usize, l.y as usize, l.z as usize)
-        } else {
-            l.y as usize
-        })
+        // X fastest, then Z, then Y: a chunk's order for a 32-block cube
+        // (`chunk::index`), and just the height for one column.
+        let (l, size) = (p - self.base, self.top - self.base + IVec3::ONE);
+        Some(((l.y * size.z + l.z) * size.x + l.x) as usize)
     }
 }
 
@@ -1320,6 +1393,41 @@ pub fn markers<'a>(lib: &'a Library, pieces: &'a [Placed], surface: &dyn Fn(i32,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::chunk::index;
+
+    /// v1.0 final F5: on ground too steep for generations 3 to 6's ±6-block
+    /// envelope a village disappears; Java's projection (generation 7)
+    /// keeps it and its buildings, the start's floor at the heightmap at
+    /// its box's centre.
+    #[test]
+    fn adapted_villages_keep_their_buildings_on_steep_ground() {
+        let lib = super::super::village::catalogue::library();
+        let settings = Settings { start_pool: "village/plains/town_centers", max_depth: 6, max_distance: 80 };
+        let slope = |x: i32, _z: i32| 70 + 3 * x;
+        let accept = |_: &[Placed], _: &Placed| true;
+        let rigid = |ps: &[Placed]| {
+            ps.iter().filter(|p| lib.templates[p.template as usize].projection == Projection::Rigid).count()
+        };
+        for seed in 0..8u64 {
+            let enveloped = assemble_enveloped(lib, &settings, IVec2::ZERO, &slope, seed, &accept);
+            let adapted = assemble_adapted(lib, &settings, IVec2::ZERO, &slope, seed);
+            assert!(
+                rigid(&adapted) > rigid(&enveloped),
+                "seed {seed}: {} rigid pieces adapted, {} enveloped",
+                rigid(&adapted),
+                rigid(&enveloped)
+            );
+            assert!(adapted.len() > 1, "seed {seed}: only {} pieces", adapted.len());
+            let start = adapted[0];
+            let c = (start.bounds.min + start.bounds.max) / 2;
+            assert_eq!(start.origin.y, slope(c.x, c.z), "seed {seed}: the start's floor at the heightmap");
+            let houses = adapted[1..]
+                .iter()
+                .filter(|p| lib.templates[p.template as usize].projection == Projection::Rigid)
+                .count();
+            assert!(houses > 0, "seed {seed}: no rigid building kept");
+        }
+    }
 
     #[test]
     fn rotations_turn_clockwise_like_java() {

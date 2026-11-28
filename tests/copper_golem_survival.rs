@@ -123,9 +123,9 @@ fn statue_name_snapshot_and_no_drop_removal_do_not_leave_stale_names() {
 
 #[test]
 fn third_person_held_statues_draw_their_pose_and_high_texture_layers() {
-    use voxelcraft::entity::model::{PlayerAppearance, build_player};
+    use voxelcraft::entity::model::{EntityMesh, PlayerAppearance, build_player};
     let p = voxelcraft::player::Player::new(DVec3::ZERO);
-    let mut positions = Vec::new();
+    let mut held = Vec::new();
     for pose in Pose::ALL {
         let block = statue::block(Statue { pose, ..Statue::new(Stage::Oxidized, true) });
         let look = PlayerAppearance {
@@ -134,20 +134,24 @@ fn third_person_held_statues_draw_their_pose_and_high_texture_layers() {
             alpha: 1.0,
             ..Default::default()
         };
-        let mut vertices = Vec::new();
-        build_player(&p, DVec3::ZERO, DVec3::ZERO, (1.0, 0.0), 0.0, look, &mut vertices);
-        let held: Vec<_> = vertices.iter().filter(|v| v.torch[1] == 2).collect();
-        assert_eq!(held.len(), 8 * 36, "statue must use the eight-part model, not one cube");
-        for v in &held {
-            let layer = v.torch[2] as u16 | ((v.torch[3] as u16) << 8);
+        // v1.0 gap track 6c: the held item is drawn by the item model pass,
+        // as the statue's eight-part model in its pose.
+        let mut mesh = EntityMesh::flat();
+        build_player(&p, DVec3::ZERO, DVec3::ZERO, (1.0, 0.0), 0.0, look, &mut mesh);
+        let [item] = mesh.held_items() else { panic!("one held item") };
+        assert_eq!(item.block, Some(block));
+        assert_eq!(
+            voxelcraft::world::shape::item_boxes(block).as_slice().len(),
+            8,
+            "the eight-part model, not one cube"
+        );
+        for layer in block.info().tex {
             assert!((statue::TEXTURE_FIRST + 9..statue::TEXTURE_END).contains(&layer));
         }
-        positions.push(held.iter().map(|v| v.pos).collect::<Vec<_>>());
+        held.push(block);
     }
-    for (i, pose) in positions.iter().enumerate() {
-        for other in &positions[i + 1..] {
-            assert_ne!(pose, other, "each pose must remain distinct in the hand");
-        }
+    for (i, pose) in held.iter().enumerate() {
+        assert!(!held[i + 1..].contains(pose), "each pose must remain distinct in the hand");
     }
 }
 
@@ -465,10 +469,15 @@ fn a_golem_carries_each_statue_pose_as_original_geometry() {
         e.mobs[0].copper_golem.as_mut().unwrap().cargo =
             Some(Statue { pose, ..Statue::new(Stage::Weathered, false) }.item_stack(StackName::default()));
         let mut verts = voxelcraft::entity::model::EntityMesh::flat();
-        voxelcraft::entity::model::build(&e.mobs, DVec3::ZERO, glam::Vec3::Z, 100.0, 0.0, 1.0, &mut verts);
-        let cargo: Vec<_> = verts.iter().filter(|v| v.torch[1] == 2).collect();
-        assert_eq!(cargo.len(), 8 * 36);
-        poses.push(cargo.into_iter().map(|v| v.pos).collect::<Vec<_>>());
+        voxelcraft::entity::model::build(&e.mobs, DVec3::ZERO, glam::Vec3::Z, 100.0, 1.0, &mut verts);
+        // v1.0 gap track 6d: the cargo is held as the item model pass draws
+        // it (`ItemInHandLayer`), the statue's posed block as its model.
+        let held = verts.held_items();
+        assert_eq!(held.len(), 1);
+        let stack = e.mobs[0].copper_golem.as_ref().unwrap().cargo.unwrap();
+        assert_eq!(held[0].block, voxelcraft::world::copper_golem_statue::item_model(stack));
+        assert!(held[0].block.is_some());
+        poses.push(held[0].block);
     }
     for (i, pose) in poses.iter().enumerate() {
         assert!(poses[i + 1..].iter().all(|other| other != pose));

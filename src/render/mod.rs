@@ -10,6 +10,7 @@
 //! Depth is reverse-Z with an infinite far plane.
 
 pub mod arena;
+mod block_item_sprites;
 pub mod block_model;
 mod blur;
 pub mod brushable;
@@ -39,7 +40,18 @@ use winit::window::Window;
 use crate::mesh::{CROSS, CUTOUT, FACE_ORDER, MeshData, OPAQUE, PASSES, TRANSLUCENT};
 use crate::world::block::tex;
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
-pub use block_model::BlockModel;
+pub use block_model::{BlockModel, extent_y};
+
+/// A chunk draw's instance: its origin relative to the camera, and its world
+/// origin in blocks (v1.0 gap track 6c: x and z seed the model offsets,
+/// `chunk.wgsl`'s `block_offset`; v1.0 final track F3: all three seed the
+/// random model variants, `java_variant`).
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct ChunkInstance {
+    offset: [f32; 3],
+    origin: [i32; 3],
+}
 use ui::UiVertex;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -168,8 +180,32 @@ pub struct FrameParams {
     /// Rain strength 0..1: hides the sun, moon and stars and thickens the
     /// clouds.
     pub rain: f32,
-    /// Night vision strength 0..1 (see `Effects::night_vision`).
+    /// The lightmap's night-vision strength 0..1 (Java's
+    /// `nightVisionEffectIntensity`; see `Effects::lightmap_vision`).
     pub night_vision: f32,
+    /// Darkness (`LightmapRenderStateExtractor`): its blend factor, which
+    /// lowers the Brightness option by as much, and its pulsing scale, which
+    /// `lightmap.fsh` takes off every light level before the clamp (see
+    /// `Effects::darkness_blend` and `Effects::darkness_scale`). Both 0
+    /// without the effect.
+    pub darkness: Darkness,
+}
+
+/// The two numbers Darkness gives Java 26.3's lightmap.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Darkness {
+    pub blend: f32,
+    pub scale: f32,
+}
+
+impl Darkness {
+    /// The player's Darkness `partial` ticks after their last tick, under
+    /// Darkness Pulsing `option` (v1.0 final F6): the lightmap's dimming
+    /// (`darknessEffectBrightnessModifier`) and pulse both scale by it; the
+    /// fog keeps the unscaled blend, as Java's `DarknessFogEnvironment` does.
+    pub fn of(effects: &crate::simulation::effects::Effects, partial: f32, option: f32) -> Self {
+        Self { blend: effects.darkness_blend(partial) * option, scale: effects.darkness_scale_at(partial, option) }
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -337,6 +373,9 @@ pub struct Renderer {
     blur: blur::Blur,
     particles: particles::ParticlePass,
     block_models: block_model::BlockModelPass,
+    /// v1.0 gap track 6c: the items held in the last [`Renderer::set_entities`]
+    /// mesh, drawn with the block models.
+    held_models: Vec<BlockModel>,
     weather: weather::WeatherPass,
     clouds: clouds::CloudPass,
     quad_indices: wgpu::Buffer,
@@ -359,8 +398,12 @@ pub struct Renderer {
     visible: Vec<(f32, IVec3, [f32; 3], u8)>,
     /// The visible chunks' origins for the instance buffer, kept between
     /// frames so drawing allocates nothing once it has grown.
-    instance_scratch: Vec<[f32; 3]>,
+    instance_scratch: Vec<ChunkInstance>,
     capture: Option<std::path::PathBuf>,
+    /// v1.0 gap track 6: the next frame is read back into memory instead
+    /// (`--item-review`), and the last one read.
+    readback_requested: bool,
+    readback: Option<(u32, u32, Vec<u8>)>,
     /// v0.18 Track 7: the next frame's first view is copied for a world icon.
     icon_requested: bool,
     /// v0.18 Track 7: why the requested icon couldn't be copied, for
@@ -705,10 +748,12 @@ impl Renderer {
 
         // Quads come from the arena's storage buffers (vertex pulling); the
         // only vertex input is the per-draw chunk origin.
+        // v1.0 gap track 6c: and the chunk's world origin (x, z), which
+        // seeds the plants' and bamboo's offsets (`block_offset`).
         let chunk_buffers = [Some(wgpu::VertexBufferLayout {
-            array_stride: 12,
+            array_stride: std::mem::size_of::<ChunkInstance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &wgpu::vertex_attr_array![1 => Float32x3],
+            attributes: &wgpu::vertex_attr_array![1 => Float32x3, 2 => Sint32x3],
         })];
         let make_chunk_pipeline = |label: &str,
                                    fs: &str,
@@ -974,6 +1019,7 @@ impl Renderer {
             blur,
             particles,
             block_models,
+            held_models: Vec::new(),
             weather,
             clouds,
             quad_indices,
@@ -993,6 +1039,8 @@ impl Renderer {
             visible: Vec::new(),
             instance_scratch: Vec::new(),
             capture: None,
+            readback_requested: false,
+            readback: None,
             icon_requested: false,
             icon_error: None,
             icon_cancels: 0,
@@ -1243,7 +1291,19 @@ impl Renderer {
     }
 
     pub fn capture_pending(&self) -> bool {
-        self.capture.is_some()
+        self.capture.is_some() || self.readback_requested
+    }
+
+    /// v1.0 gap track 6: reads the next rendered frame back as RGBA rows
+    /// for [`Renderer::take_readback`] (the item review's contact sheets).
+    pub fn request_readback(&mut self) {
+        self.readback_requested = true;
+    }
+
+    /// The frame [`Renderer::request_readback`] asked for: width, height and
+    /// RGBA pixels, once rendered.
+    pub fn take_readback(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+        self.readback.take()
     }
 
     /// Saves the next rendered frame as a PNG.
@@ -1252,6 +1312,22 @@ impl Renderer {
     }
 
     fn save_capture(&self, texture: &wgpu::Texture, encoder: wgpu::CommandEncoder, path: &std::path::Path) {
+        let (w, h, pixels) = self.read_target(texture, encoder);
+        let result = std::fs::File::create(path).map_err(|e| e.to_string()).and_then(|f| {
+            let mut enc = png::Encoder::new(std::io::BufWriter::new(f), w, h);
+            enc.set_color(png::ColorType::Rgba);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.write_header().and_then(|mut wr| wr.write_image_data(&pixels)).map_err(|e| e.to_string())
+        });
+        match result {
+            Ok(()) => log::info!("saved screenshot {}", path.display()),
+            Err(e) => log::error!("screenshot failed: {e}"),
+        }
+    }
+
+    /// Copies `texture` (the frame) to the CPU, waiting for the GPU: width,
+    /// height and opaque RGBA rows.
+    fn read_target(&self, texture: &wgpu::Texture, encoder: wgpu::CommandEncoder) -> (u32, u32, Vec<u8>) {
         let (w, h) = (self.config.width, self.config.height);
         let row = (w * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1282,16 +1358,9 @@ impl Renderer {
                 pixels.extend_from_slice(&if bgra { [px[2], px[1], px[0], 255] } else { [px[0], px[1], px[2], 255] });
             }
         }
-        let result = std::fs::File::create(path).map_err(|e| e.to_string()).and_then(|f| {
-            let mut enc = png::Encoder::new(std::io::BufWriter::new(f), w, h);
-            enc.set_color(png::ColorType::Rgba);
-            enc.set_depth(png::BitDepth::Eight);
-            enc.write_header().and_then(|mut wr| wr.write_image_data(&pixels)).map_err(|e| e.to_string())
-        });
-        match result {
-            Ok(()) => log::info!("saved screenshot {}", path.display()),
-            Err(e) => log::error!("screenshot failed: {e}"),
-        }
+        drop(mapped);
+        buffer.unmap();
+        (w, h, pixels)
     }
 
     fn present_mode(vsync: bool) -> wgpu::PresentMode {
@@ -1316,7 +1385,7 @@ impl Renderer {
     fn create_instance_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
         device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("chunk instances"),
-            size: (capacity * 12) as u64,
+            size: (capacity * std::mem::size_of::<ChunkInstance>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         })
@@ -1555,7 +1624,7 @@ impl Renderer {
         // benchmarks still render offscreen; otherwise back off instead of
         // spinning.
         if frame.is_none() {
-            if !self.force_offscreen && self.capture.is_none() {
+            if !self.force_offscreen && !self.capture_pending() {
                 self.skipped_frames += 1;
                 // Chunk meshes keep uploading while the window is hidden;
                 // their staged copies are freed only after a submit, so
@@ -1624,7 +1693,11 @@ impl Renderer {
             self.instances = Self::create_instance_buffer(&self.device, self.instance_capacity);
         }
         self.instance_scratch.clear();
-        self.instance_scratch.extend(self.visible.iter().map(|v| v.2));
+        self.instance_scratch.extend(
+            self.visible
+                .iter()
+                .map(|v| ChunkInstance { offset: v.2, origin: (v.1 * crate::world::chunk::CHUNK_SIZE_I).to_array() }),
+        );
         if !self.instance_scratch.is_empty() {
             self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&self.instance_scratch));
         }
@@ -1647,7 +1720,8 @@ impl Renderer {
             ],
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, p.rain],
-            effects: [p.night_vision, self.brightness, 0.0, 0.0],
+            // `brightness = max(0, gamma - darknessEffectBrightnessModifier)`.
+            effects: [p.night_vision, (self.brightness - p.darkness.blend).max(0.0), p.darkness.scale, 0.0],
             ambient: {
                 let [r, g, b] = p.dimension.ambient_light_color();
                 [r, g, b, if p.dimension.has_sky() { 0.0 } else { 1.0 }]
@@ -1680,6 +1754,7 @@ impl Renderer {
             &self.device,
             &self.queue,
             &p.block_models,
+            &self.held_models,
             &p.signs,
             hand,
             p.camera,
@@ -1990,6 +2065,14 @@ impl Renderer {
             Some(_) => log::error!("surface doesn't support COPY_SRC; can't take screenshots"),
             None => {}
         }
+        if std::mem::take(&mut self.readback_requested) {
+            if target.usage().contains(wgpu::TextureUsages::COPY_SRC) {
+                let encoder = self.device.create_command_encoder(&Default::default());
+                self.readback = Some(self.read_target(target, encoder));
+            } else {
+                log::error!("surface doesn't support COPY_SRC; can't read frames back");
+            }
+        }
         if let Some(timer) = &mut self.gpu_timer
             && let Some(commands) = timer.resolve(&self.device)
         {
@@ -2065,6 +2148,16 @@ mod tests {
                     .unwrap_or_else(|e| panic!("{name}, paged={paged:?}: {}", e.emit_to_string(&source)));
             }
         }
+    }
+
+    /// v1.0 gap Track 5c: the translucent shader animates the portal's own
+    /// layer, which sits on the first texture page however the layers are
+    /// paged.
+    #[test]
+    fn the_portal_animation_names_the_portal_layer() {
+        let layer = crate::world::block::tex::PORTAL;
+        assert!(include_str!("shaders/chunk.wgsl").contains(&format!("const PORTAL_LAYER: u32 = {layer}u;")));
+        assert!(layer < 256, "the portal's second sample reads the first page");
     }
 
     fn runs(offsets: &[u32], mask: u8) -> Vec<(u32, u32)> {

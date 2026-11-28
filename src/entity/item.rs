@@ -37,6 +37,12 @@ pub struct ItemEntity {
     pub phase: f32,
     /// Java's `ItemEntity.health`: explosions take it, and at 0 the item is gone.
     pub health: i32,
+    /// v1.0 final F7: Java's `fallDistance` (`Entity.checkFallDamage`),
+    /// which powder snow reads; not saved.
+    pub fall_distance: f64,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Health of a fresh dropped item (`ItemEntity.health`).
@@ -46,6 +52,7 @@ impl ItemEntity {
     /// Create a fresh dropped stack with pickup delay in seconds and coincident interpolation positions.
     pub fn new(stack: Stack, pos: DVec3, vel: DVec3, pickup_delay: f32, rng: &mut Rng) -> Self {
         Self {
+            portal_cooldown: 0,
             stack,
             pos,
             previous_pos: pos,
@@ -54,7 +61,15 @@ impl ItemEntity {
             pickup_delay,
             phase: rng.range(0.0, std::f32::consts::TAU),
             health: HEALTH,
+            fall_distance: 0.0,
         }
+    }
+
+    /// v1.0 final F7: `CollisionContext.of(item)`: scaffolding holds an
+    /// item up only from above, powder snow only once it has fallen more
+    /// than 2.5 blocks.
+    pub fn collision_context(&self) -> physics::CollisionContext {
+        physics::CollisionContext::entity(self.pos.y, self.fall_distance, false)
     }
 
     /// The item's box, for explosions' line of sight.
@@ -104,14 +119,20 @@ impl ItemEntity {
         }
         // Items that end up inside a block (a block placed on them, sand
         // landing) are pushed up out of it, like Minecraft.
-        if physics::overlaps_solid(world, self.pos, SHAPE) {
+        // v1.0 final F7: `noCollision(this, box)` takes the item's own
+        // context, so scaffolding it is inside doesn't push it out.
+        let context = Some(self.collision_context());
+        if physics::overlaps_solid_context(world, self.pos, SHAPE, context) {
             self.pos.y = self.pos.y.floor() + 1.0;
             self.vel = DVec3::ZERO;
+            self.fall_distance = 0.0;
             return true;
         }
         let delta = self.vel * dt;
         let falling = self.vel.y;
-        let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, SHAPE);
+        let start_y = self.pos.y;
+        let hit = physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, SHAPE, context);
+        self.fall_distance = fallen(self.fall_distance, hit.on_ground, start_y, self.pos.y);
         if hit.on_ground {
             let below = world.block(below_pos(self.pos));
             // `Entity.restituteMovementAfterCollisions`: slime blocks and beds
@@ -215,6 +236,20 @@ pub fn block_drop(stack: Stack, cell: IVec3, rng: &mut Rng) -> ItemEntity {
     let pos = cell.as_dvec3() + DVec3::new(rng.range(0.25, 0.75) as f64, 0.25, rng.range(0.25, 0.75) as f64);
     let vel = DVec3::new(rng.range(-2.0, 2.0) as f64, 4.0, rng.range(-2.0, 2.0) as f64);
     ItemEntity::new(stack, pos, vel, PICKUP_DELAY, rng)
+}
+
+/// `Entity.checkFallDamage`'s fall distance after a move from `start_y` to
+/// `end_y`: falling adds up, landing resets it. On powder snow this gives
+/// Java's one tick of rest: a fall of more than 2.5 blocks lands on the
+/// 0.9 shape, which resets it, and the entity sinks in on the next tick.
+pub(crate) fn fallen(fall_distance: f64, on_ground: bool, start_y: f64, end_y: f64) -> f64 {
+    if on_ground {
+        0.0
+    } else if end_y < start_y {
+        fall_distance + (start_y - end_y)
+    } else {
+        fall_distance
+    }
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 
 use glam::{DVec3, IVec3};
 
-use super::{ATTACK_RANGE, Ai, Ctx, EntityEvent, Mob, MobKind, MobSound, MobWorld, Rng, line_of_sight, wrap};
+use super::{ATTACK_RANGE, Ai, Ctx, EntityEvent, Mob, MobKind, MobSound, MobWorld, Rng, line_of_sight};
 use crate::entity::nether::{Foe, Goal, LavaGoal, Weapon, ZOMBIFY_TIME};
 use crate::world::block::Block;
 use crate::world::terrain::Dimension;
@@ -26,7 +26,7 @@ const GOLDEN_AXE_BONUS: f32 = 6.0;
 const TUSK_COOLDOWN: f32 = 2.0;
 const BABY_TUSK_COOLDOWN: f32 = 0.75;
 /// Baby piglins are 20% faster (Java's speed modifier).
-const BABY_SPEED: f64 = 1.2;
+pub(super) const BABY_SPEED: f64 = 1.2;
 /// Height of `LiquidBlock.STABLE_SHAPE` (8/16), which a lava source offers
 /// mobs that can stand on lava.
 pub(crate) const STABLE_LAVA_HEIGHT: f64 = 0.5;
@@ -59,6 +59,11 @@ impl Mob {
             // Its lava goal runs in the goal selector (`goals`).
             return None;
         }
+        // v1.0 gap Track 2b: out of the fight activity the attack target is
+        // erased, so running spear behaviours stop (`ableToAttack`).
+        if self.nether.as_ref().is_some_and(|n| n.offhand.is_some() || !matches!(n.goal, Goal::Attack { .. })) {
+            self.stop_piglin_spear();
+        }
         let n = self.nether.as_mut()?;
         n.admire_disabled = (n.admire_disabled - dt).max(0.0);
         n.hunt_cooldown = (n.hunt_cooldown - dt).max(0.0);
@@ -87,14 +92,29 @@ impl Mob {
                 n.barter = true;
             }
             self.ai = Ai::Idle;
-            self.head_target = (0.0, -0.6);
+            // The admiring pose holds the head down (`PiglinModel`'s
+            // `ADMIRING_ITEM`); the game draws it from the look.
+            let ahead = super::spear::view_vector(34.4, self.yrot());
+            let eye = self.look_eye();
+            self.set_look_at(eye + ahead, super::head::HEAD_ROT_SPEED, super::head::MAX_HEAD_X_ROT);
             return Some((None, 0.0));
+        }
+        if !matches!(n.goal, Goal::None) {
+            // The game's own walks, flights and fights take `WALK_TARGET`.
+            self.walking.walk = None;
         }
         match n.goal {
             Goal::None => {
                 if self.ai == Ai::Chase {
                     self.ai = Ai::Idle;
                     self.ai_timer = 1.0;
+                }
+                // v1.0 gap Track 2e: an idle or celebrating piglin walks its
+                // movement `RunOne`'s walk targets (`MoveToTargetSink`)
+                // instead of wandering.
+                // v1.0 gap Track 2f: and an idle brute its own `RunOne`'s.
+                if matches!(self.kind, MobKind::Piglin | MobKind::PiglinBrute) {
+                    return Some(self.walk_sink(world, ctx, rng, (150, 250)).unwrap_or((None, 0.0)));
                 }
                 None
             }
@@ -104,12 +124,11 @@ impl Mob {
                 if flat.length_squared() < 0.04 {
                     return Some((None, 0.0));
                 }
-                self.look_at(at, 0.5);
+                // `GoToWantedItem` sets only the walk target.
                 Some((self.pursue(world, at, speed, true, false, rng), speed))
             }
             Goal::Flee(from) => {
                 self.ai = Ai::Panic;
-                self.head_target = (0.0, 0.0);
                 let away = ((self.pos - from) * DVec3::new(1.0, 0.0, 1.0)).normalize_or(DVec3::X);
                 let dir = self.steer(away, dt, world, rng);
                 Some((Some(dir), speed))
@@ -183,7 +202,7 @@ impl Mob {
                 self.walk_to(world, target, 1, speed, false);
             }
         }
-        self.look_at(target.as_dvec3() + DVec3::splat(0.5), 0.5);
+        // `MoveToBlockGoal` doesn't look (v1.0 gap Track 2c).
         let dir = self.follow_path(world, speed, false);
         Some((dir, speed))
     }
@@ -218,9 +237,27 @@ impl Mob {
         let flat = DVec3::new(to.x, 0.0, to.z);
         let hdist = flat.length();
         let dir = if hdist > 1e-6 { flat / hdist } else { DVec3::X };
-        self.look_at(at, 1.4);
+        // `MeleeAttack`, `CrossbowAttack` and
+        // `SetWalkTargetFromAttackTargetIfTargetOutOfReach`: `LOOK_TARGET` on
+        // the target's eyes, which `LookAtTargetSink` follows at the mob's
+        // own speeds (Track 2d: through the sink, as Java does).
+        let foe_eye = match foe {
+            Foe::Player(id) => {
+                ctx.players.iter().find(|t| t.id == id).map_or(crate::player::EYE_HEIGHT, |t| t.eye_height())
+            }
+            Foe::Mob(_) => self.nether.as_ref().map_or(1.2, |n| n.foe_eye),
+        };
+        if super::head::brain(self.kind) {
+            self.set_look_target(match foe {
+                Foe::Player(id) => super::head::Tracked::Player(id),
+                Foe::Mob(uid) => super::head::Tracked::Mob(uid, at + DVec3::Y * foe_eye),
+            });
+        } else {
+            // Goal mobs (a zombified piglin or strider rider) ask the look control.
+            self.look_toward(at + DVec3::Y * foe_eye);
+        }
         let weapon = self.nether.as_ref().map_or(Weapon::None, |n| n.weapon);
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
+        let eye = self.look_eye();
         let aim = at + DVec3::Y * 1.2;
         if weapon == Weapon::Crossbow {
             let sees = hdist <= CROSSBOW_RANGE && line_of_sight(world, eye, aim);
@@ -252,10 +289,14 @@ impl Mob {
                 (None, 0.0)
             };
         }
+        if weapon == Weapon::GoldenSpear && self.kind == MobKind::Piglin {
+            return self.piglin_spear_fight(foe, at, speed, world, ctx, rng);
+        }
         let tusks = matches!(self.kind, MobKind::Hoglin | MobKind::Zoglin);
         let reach = ATTACK_RANGE + if tusks { self.shape().half_width } else { 0.0 };
         if hdist <= reach && to.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
-            self.attack_anim = 0.35;
+            // `Hoglin.doHurtTarget`: `attackAnimationRemainingTicks = 10`.
+            self.attack_anim = if tusks { 10.0 * crate::entity::motion::TICK } else { 0.35 };
             let (base, cause) = self.kind.melee();
             let mut knockback = dir * 6.0 + DVec3::Y * 5.0;
             let mut throw = None;
@@ -301,7 +342,7 @@ impl Mob {
                     };
                     EntityEvent::PlayerHit { player, damage, knockback: knockback.as_vec3(), java: Some(hit), cause }
                 }
-                Foe::Mob(target) => EntityEvent::MobHit { target, attacker: self.uid, damage, knockback },
+                Foe::Mob(target) => EntityEvent::MobHit { target, attacker: self.uid, damage, knockback, melee: true },
             });
             if let Foe::Player(id) = foe
                 && let Some(target) = ctx.players.iter().find(|t| t.id == id)
@@ -316,13 +357,40 @@ impl Mob {
         (self.pursue(world, at, speed, sees, true, rng), speed)
     }
 
-    /// Turns the head toward a point, up to `max` radians off the body.
-    pub(crate) fn look_at(&mut self, at: DVec3, max: f32) {
-        let to = at - self.pos;
-        let hdist = to.x.hypot(to.z);
-        let eye = to.y + 1.62 - self.shape().height * 0.9;
-        let face_yaw = (to.z as f32).atan2(to.x as f32);
-        self.head_target = (wrap(face_yaw - self.yaw).clamp(-max, max), (eye as f32).atan2(hdist as f32));
+    /// v1.0 gap Track 2b: a piglin's fight with a golden spear. `MeleeAttack`
+    /// never swings it (`Piglin.canUseNonMeleeWeapon` counts a kinetic
+    /// weapon); `SpearApproach`, `SpearAttack` and `SpearRetreat` move the
+    /// piglin, and when none of them moves it this tick the walk-target
+    /// sink does (`SetWalkTargetFromAttackTargetIfTargetOutOfReach` and
+    /// `MoveToTargetSink`): it keeps the current path, or heads for the
+    /// target while it is out of melee reach.
+    #[allow(clippy::too_many_arguments)]
+    fn piglin_spear_fight<W: MobWorld + ?Sized>(
+        &mut self,
+        foe: Foe,
+        at: DVec3,
+        speed: f64,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+    ) -> (Option<DVec3>, f64) {
+        // `EntityTracker(target, true)`: the target's eyes.
+        let eye = match foe {
+            Foe::Player(id) => ctx.players.iter().find(|t| t.id == id).map(|t| t.eye()),
+            Foe::Mob(_) => None,
+        }
+        .unwrap_or(at + DVec3::Y * 1.2);
+        if let Some(wish) = self.piglin_spear(world, ctx, at, eye, rng) {
+            return wish;
+        }
+        if !self.nav.is_done() {
+            return (self.follow_path(world, speed, true), speed);
+        }
+        if (at - self.pos).with_y(0.0).length() <= ATTACK_RANGE {
+            return (None, 0.0);
+        }
+        let sees = line_of_sight(world, self.look_eye(), eye);
+        (self.pursue(world, at, speed, sees, true, rng), speed)
     }
 
     /// Heads along `dir`, side-stepping for a moment when blocked by a wall
@@ -343,6 +411,33 @@ impl Mob {
     /// Java's `attack_knockback` attribute (`combat.json`): 1 for hoglins and zoglins, 0 otherwise.
     /// v0.15 Track A: the ravager's 1.5, and the main-hand weapon's
     /// Knockback level, which `Mob.getKnockback` adds.
+    /// v1.0 gap Track 7c: while a crossbow piglin loads its crossbow (the
+    /// first 25 ticks of `charge`, `isChargingCrossbow`), the ticks it has
+    /// been drawing (`getTicksUsingItem`), which `PiglinModel`'s
+    /// `CROSSBOW_CHARGE` pose draws from.
+    pub fn crossbow_draw(&self) -> Option<f32> {
+        let n = self.nether.as_ref().filter(|n| n.weapon == Weapon::Crossbow && self.ai == Ai::Chase)?;
+        (n.charge < CROSSBOW_CHARGE).then_some(n.charge / crate::entity::motion::TICK)
+    }
+
+    /// The draw a LAN host sent: `ticks` drawn so far, or none. A guest
+    /// doesn't run the piglin's fight, so a draw marks it fighting while it
+    /// lasts.
+    pub fn set_crossbow_draw(&mut self, ticks: Option<f32>) {
+        let Some(n) = self.nether.as_mut().filter(|n| n.weapon == Weapon::Crossbow) else { return };
+        match ticks.filter(|t| t.is_finite()) {
+            Some(t) => {
+                n.charge = (t * crate::entity::motion::TICK).clamp(0.0, CROSSBOW_CHARGE - 1e-3);
+                self.ai = Ai::Chase;
+            }
+            None if n.charge < CROSSBOW_CHARGE => {
+                n.charge = CROSSBOW_CHARGE;
+                self.ai = Ai::Idle;
+            }
+            None => {}
+        }
+    }
+
     pub(crate) fn attack_knockback(&self) -> f64 {
         let base = match self.kind {
             MobKind::Hoglin | MobKind::Zoglin => 1.0,
@@ -436,9 +531,23 @@ impl Mob {
             // On the stable shape it steps like ground: a shore whose top is
             // level with the lava cell's top is half a block up.
             let hit = if self.on_ground {
-                crate::physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, shape, STEP_HEIGHT)
+                {
+                    let context = Some(self.collision_context());
+                    crate::physics::move_box_stepping_context(
+                        world,
+                        &mut self.pos,
+                        &mut self.vel,
+                        delta,
+                        shape,
+                        STEP_HEIGHT,
+                        context,
+                    )
+                }
             } else {
-                crate::physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape)
+                {
+                    let context = Some(self.collision_context());
+                    crate::physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, shape, context)
+                }
             };
             let landed = self.pos.y <= s + 1e-9;
             if landed || hit.on_ground {
@@ -448,7 +557,13 @@ impl Mob {
         } else {
             self.vel.y = 2.0;
             let delta = self.vel * dt;
-            (crate::physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape), false)
+            (
+                {
+                    let context = Some(self.collision_context());
+                    crate::physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, shape, context)
+                },
+                false,
+            )
         };
         self.on_ground = landed || hit.on_ground;
         self.blocked = hit.horizontal;

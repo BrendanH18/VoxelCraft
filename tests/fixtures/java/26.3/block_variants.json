@@ -1,0 +1,2142 @@
+{
+ "bedrock[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/bedrock",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "model": "minecraft:block/bedrock_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/bedrock",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    1,
+    1,
+    2,
+    2,
+    1,
+    1
+   ],
+   "model": "minecraft:block/bedrock_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  }
+ ],
+ "black_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/black_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/black_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/black_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/black_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "blue_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/blue_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/blue_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/blue_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/blue_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "brown_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/brown_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/brown_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/brown_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/brown_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "cyan_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/cyan_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/cyan_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/cyan_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/cyan_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "deepslate[axis=x]": [
+  {
+   "faces": [
+    3,
+    0,
+    6,
+    6,
+    6,
+    5
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 90,
+   "y": 90
+  },
+  {
+   "faces": [
+    2,
+    1,
+    7,
+    7,
+    7,
+    4
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 90,
+   "y": 90
+  },
+  {
+   "faces": [
+    3,
+    0,
+    6,
+    6,
+    6,
+    5
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 90,
+   "y": 90
+  },
+  {
+   "faces": [
+    2,
+    1,
+    7,
+    7,
+    7,
+    4
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 90,
+   "y": 90
+  }
+ ],
+ "deepslate[axis=y]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    1,
+    1,
+    2,
+    2,
+    1,
+    1
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  }
+ ],
+ "deepslate[axis=z]": [
+  {
+   "faces": [
+    6,
+    5,
+    0,
+    3,
+    0,
+    3
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 90,
+   "y": 0
+  },
+  {
+   "faces": [
+    7,
+    4,
+    1,
+    2,
+    1,
+    2
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 90,
+   "y": 0
+  },
+  {
+   "faces": [
+    5,
+    6,
+    3,
+    0,
+    3,
+    0
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 90,
+   "y": 180
+  },
+  {
+   "faces": [
+    4,
+    7,
+    2,
+    1,
+    2,
+    1
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 90,
+   "y": 180
+  }
+ ],
+ "dirt[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/dirt",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/dirt",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/dirt",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/dirt",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "grass_block[snowy=false]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/grass_block",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/grass_block",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/grass_block",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/grass_block",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "gray_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/gray_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/gray_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/gray_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/gray_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "green_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/green_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/green_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/green_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/green_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "infested_deepslate[axis=x]": [
+  {
+   "faces": [
+    3,
+    0,
+    6,
+    6,
+    6,
+    5
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 90,
+   "y": 90
+  },
+  {
+   "faces": [
+    2,
+    1,
+    7,
+    7,
+    7,
+    4
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 90,
+   "y": 90
+  },
+  {
+   "faces": [
+    3,
+    0,
+    6,
+    6,
+    6,
+    5
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 90,
+   "y": 90
+  },
+  {
+   "faces": [
+    2,
+    1,
+    7,
+    7,
+    7,
+    4
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 90,
+   "y": 90
+  }
+ ],
+ "infested_deepslate[axis=y]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    1,
+    1,
+    2,
+    2,
+    1,
+    1
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  }
+ ],
+ "infested_deepslate[axis=z]": [
+  {
+   "faces": [
+    6,
+    5,
+    0,
+    3,
+    0,
+    3
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 90,
+   "y": 0
+  },
+  {
+   "faces": [
+    7,
+    4,
+    1,
+    2,
+    1,
+    2
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 90,
+   "y": 0
+  },
+  {
+   "faces": [
+    5,
+    6,
+    3,
+    0,
+    3,
+    0
+   ],
+   "model": "minecraft:block/deepslate",
+   "weight": 1,
+   "x": 90,
+   "y": 180
+  },
+  {
+   "faces": [
+    4,
+    7,
+    2,
+    1,
+    2,
+    1
+   ],
+   "model": "minecraft:block/deepslate_mirrored",
+   "weight": 1,
+   "x": 90,
+   "y": 180
+  }
+ ],
+ "infested_stone[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/stone",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "model": "minecraft:block/stone_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/stone",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    1,
+    1,
+    2,
+    2,
+    1,
+    1
+   ],
+   "model": "minecraft:block/stone_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  }
+ ],
+ "light_blue_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/light_blue_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/light_blue_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/light_blue_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/light_blue_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "light_gray_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/light_gray_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/light_gray_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/light_gray_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/light_gray_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "lime_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/lime_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/lime_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/lime_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/lime_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "magenta_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/magenta_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/magenta_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/magenta_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/magenta_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "mycelium[snowy=false]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/mycelium",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/mycelium",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/mycelium",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/mycelium",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "netherrack[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    6,
+    5,
+    0,
+    3,
+    0,
+    3
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 90,
+   "y": 0
+  },
+  {
+   "faces": [
+    3,
+    3,
+    0,
+    0,
+    3,
+    3
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 180,
+   "y": 0
+  },
+  {
+   "faces": [
+    5,
+    6,
+    3,
+    0,
+    0,
+    3
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 270,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    3,
+    0,
+    6,
+    6,
+    6,
+    5
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 90,
+   "y": 90
+  },
+  {
+   "faces": [
+    3,
+    3,
+    6,
+    5,
+    3,
+    3
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 180,
+   "y": 90
+  },
+  {
+   "faces": [
+    3,
+    0,
+    5,
+    5,
+    5,
+    6
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 270,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    5,
+    6,
+    3,
+    0,
+    3,
+    0
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 90,
+   "y": 180
+  },
+  {
+   "faces": [
+    3,
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 180,
+   "y": 180
+  },
+  {
+   "faces": [
+    6,
+    5,
+    0,
+    3,
+    3,
+    0
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 270,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  },
+  {
+   "faces": [
+    0,
+    3,
+    5,
+    5,
+    5,
+    6
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 90,
+   "y": 270
+  },
+  {
+   "faces": [
+    3,
+    3,
+    5,
+    6,
+    3,
+    3
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 180,
+   "y": 270
+  },
+  {
+   "faces": [
+    0,
+    3,
+    6,
+    6,
+    6,
+    5
+   ],
+   "model": "minecraft:block/netherrack",
+   "weight": 1,
+   "x": 270,
+   "y": 270
+  }
+ ],
+ "orange_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/orange_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/orange_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/orange_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/orange_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "pink_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/pink_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/pink_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/pink_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/pink_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "podzol[snowy=false]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/podzol",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/podzol",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/podzol",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/podzol",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "purple_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/purple_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/purple_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/purple_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/purple_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "red_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/red_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/red_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/red_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/red_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "red_sand[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/red_sand",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/red_sand",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/red_sand",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/red_sand",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "rooted_dirt[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/rooted_dirt",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/rooted_dirt",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/rooted_dirt",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/rooted_dirt",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "sand[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/sand",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/sand",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/sand",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/sand",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "sculk[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/sculk",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "model": "minecraft:block/sculk_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/sculk",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    1,
+    1,
+    2,
+    2,
+    1,
+    1
+   ],
+   "model": "minecraft:block/sculk_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  }
+ ],
+ "stone[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/stone",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "model": "minecraft:block/stone_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/stone",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    1,
+    1,
+    2,
+    2,
+    1,
+    1
+   ],
+   "model": "minecraft:block/stone_mirrored",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  }
+ ],
+ "white_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/white_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/white_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/white_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/white_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ],
+ "yellow_concrete_powder[]": [
+  {
+   "faces": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "model": "minecraft:block/yellow_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "faces": [
+    0,
+    0,
+    6,
+    5,
+    0,
+    0
+   ],
+   "model": "minecraft:block/yellow_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 90
+  },
+  {
+   "faces": [
+    0,
+    0,
+    3,
+    3,
+    0,
+    0
+   ],
+   "model": "minecraft:block/yellow_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 180
+  },
+  {
+   "faces": [
+    0,
+    0,
+    5,
+    6,
+    0,
+    0
+   ],
+   "model": "minecraft:block/yellow_concrete_powder",
+   "weight": 1,
+   "x": 0,
+   "y": 270
+  }
+ ]
+}

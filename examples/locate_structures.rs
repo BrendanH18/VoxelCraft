@@ -24,7 +24,7 @@ fn main() {
         ("buried_treasure", g.buried_treasure.nearest_buried_treasure(&g, origin, 400)),
         ("ocean_ruin_warm", g.temples.nearest_ocean_ruin(&g, flat, 6400, true)),
         ("ocean_ruin_cold", g.temples.nearest_ocean_ruin(&g, flat, 6400, false)),
-        ("stronghold", g.strongholds.nearest(origin)),
+        ("stronghold", g.strongholds.nearest(&g, origin)),
         ("mineshaft", g.mineshafts.nearest(&g, origin)),
         ("desert_well", g.relics.find(&g, relics::Kind::Well, flat, 160)),
     ];

@@ -23,7 +23,18 @@ pub struct State {
     pub buzz: u16,
     pub enter: bool,
     pub boost: bool,
+    /// v1.0 gap Track 7b: `Bee.isRolling`, an angry bee within two blocks
+    /// of its target (it tumbles as it stings). Not saved.
+    pub rolling: bool,
 }
+impl State {
+    /// v1.0 gap Track 2d: `BeePollinateGoal.isPollinating`, the goal running
+    /// toward or at its saved flower (its look control then keeps the pitch).
+    pub fn pollinating(&self) -> bool {
+        self.flower.is_some() && !self.nectar && self.anger == 0
+    }
+}
+
 pub fn flower(b: Block) -> bool {
     if let Some((lower, true)) = crate::world::overworld_blocks::double_of(b) {
         return flower(lower);
@@ -109,6 +120,7 @@ impl State {
             buzz: small(14),
             enter: false,
             boost: false,
+            rolling: false,
         }
     }
 }
@@ -272,8 +284,10 @@ pub(crate) fn upkeep(m: &mut Mob, dt: f32, rng: &mut Rng, events: &mut Vec<Entit
     }
     if m.in_water {
         s.underwater = s.underwater.saturating_add(ticks);
-        if s.underwater > 20 && m.hurt <= 0. {
-            m.damage(1., None, rng);
+        // `Bee.customServerAiStep`: `hurtServer(drown, 1)` each tick past
+        // 20 under water, which the hurt cooldown spaces (v1.0 gap Track 8d).
+        if s.underwater > 20 {
+            m.damage_from(1., crate::simulation::damage::Cause::DROWN, rng);
         }
     } else {
         s.underwater = 0;
@@ -306,8 +320,11 @@ pub(crate) fn steer<W: MobWorld + ?Sized>(
     let mut s = m.bee.unwrap_or_default();
     let ticks = (dt * 20.).round().max(1.) as u16;
     let mut goal = None;
+    s.rolling = false;
     if s.anger > 0 && !s.stung {
         if let Some(t) = ctx.players.iter().find(|t| Some(t.id.0) == s.target && t.targetable) {
+            // `customServerAiStep`'s `shouldRoll`.
+            s.rolling = m.pos.distance_squared(t.pos) < 4.0;
             goal = Some(t.pos + DVec3::Y);
             if m.pos.distance(t.pos + DVec3::Y) < 1.0 && super::mob::line_of_sight(world, m.pos, t.pos + DVec3::Y) {
                 let poison = match m.difficulty {
@@ -392,6 +409,9 @@ pub(crate) fn steer<W: MobWorld + ?Sized>(
                 let at = p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5);
                 goal = Some(at);
                 if m.pos.distance(at) < 0.6 {
+                    // v1.0 gap Track 2d: hovering at its flower it looks at it
+                    // (`getLookControl().setLookAt(flowerPos)`).
+                    m.look_toward(at);
                     s.pollination = s.pollination.saturating_add(ticks);
                     if s.pollination > 400 && rng.chance(0.8) {
                         s.nectar = true;
@@ -441,7 +461,10 @@ pub(crate) fn travel<W: MobWorld + ?Sized>(m: &mut Mob, dt: f64, world: &W, wish
     }
     let delta = dm * (dt / 0.05);
     let shape = m.shape();
-    let hit = crate::physics::move_box(world, &mut m.pos, &mut dm, delta, shape);
+    let hit = {
+        let context = Some(m.collision_context());
+        crate::physics::move_box_context(world, &mut m.pos, &mut dm, delta, shape, context)
+    };
     m.on_ground = hit.on_ground;
     m.in_water = world.block(m.pos.floor().as_ivec3()).is_some_and(Block::holds_water);
     m.vel = dm * DVec3::new(0.91, 0.98, 0.91) / 0.05;

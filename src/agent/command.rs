@@ -44,6 +44,14 @@ pub enum Command {
     /// `recipes [all|craftable] [query]`: the known recipes the book shows.
     Recipes(Option<bool>, String),
     Chest(bool, usize),
+    /// v1.0 gap track 6b: `bundle <slot> [stack]`: the right click with an
+    /// empty cursor on the bundle in inventory slot 0..36 (hotbar first),
+    /// with tooltip cell `stack` picked as the wheel picks it (0 the front;
+    /// none takes the front), the stack going into the inventory.
+    Bundle(usize, Option<usize>),
+    /// v1.0 final track F1: `slot ...`, Java's container clicks on the
+    /// agent's own inventory screen ([`SlotAction`]).
+    Slot(SlotAction),
     /// `sign x y z front|back ["line", ...]`: one side's text, as the sign
     /// edit screen's Done sends it (`ServerboundSignUpdatePacket`).
     Sign(IVec3, bool, [String; 4]),
@@ -196,6 +204,25 @@ const COMMAND_NAMES: &[&str] = &[
     "recipe",
     "recipes",
 ];
+
+/// v1.0 final track F1: a click on the agent's own inventory screen, by
+/// Java `Inventory` index (0..35 hotbar first, 36..39 the armour from the
+/// boots up, 40 the off-hand), with the screen's cursor stack.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SlotAction {
+    /// `slot click <slot> [right]` (`PICKUP`).
+    Click(usize, bool),
+    /// `slot drag even|one|clone <slot>...` (`QUICK_CRAFT`).
+    Drag(crate::inventory::clicks::Drag, Vec<usize>),
+    /// `slot collect <slot>`: the double click (`PICKUP_ALL`).
+    Collect(usize),
+    /// `slot swap <slot> 1..9|offhand` (`SWAP`).
+    Swap(usize, Option<usize>),
+    /// `slot throw <slot> [all]` (`THROW`).
+    Throw(usize, bool),
+    /// `slot toss [one]`: the cursor stack thrown, as a click outside.
+    Toss(bool),
+}
 
 /// One Java command coordinate: absolute, or relative to the executor.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -827,6 +854,39 @@ impl Command {
             ),
             ["chest", action @ ("take" | "put"), slot] => {
                 Self::Chest(*action == "take", slot.parse::<usize>().ok().filter(|n| *n < 27).ok_or_else(bad)?)
+            }
+            ["bundle", slot] => Self::Bundle(slot.parse::<usize>().ok().filter(|n| *n < 36).ok_or_else(bad)?, None),
+            ["bundle", slot, pick] => Self::Bundle(
+                slot.parse::<usize>().ok().filter(|n| *n < 36).ok_or_else(bad)?,
+                Some(pick.parse::<usize>().ok().filter(|n| *n < crate::content::bundle::SHOWN_MAX).ok_or_else(bad)?),
+            ),
+            ["slot", rest @ ..] => {
+                use crate::inventory::clicks::Drag;
+                let slot = |w: &str| w.parse::<usize>().ok().filter(|n| *n <= 40).ok_or_else(bad);
+                Self::Slot(match rest {
+                    ["click", s] => SlotAction::Click(slot(s)?, false),
+                    ["click", s, "right"] => SlotAction::Click(slot(s)?, true),
+                    ["drag", kind, slots @ ..] if !slots.is_empty() && slots.len() <= 41 => SlotAction::Drag(
+                        match *kind {
+                            "even" => Drag::Even,
+                            "one" => Drag::One,
+                            "clone" => Drag::Clone,
+                            _ => return Err(bad()),
+                        },
+                        slots.iter().map(|w| slot(w)).collect::<Result<_, _>>()?,
+                    ),
+                    ["collect", s] => SlotAction::Collect(slot(s)?),
+                    ["swap", s, "offhand"] => SlotAction::Swap(slot(s)?, None),
+                    ["swap", s, k] => SlotAction::Swap(
+                        slot(s)?,
+                        Some(k.parse::<usize>().ok().filter(|k| (1..=9).contains(k)).ok_or_else(bad)? - 1),
+                    ),
+                    ["throw", s] => SlotAction::Throw(slot(s)?, false),
+                    ["throw", s, "all"] => SlotAction::Throw(slot(s)?, true),
+                    ["toss"] => SlotAction::Toss(false),
+                    ["toss", "one"] => SlotAction::Toss(true),
+                    _ => return Err(bad()),
+                })
             }
             ["drop"] => Self::Drop,
             ["respawn"] => Self::Respawn,

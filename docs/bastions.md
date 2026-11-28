@@ -90,7 +90,11 @@ Use `bastion_locations` to reproduce screenshots of all four layouts.
 The first time a player enters the exit portal (saved as `credits_seen` in
 the player's level properties), a skippable scrolling credits screen plays
 with the music system's credits situation, then the player respawns. The
-text is original; Java's End Poem is not copied. Start or the jump button on
+text is original; Java's End Poem is not copied. As in Java, the player has
+left the level while the credits roll (`ServerPlayer.showEndCredits`), so
+the world doesn't pause: they don't move, and mobs, projectiles, blasts and
+LAN guests don't find them, while their own effects and hunger tick on
+([gap Track 8e](verification/2026-11-28-v1.0-gap-track-08e-fire-tnt-credits.md)). Start or the jump button on
 any connected controller skips them, like Escape and Space. Gap: split-screen
 gamepad seats and CLI agents share the host's dimension and never take the exit
 portal themselves, so they have no credits flag of their own; per-player

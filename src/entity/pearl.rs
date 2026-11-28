@@ -5,7 +5,6 @@
 use glam::DVec3;
 
 use super::{EntityEvent, Mob, PlayerId, Rng};
-use crate::physics::BlockSource;
 
 /// Launch speed (Java's 1.5 blocks a tick).
 pub const SPEED: f64 = 30.0;
@@ -28,12 +27,83 @@ pub struct Pearl {
     pub previous_pos: DVec3,
     pub vel: DVec3,
     age: f32,
+    /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
+    /// `ThrowableProjectile.tick`). Saved (v1.0 gap Track 8e), as Java's `Fire`.
+    fire: u16,
+    /// v1.0 final F11: `ThrownEnderpearl.ticketTimer` and the Java chunk it
+    /// was in when its last tick began (neither is saved, as in Java).
+    ticket_timer: i32,
+    ticket_chunk: Option<glam::IVec2>,
 }
 
 impl Pearl {
+    /// v1.0 final F11: the end of `ThrownEnderpearl.tick`: the chunk to
+    /// (re)place its owner's `ENDER_PEARL` ticket at
+    /// (`registerAndUpdateEnderPearlTicket`, radius 2, which also resets
+    /// its level's `emptyTime`) when its timer runs out (every 39 ticks
+    /// after the first) or it has moved into another chunk.
+    pub fn ticket(&mut self) -> Option<glam::IVec2> {
+        let chunk = crate::world::tickets::chunk_of(self.pos.x.floor() as i32, self.pos.z.floor() as i32);
+        let before = self.ticket_chunk.replace(chunk);
+        self.ticket_timer -= 1;
+        if self.ticket_timer <= 0 || before.is_some_and(|b| b != chunk) {
+            self.ticket_timer = (crate::world::tickets::TicketKind::EnderPearl.timeout() - 1) as i32;
+            return Some(chunk);
+        }
+        None
+    }
+
+    /// v1.0 gap Track 8e: the saved copy, with its fire. v1.0 gap Track
+    /// 8f: kept with its owner's player data, as Java's
+    /// `ServerPlayer.saveEnderPearls` keeps it.
+    pub fn save(&self) -> serde_json::Value {
+        use super::saved_projectiles::v3;
+        serde_json::json!({
+            "owner": self.owner.0,
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "age": self.age,
+            "fire": self.fire,
+        })
+    }
+
+    pub fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        let pos = s::read_v3(&v["pos"])?;
+        Some(Self {
+            owner: PlayerId(u32::try_from(v["owner"].as_u64()?).ok()?),
+            pos,
+            previous_pos: pos,
+            vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
+            age: s::read_f32(v, "age", 0.0).clamp(0.0, MAX_FLIGHT),
+            fire: s::read_fire(v),
+            ticket_timer: 0,
+            ticket_chunk: None,
+        })
+    }
+
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
+    /// v1.0 gap Track 8d: a LAN client's copy burns as the host says.
+    pub fn set_burning(&mut self, burning: bool) {
+        self.fire = if burning { self.fire.max(1) } else { 0 };
+    }
+
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { owner: PlayerId::HOST, pos, previous_pos, vel: DVec3::ZERO, age: 0.0 }
+        Self {
+            owner: PlayerId::HOST,
+            pos,
+            previous_pos,
+            vel: DVec3::ZERO,
+            age: 0.0,
+            fire: 0,
+            ticket_timer: 0,
+            ticket_chunk: None,
+        }
     }
 
     /// Thrown from `eye` along `dir`, carrying the thrower's velocity
@@ -42,35 +112,64 @@ impl Pearl {
         let mut spread = || rng.range(-1.0, 1.0) as f64 * 0.0075 * 1.7;
         let aim = dir.normalize_or(DVec3::X) + DVec3::new(spread(), spread(), spread());
         let pos = eye - DVec3::Y * 0.1;
-        Self { owner, pos, previous_pos: pos, vel: aim.normalize() * SPEED + carry, age: 0.0 }
+        Self {
+            owner,
+            pos,
+            previous_pos: pos,
+            vel: aim.normalize() * SPEED + carry,
+            age: 0.0,
+            fire: 0,
+            ticket_timer: 0,
+            ticket_chunk: None,
+        }
     }
 
     /// Moves the pearl; returns `false` once it has landed (pushing a
     /// [`EntityEvent::PearlLanded`]) or is lost.
-    pub(super) fn update<W: BlockSource + ?Sized>(
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn update<W: super::MobWorld + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
         mobs: &mut [Mob],
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
+        mut gateways: Option<&mut super::dragon::gateway::Gateways>,
+        boss: &super::dragon::Boxes,
     ) -> bool {
+        // `oldPosition()`: where it was when this tick began.
+        let start = self.pos;
         self.age += dt as f32;
         let ticks = dt * 20.0;
         let water = world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.holds_water());
         self.vel *= if water { 0.8f64 } else { 0.99 }.powf(ticks);
         self.vel.y -= GRAVITY * dt;
         let delta = self.vel * dt;
+        super::projectile::tick_fire(&mut self.fire, world, self.pos, self.pos + delta, 0.125, 0.25);
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             let cell = next.floor().as_ivec3();
-            // Gateways take the thrower through, like Java's.
-            if world.block(cell) == Some(crate::world::block::Block::END_GATEWAY) {
+            // Gateways take the thrower through, like Java's; one cooling
+            // down lets the pearl fly on through it (`entityInside` does
+            // nothing), and one it uses starts cooling (`triggerCooldown`).
+            if world.block(cell) == Some(crate::world::block::Block::END_GATEWAY)
+                && !gateways.as_deref().is_some_and(|g| g.cooling(cell))
+            {
+                if let Some(g) = gateways.as_deref_mut() {
+                    g.trigger(cell);
+                }
                 events.push(EntityEvent::PearlGateway { owner: self.owner, cell, pos: self.pos });
                 return false;
             }
             if world.block(cell).is_some_and(|b| b.is_solid()) {
+                events.push(super::projectile::block_hit(
+                    cell,
+                    self.pos,
+                    self.burning(),
+                    false,
+                    Some(super::trident::Owner::Player(self.owner)),
+                ));
                 // Land just outside the block it hit.
                 events.push(EntityEvent::PearlLanded { owner: self.owner, pos: self.pos });
                 return false;
@@ -84,6 +183,18 @@ impl Pearl {
                 let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 2.0 + DVec3::Y * 2.0;
                 mob.damage(0.0, Some(push), rng);
                 events.push(EntityEvent::PearlLanded { owner: self.owner, pos: mob.pos });
+                return false;
+            }
+            // v1.0 gap Track 4c: an End crystal (`hurt(thrown, 0)` breaks
+            // it) or a dragon part (it refuses so little). Either way the
+            // thrower goes to where the pearl was when the tick began
+            // (`ThrownEnderpearl.onHit` teleports to `oldPosition()`).
+            if let Some(struck) = boss.hit_at(next, true) {
+                if !struck.is_dragon() {
+                    let blow = super::dragon::Blow::projectile(0.0, true);
+                    events.push(EntityEvent::DragonStruck { hit: struck, blow, by: Some(self.owner) });
+                }
+                events.push(EntityEvent::PearlLanded { owner: self.owner, pos: start });
                 return false;
             }
         }
@@ -103,7 +214,7 @@ mod tests {
         let mut rng = Rng::new(1);
         let mut events = Vec::new();
         for _ in 0..400 {
-            if !pearl.update(0.05, world, mobs, &mut rng, &mut events) {
+            if !pearl.update(0.05, world, mobs, &mut rng, &mut events, None, &Default::default()) {
                 break;
             }
         }

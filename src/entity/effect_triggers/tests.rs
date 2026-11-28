@@ -145,6 +145,8 @@ fn infested_hits_release_silverfish() {
     let mut rng = Rng::new(7);
     for _ in 0..200 {
         e.mobs[0].health = 100.0;
+        // v1.0 gap Track 8d: separate hits, each past the last one's cooldown.
+        e.mobs[0].damage_cooldown = 0;
         e.mobs[0].damage(0.5, None, &mut rng);
     }
     let rolled = e.mobs[0].infested;
@@ -285,11 +287,11 @@ fn spectral_arrows_make_their_target_glow() {
 fn glowing_mobs_feed_the_outline_mask() {
     let mut mesh = model::EntityMesh::default();
     let mut mobs = vec![Mob::new(MobKind::Zombie, DVec3::new(2.0, 0.0, 0.0), 0.0)];
-    model::build(&mobs, DVec3::ZERO, glam::Vec3::X, 64.0, 0.0, 1.0, &mut mesh);
+    model::build(&mobs, DVec3::ZERO, glam::Vec3::X, 64.0, 1.0, &mut mesh);
     assert!(mesh.glow_boxes().is_empty() && mesh.glow_verts().is_empty());
     mobs[0].effects.add(Effect::Glowing, 0, 200);
     mesh.clear();
-    model::build(&mobs, DVec3::ZERO, glam::Vec3::X, 64.0, 0.0, 1.0, &mut mesh);
+    model::build(&mobs, DVec3::ZERO, glam::Vec3::X, 64.0, 1.0, &mut mesh);
     assert_eq!(mesh.glow_boxes().len(), mesh.boxes().len());
     assert_eq!(mesh.glow_verts().len(), mesh.len());
     assert!(!mesh.glow_boxes().is_empty() || !mesh.glow_verts().is_empty());

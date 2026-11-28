@@ -1,15 +1,19 @@
-VoxelCraft 0.18.0 is the polish update. **A new look:** redrawn
-stone, wood, masonry, ores and hundreds of other blocks, every mob
-repainted with faces and markings, ground shadows under mobs and items,
-and a new font that handles accented letters. **Java's atmosphere:** fog,
-sky, lighting and block-shaped clouds that follow Java's. **Java's
-screens:** creative tabs with spawn eggs, the recipe book, the death
-screen, menu background blur, a title panorama and world icons. **Sound:**
-blocks have their own sounds, chests and barrels open their lids, and
-Closed Captions show what you hear. If you have 0.10.0 or later, the title
-screen offers this update; choose **Update and Restart**. If you're coming
-from 0.9.0 or earlier, install it by hand once, as below, and it updates
-itself from then on.
+VoxelCraft 1.0.0 is the first full release: survival, building,
+exploration and progression, matched to Minecraft Java Edition 26.3.
+**Worlds that last:** terrain is kept in region files, so long sessions
+stay light on memory, and 1.0 opens every world from 0.8.0 on. **New
+worlds:** Java's own End islands, Java's Nether surfaces and decoration
+order, chest minecarts in mineshafts, and villages that keep every
+building on steep ground. **Mobs that act like Java's:** heads and bodies
+turn as Java's do, villagers farm and trade among themselves, foxes hunt,
+zombies break doors, mobs fight with spears, things go through portals,
+and every kind has its own baby model. **Java's look and feel:** items
+drawn as Java draws them, random block rotations, the thin Nether portal,
+drag-to-split stacks, the off-hand in your hand, Java's death messages,
+options and chat. If you have 0.10.0 or later, the title screen offers
+this update; choose **Update and Restart**. If you're coming from 0.9.0
+or earlier, install it by hand once, as below, and it updates itself from
+then on.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -17,10 +21,134 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.18.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.18.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-1.0.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-1.0.0-macos-apple-silicon.dmg`
 
-## What's new in 0.18.0
+## What's new in 1.0.0
+
+### Worlds and saves
+
+- Worlds keep unloaded terrain, block entities and mobs in region files,
+  as Java does, and save in the background a little at a time, so memory
+  stays flat however far you travel and autosave doesn't stall the game.
+- 1.0 opens worlds saved by every version from 0.8.0 on and brings them
+  up to date as it loads them. Walls built in older versions get their
+  proper posts on load. A world saved by a newer version asks before it
+  opens, and an interrupted save never leaves a world half written.
+- Arrows, potions, fireworks, fireballs, ender pearls and lit TNT are
+  saved with the world, burning ones still burning.
+
+### New worlds: generation 7
+
+- **The End:** Java's islands, small floating islands and return
+  gateways, with chorus plants and End cities where Java puts them.
+- **The Nether:** Java's surfaces (gravel and lava edges by the lava sea,
+  soul sand near it, bare patches in the forests), Java's 37 features and
+  the full bastion catalogue, all placed in Java's order, so glowstone
+  hangs from bastions and fire sits on fortress floors.
+- **The Overworld:** chest minecarts in mineshafts, strongholds placed by
+  Java's biome search, ancient cities that cave water can't flood, and
+  villages, outposts and camps that keep every building on steep ground.
+- Existing worlds keep the terrain they were created with.
+
+### Portals and travel
+
+- Nether portals are Java's thin plane, with their own sounds, timing and
+  purple overlay, and you come out where you stood in the entry portal,
+  keeping your view and speed. Spectators pass through without
+  travelling, as in Java.
+- Mobs, items, projectiles, minecarts and boats go through portals, and
+  you can ride a horse, boat or minecart through one. The other
+  dimensions run as Java's do: a mob you send through a portal walks on
+  in its new dimension for 15 seconds, and an ender pearl keeps flying
+  there and brings you across when it lands.
+- End portals and gateways use Java's timing; gateways show their beams
+  and cool down between trips.
+
+### The Ender Dragon
+
+- The dragon flies Java's route tick for tick, lands on the portal to
+  scan for players, and flies to the portal to die. Every projectile
+  meets it as in Java, and with mob griefing off every block stops it.
+- An Ender Dragon spawn egg (Creative or commands) spawns a free dragon.
+
+### Mobs
+
+- Every mob turns its head and body as Java's do and looks at players,
+  its work and its target the way Java's does, with each kind's own eye
+  height.
+- Mobs have Java's hurt cooldown, so a weaker second hit does nothing and
+  refused arrows bounce off.
+- Zombies break wooden doors on Hard. Zombies, horsemen, camel-husk
+  riders and piglins charge with spears.
+- Villagers walk to their work and to each other, farm (harvesting,
+  planting, composting, bone meal), throw each other food, play the work
+  sound of their trade, hold up the trades they show you, shake their
+  heads when they've nothing to offer, and wear Java's outfits for their
+  biome, profession and level.
+- Foxes stalk, crouch and pounce, faceplant in snow, sleep under cover,
+  carry items in their mouths and defend the player they trust. Goats
+  make Java's long jumps. Camels sit, stand and dash, horses rear and
+  graze, and baby piglins ride baby hoglins.
+- Every kind has its own baby model with Java's proportions and hitbox,
+  and mobs walk, swing, flap, hop, swim and fall over as Java's do.
+- Goat horns can be blown, and iron golems, llamas, camels, snow golems,
+  phantoms, silverfish, turtles and many more have their own voices.
+
+### Items and inventory
+
+- Drag a stack across slots to share it out, double-click to collect, and
+  use Java's other inventory shortcuts.
+- The off-hand item is drawn in your hand, and bows and crossbows draw
+  from either hand.
+- Items in slots, in hands, on the ground, in frames and on shelves are
+  drawn as Java draws them, with Java's angles and lighting, flat sprites
+  for doors, lanterns and redstone parts, and 3D beds, banners and
+  shields. Enchanted items glint wherever they are.
+- Bundles have their sounds, show their contents and empty out when you
+  hold use. F3+H shows advanced tooltips.
+
+### Blocks and the world
+
+- Stone, grass, sand, dirt, netherrack and the rest turn and mirror at
+  random as Java's do; flowers, grass and bamboo sit at Java's small
+  offsets; doors, trapdoors, panes, bars, hoppers, lanterns, repeaters,
+  comparators, cocoa, cauldrons and glazed terracotta use Java's models.
+- Fire has two textures, bells swing when rung, and pointed dripstone
+  drips, splashes and has collision.
+- Pistons push arrows, falling blocks, End crystals, armor stands and
+  every other projectile, and break item frames and paintings. Mobs and
+  items land on scaffolding and powder snow as Java's do.
+- Farmland dries through Java's eight levels, crops die in the dark, pale
+  oaks grow from saplings, and lightning strikes items and vehicles.
+
+### Combat and effects
+
+- Death messages are Java's: mobs and players by name, "while trying to
+  escape", "using [weapon]", falls off ladders and vines, and TNT naming
+  whoever lit it.
+- Darkness and Night Vision light the world as Java's do. Arrows,
+  tridents and other projectiles catch fire, burn as they fly, and light
+  campfires and TNT; burning mobs and players show Java's flames.
+- Soul Speed, trail ruin archaeology and the End city and mansion loot are
+  in.
+
+### Options and screens
+
+- Entity Distance, Weather Effect Radius, Darkness Pulsing and Java's
+  Chat Settings. Chat scrolls back with a scroll bar.
+- Difficulty and its lock are on the pause menu's World Options, as in
+  Java 26.3, and Create New World's More tab edits the game rules.
+- Auto-Jump, Attack/Use Toggle, the Debug Modifier Key and Java's camera
+  and view bobbing. LAN guests see the raid bar.
+
+### Art and sound
+
+- Doors, trapdoors, chests, plants, corals, amethyst and more redrawn in
+  0.18's style. Composters, brushing, discs and many mobs have their own
+  sounds.
+
+## What's new in 0.18.0 (if you're coming from 0.17.0 or earlier)
 
 ### Blocks and mobs, redrawn
 
@@ -693,38 +821,27 @@ new giant trees.
 
 ## Known limitations
 
-- Structures are VoxelCraft's own designs laid out the way Java lays them
-  out, not Java's buildings. Water from a nearby cave can pour into an
-  ancient city.
-- On steep ground some villages and outposts are smaller or don't appear,
-  because a building is left out rather than stood on a pillar.
-- Mineshaft chest minecarts and the stronghold biome search aren't in yet.
-- Archaeology covers suspicious sand and gravel in ocean ruins only; trail
-  ruins have no suspicious blocks yet, and decorated pots can't carry
-  sherd patterns.
-- Brushing has no sounds of its own, and other LAN players don't see the
-  find rising out of the block.
-- Other LAN players don't see the raid bar. Witches in a raid don't heal
-  raiders, and raids add nothing to statistics.
-- The new mobs and villagers use simpler brains than Java's, and many of
-  them borrow other mobs' sounds. Item frames don't show map images.
-- The Host, Raiser, Shaper and Wayfinder armor trim templates have no
-  survival source yet: trail ruins have no suspicious gravel loot.
-- The Wither's flight and attack timing are simpler than Java's.
-- Music discs can be heard 24 blocks away (Java: 64), and other music
-  doesn't fade while a disc plays.
-- Some Java options aren't in yet: biome blend, entity distance, weather
-  radius, the monochrome logo, resource packs, language, chat and skin
-  options, the attack indicator, directional audio, the sound output
-  device and voice volume.
-- Create New World has no More tab, and Edit World can't optimize or
-  export a world. Multiplayer lists LAN games only.
-- There is no Ender Dragon spawn egg.
-- 0.18.0's frame rate hasn't been measured on the reference Mac yet. If a
-  high render distance runs slowly, lower Cloud Distance or set Clouds to
-  Fast or Off.
-- Difficulty stays on the Options screen; Java 26.3 moved it to the pause
-  menu.
+- World generation is VoxelCraft's own: worlds aren't seed-compatible with
+  Minecraft, and structures are VoxelCraft's own designs laid out the way
+  Java lays them out, not Java's buildings.
+- Generation 7's End islands, Nether, mineshaft carts, stronghold search,
+  dry ancient cities and steep-ground villages appear only in worlds
+  created with 1.0; trail-ruin archaeology only in worlds created with
+  1.0 too.
+- Decorated pots can't carry sherd patterns.
+- Some block models still differ from Java's: anvils, grindstones,
+  lecterns, chains, campfires, candles, brewing stands, crops and a few
+  more.
+- Fish and tadpoles share one voice, and most mobs don't play their own
+  footsteps.
+- Some Java options aren't in: biome blend, the sound output device,
+  directional audio, the monochrome logo, chat links, language, resource
+  packs and skin customisation. Edit World can't optimize a world.
+  Multiplayer lists LAN games only.
+- Commands accept `@s` and `@p` only.
+- Streaming in new terrain quickly can still cause an occasional long
+  frame. If a high render distance runs slowly, lower Render Distance or
+  Cloud Distance, or set Clouds to Fast or Off.
 - Updating in game works on Windows x64 and Apple Silicon Macs, for copies
   installed by the installer or dragged into a folder you can change, such as
   Applications. A Mac app run straight from the disk image shows a link to the
@@ -737,43 +854,21 @@ new giant trees.
   in the host's dimension; when the host travels, the others follow. It has
   been tested between processes on one computer, not yet across Windows, Mac
   and Linux machines on a real network.
-- Many mobs borrow the nearest existing sound, and blocks without a Java
-  counterpart share a material's sounds.
-- Mobs and dropped items treat scaffolding and powder snow as plain blocks.
-- Walls built in older versions show their posts until a neighbouring block
-  changes.
-- The off-hand item isn't drawn in your hand, and bows can't be drawn from
-  the off-hand.
-- There is no Soul Speed.
-- Pistons don't push arrows, falling blocks, End crystals, item frames,
-  paintings or armour stands.
-- You can't drag a stack across slots to share it out, or double-click to
-  collect a stack.
-- Sculk sensors don't hear a few actions yet, such as leads, shearing
-  some mobs, goat horns and spawners.
-- Commands accept `@s` and `@p` only.
-- Bells don't swing, strider jockeys don't spawn and boats ignore currents.
-- Streaming in new terrain quickly can still cause an occasional long
-  frame.
-- World generation is VoxelCraft's own: worlds aren't seed-compatible with
-  Minecraft.
 
 ## Upgrading and saves
 
 Players on 0.10.0 or later get this version from the title screen. Install
 it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
-Worlds and options from 0.17.0 and earlier load in 0.18.0, and everything
-new in 0.18.0 works in them: it changes no terrain. Players in older
-worlds start with an empty recipe book, and the items they carry unlock
-their recipes on the first tick. Worlds keep the terrain and structures
-they were created with, so End cities and ships, poplar forests, sulfur
-caves, abandoned camps and the rebuilt strongholds, mineshafts, fortresses,
-shipwrecks and monuments appear only in worlds created in 0.16.0 or later.
-Once 0.18.0 has saved a world, don't open it in an older version: older
-versions can't read the new items, such as spawn eggs, and lose the
-recipe book. Back up your worlds before upgrading from 0.8.0, and don't
-open a world saved by 0.9.0 or later in 0.8.0. LAN players all need the
-same version.
+1.0.0 opens worlds and options saved by every version from 0.8.0 on. The
+first save moves a world's terrain into region files and keeps the old
+`chunks.bin` beside them, untouched, as `chunks.bin_old`. Worlds keep the
+terrain and structures they were created with, so generation 7's End,
+Nether and structures appear only in worlds created in 1.0.0. Once 1.0.0
+has saved a world, don't open it in an older version: older versions can't
+read region files and lose what the player changed since. A world saved by
+a newer version asks before it opens and offers to back it up first. Back
+up your worlds before upgrading from 0.8.0. LAN players all need the same
+version.
 
 ## Installing
 

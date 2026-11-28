@@ -14,7 +14,8 @@
 //! Full-height grid columns (density and biome) are shared between chunks
 //! in a bounded cache, so the four chunks of a column and the features that
 //! reach across chunk borders sample each one once.
-//! Fortresses (see `world::fortress`) are painted over the terrain. In
+//! Fortresses (see `world::fortress`) are painted over the terrain (in
+//! generation 7, in their decoration step: `world::nether_order`). In
 //! generation 3, Nether fossils adapt the terrain first: their `beard_thin`
 //! kernel is added to the density, as Java's beardifier is.
 
@@ -68,6 +69,8 @@ pub(super) struct GridColumn {
     /// columns a beard reaches (see [`NetherGen::terrain_bits`]); allocated
     /// only for the grid columns that have one.
     adapted: OnceLock<Box<[OnceLock<u128>; STEP * STEP]>>,
+    /// Generation 7: each block column's surface depth and noises.
+    surface: [OnceLock<super::nether_surface::SurfaceColumn>; STEP * STEP],
 }
 
 /// The four grid columns around a block column and its position between them.
@@ -167,6 +170,14 @@ pub struct NetherGen {
     /// Java's multi-noise Nether biomes (see `world::nether_biome`).
     pub biomes: NetherBiomeSource,
     columns: Mutex<FxHashMap<IVec2, Arc<GridColumn>>>,
+    /// Generation 7: the surface rules' noises.
+    surface: Option<super::nether_surface::SurfaceNoises>,
+    /// Generation 7: decorated 16 × 16 chunks (see `world::nether_order`).
+    pub(super) cells: super::nether_order::CellCache,
+    /// Generation 7: the Nether's ruined portals, placed in decoration
+    /// step 4 (the generator's own [`super::ruined_portal::RuinedPortals`]
+    /// paints them over older generations' chunks).
+    pub(super) ruined_portals: super::ruined_portal::RuinedPortals,
 }
 
 #[inline]
@@ -242,6 +253,10 @@ impl NetherGen {
             fossils: super::nether_fossil::NetherFossils::new(seed, generation),
             biomes: NetherBiomeSource::new(seed),
             columns: Mutex::new(FxHashMap::default()),
+            surface: (generation >= super::terrain::Generation::V7)
+                .then(|| super::nether_surface::SurfaceNoises::new(seed ^ 0x4E45_5448)),
+            cells: Default::default(),
+            ruined_portals: super::ruined_portal::RuinedPortals::new(seed),
         }
     }
 
@@ -464,6 +479,7 @@ impl NetherGen {
             biome: self.biomes.quart(g.x, g.y),
             bits: Default::default(),
             adapted: Default::default(),
+            surface: Default::default(),
         });
         let mut cache = self.columns.lock().unwrap();
         // Another worker may have filled this column while we sampled it.
@@ -481,6 +497,9 @@ impl NetherGen {
     /// What the terrain and its biome's surface rules put at height `wy`
     /// of block column `(wx, wz)`, before structures and features.
     pub(super) fn classify(&self, wx: i32, wy: i32, wz: i32, bits: u128, corners: &Corners) -> Block {
+        if let Some(surface) = &self.surface {
+            return self.classify_v7(surface, wx, wy, wz, bits, corners);
+        }
         if self.bedrock(wx, wy, wz) {
             return Block::BEDROCK;
         }
@@ -578,6 +597,35 @@ impl NetherGen {
         } else {
             Block::NETHERRACK
         }
+    }
+
+    /// Generation 7: Java 26.3's surface rules (`world::nether_surface`).
+    /// Open cells are lava up to the sea and air above it; rock gets the
+    /// bedrock floor and roof, the netherrack under the roof, then the
+    /// biome's rules.
+    fn classify_v7(
+        &self,
+        surface: &super::nether_surface::SurfaceNoises,
+        wx: i32,
+        wy: i32,
+        wz: i32,
+        bits: u128,
+        corners: &Corners,
+    ) -> Block {
+        use super::nether_surface as ns;
+        if !(0..128).contains(&wy) || bits >> wy & 1 == 0 {
+            return if (0..=LAVA_SEA).contains(&wy) { Block::LAVA } else { Block::AIR };
+        }
+        if self.bedrock(wx, wy, wz) {
+            return Block::BEDROCK;
+        }
+        if wy >= ROOF - 5 {
+            return Block::NETHERRACK;
+        }
+        let biome = corners.c[0].biome;
+        let [lx, lz] = corners.t.map(|t| (t * STEP as f32) as usize);
+        let column = *corners.c[0].surface[lz * STEP + lx].get_or_init(|| surface.column(biome, wx, wz));
+        ns::rule(biome, wy, ns::stone_depth_above(bits, wy), ns::stone_depth_below(bits, wy), column)
     }
 
     /// Solidity of block column `(x, z)` from the noise alone, without any
@@ -756,6 +804,11 @@ impl NetherGen {
             }
         }
         super::nether_decoration::decorate(self, &mut blocks, base);
+        // Generation 7 places structures and ancient debris in their
+        // decoration steps (`world::nether_order`).
+        if self.generation >= super::terrain::Generation::V7 {
+            return ChunkData::from_dense(blocks);
+        }
         let cache = RefCell::new(FxHashMap::default());
         let open = |x, z, top, bottom| self.column_open(x, z, top, bottom, &mut cache.borrow_mut());
         self.fortresses.paint(&mut blocks, base, &open);
@@ -769,6 +822,7 @@ impl NetherGen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::terrain::Generation;
 
     fn column(chunks: &[ChunkData], x: usize, z: usize) -> Vec<Block> {
         (0..=ROOF as usize).map(|y| chunks[y / CHUNK_SIZE].get(x, y % CHUNK_SIZE, z)).collect()
@@ -928,7 +982,13 @@ mod tests {
 
     #[test]
     fn ancient_debris_stays_underground_and_rare() {
-        let g = NetherGen::new(7);
+        // Generation 7 places it as a step 7 feature (`nether_order`).
+        for generation in [Generation::V6, Generation::V7] {
+            debris_stays_underground_and_rare(NetherGen::with_generation(7, generation));
+        }
+    }
+
+    fn debris_stays_underground_and_rare(g: NetherGen) {
         let mut debris = 0usize;
         let mut netherrack = 0usize;
         for cx in -2..=2 {
@@ -960,7 +1020,12 @@ mod tests {
 
     #[test]
     fn ancient_debris_rejects_air_exposure() {
-        let g = NetherGen::new(4242);
+        for generation in [Generation::V6, Generation::V7] {
+            debris_rejects_air_exposure(NetherGen::with_generation(4242, generation));
+        }
+    }
+
+    fn debris_rejects_air_exposure(g: NetherGen) {
         let mut cache = std::collections::HashMap::new();
         for cx in -2..=2 {
             for cz in -2..=2 {

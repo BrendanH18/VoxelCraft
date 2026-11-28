@@ -88,6 +88,8 @@ pub fn start_chunk(seed: u64, region: IVec2) -> IVec2 {
 pub trait Terrain {
     /// Whether `#has_structure/end_city` holds at block `(x, z)`.
     fn city_biome(&self, x: i32, z: i32) -> bool;
+    /// The start height of a column: generation 7's is Java's
+    /// `getFirstOccupiedHeight`, the earlier generations' one above it.
     fn first_free(&self, x: i32, z: i32) -> i32;
 }
 
@@ -491,6 +493,28 @@ impl City {
             blocks[index(l.x as usize, l.y as usize, l.z as usize)] =
                 super::skulls::wall(super::skulls::Kind::Dragon, facing);
         }
+    }
+
+    /// The block [`City::paint`] leaves at `p`, or `None` where the city
+    /// leaves what is there.
+    pub fn block_at(&self, p: IVec3) -> Option<Block> {
+        if !self.bounds.contains(p) {
+            return None;
+        }
+        if let Some((cell, facing)) = self.dragon_head
+            && cell == p
+        {
+            return Some(super::skulls::wall(super::skulls::Kind::Dragon, facing));
+        }
+        let mut out = None;
+        for piece in self.pieces.iter().filter(|piece| piece.bounds.contains(p)) {
+            let Some(cell) = template(piece.template).cell(piece.local(p)) else { continue };
+            if !piece.overwrite && cell == templates::Cell::Air {
+                continue;
+            }
+            out = Some(cell.resolve(piece.rotation));
+        }
+        out
     }
 
     /// The city's chests in the chunk at `cpos`.

@@ -126,6 +126,40 @@ before the level file's entities load, so nothing loaded or spawned
 afterwards takes one.
 The session's own saves then number past every region file's.
 
+**Entities between dimensions** (v1.0 final Track F2,
+[record](verification/2026-11-28-v1.0-final-f2-portals.md); since v1.0
+final F11, [record](verification/2026-11-28-v1.0-final-f11-dimensions.md),
+the other dimensions run in the background, so a traveller arrives at once
+or as soon as the ground around its arrival has streamed in). A mob, item,
+projectile, cart or boat on its way through a portal into another
+dimension when the game saves is kept in the root level
+file's `portal_arrivals` key, written only while one waits: a JSON list,
+each entry the destination (`to`), the route Java's portal gave it
+(`nether` with the trip's `target`, `along_x`, `offset`, `vel` and, once
+the search has found an exit portal outside the loaded area, `at`;
+`end_spawn`; `world_spawn`; `at` with a `pos`), the root entity's `width`,
+`height` and `yaw`, and the entity with its passengers as a `batch` of
+the level file's entity keys and texts, as a region record's entity batch
+holds them. When that dimension next loads, each one arrives where its
+route leads and joins the level there (and its chunk's record when the
+chunk unloads); its mob uids, cart ids and merchant ids are the
+destination's next ones. A vehicle carrying the host while the host waits
+to arrive is saved the same way. Saves without the key load as before.
+A save from before F11 whose travellers wait for a dimension the player
+isn't in opens that dimension in the background when the world loads, and
+they arrive there then; so do portals owed to the Nether
+(`owed_nether_portals`) and pearls waiting with their owners in a level
+the owner isn't in.
+
+**Chunk tickets** (v1.0 final F11). A dimension's level file (the root one
+for the Overworld) keeps its `PORTAL` tickets, Java's persistent
+`chunk_tickets`, under `chunk_tickets`, written only while it has some: a
+JSON list of `{"type": "portal", "chunk": [x, z], "level", "ticks_left"}`,
+with `chunk` in 16-block Java chunks and `level` 30 for the radius 3
+Java places. When the world opens, a dimension the player isn't in whose
+level file has tickets runs in the background until they run out. Saves
+without the key load as before.
+
 A scripted run (screenshots, benchmarks) reads region files but never
 writes them, and a LAN client has none.
 

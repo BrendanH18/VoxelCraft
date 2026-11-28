@@ -24,21 +24,18 @@ pub const ZOMBIE_RIDING_OFFSET: f64 = 0.7;
 pub fn mob_mount(kind: MobKind) -> bool {
     super::undead_mounts::undead(kind)
         || matches!(kind, MobKind::CamelHusk | MobKind::ZombieNautilus | MobKind::Strider)
+        || super::piglin_ride::carries_piglins(kind)
 }
 
 /// Where the `n`th of `riders` mob riders of `vehicle` sits (feet).
 pub fn rider_seat(vehicle: &Mob, n: usize, riders: usize, rider_offset: f64) -> DVec3 {
     match vehicle.kind {
         MobKind::CamelHusk => {
-            // As the camel's player seats: half a block fore and aft with two aboard.
-            let sitting = vehicle.mount.as_ref().is_some_and(|s| s.sit_ticks > 0);
-            let seat =
-                vehicle.pos + DVec3::Y * (vehicle.shape().height * 0.75 - 0.35 - if sitting { 0.9 } else { 0.0 });
-            let forward = DVec3::new(vehicle.yaw.cos() as f64, 0.0, vehicle.yaw.sin() as f64) * 0.5;
-            match (riders, n) {
-                (1, _) => seat,
-                (_, 0) => seat + forward,
-                _ => seat - forward,
+            // v1.0 gap Track 3: `Camel.getPassengerAttachmentPoint`, less
+            // the rider's own vehicle attachment.
+            match vehicle.mount.as_ref() {
+                Some(s) => super::mounts::camel::attachment(vehicle, s, n, riders, false) - DVec3::Y * rider_offset,
+                None => vehicle.pos + DVec3::Y * (vehicle.shape().height - rider_offset),
             }
         }
         MobKind::ZombieNautilus => vehicle.pos + DVec3::Y * (super::nautilus::PASSENGER_HEIGHT - ZOMBIE_RIDING_OFFSET),
@@ -46,6 +43,12 @@ pub fn rider_seat(vehicle: &Mob, n: usize, riders: usize, rider_offset: f64) -> 
         // passenger attachment, 1.7 for an adult); a zombified piglin's
         // `ridingOffset` of -0.7 sinks it in, a baby strider sits on top.
         MobKind::Strider => vehicle.pos + DVec3::Y * (vehicle.shape().height - rider_offset),
+        // v1.0 gap Track 2: baby piglins on hoglins and on each other.
+        MobKind::Hoglin => {
+            use super::piglin_ride::{BABY_HOGLIN_SEAT, HOGLIN_SEAT};
+            vehicle.pos + DVec3::Y * (if vehicle.baby { BABY_HOGLIN_SEAT } else { HOGLIN_SEAT } - rider_offset)
+        }
+        MobKind::Piglin => vehicle.pos + DVec3::Y * (super::piglin_ride::BABY_PIGLIN_SEAT - rider_offset),
         _ => vehicle.pos + DVec3::Y * (vehicle.shape().height - 0.25),
     }
 }
@@ -162,6 +165,18 @@ impl Entities {
     /// on camel husks, drowned on zombie nautiluses); a rider whose mount
     /// is gone gets off.
     pub(super) fn position_mob_riders(&mut self) {
+        // Stacked riders (baby piglins on baby piglins) follow their
+        // vehicles' new seats: one pass per level.
+        let nested = self
+            .mobs
+            .iter()
+            .any(|m| m.riding.is_some_and(|v| v & MOB_VEHICLE != 0) && super::piglin_ride::carries_piglins(m.kind));
+        for pass in 0..if nested { super::piglin_ride::STACK_LIMIT } else { 1 } {
+            self.position_mob_riders_once(pass == 0);
+        }
+    }
+
+    fn position_mob_riders_once(&mut self, first: bool) {
         let vehicles: rustc_hash::FxHashMap<u32, usize> = self
             .mobs
             .iter()
@@ -183,7 +198,12 @@ impl Entities {
                 let uid = m.riding.filter(|v| v & MOB_VEHICLE != 0)? & !MOB_VEHICLE;
                 let &i = vehicles.get(&uid)?;
                 let n = seated.entry(uid).or_default();
-                let offset = -super::minecart::riding_offset(m.kind) * if m.baby { 0.5 } else { 1.0 };
+                let offset = if m.kind == MobKind::Piglin && m.baby {
+                    // The baby piglin's own `VEHICLE` attachment.
+                    super::piglin_ride::BABY_PIGLIN_VEHICLE_ATTACHMENT
+                } else {
+                    -super::minecart::riding_offset(m.kind) * if m.baby { 0.5 } else { 1.0 }
+                };
                 let seat = rider_seat(&self.mobs[i], *n, counts.get(&uid).copied().unwrap_or(1), offset);
                 *n += 1;
                 Some((seat, self.mobs[i].vel))
@@ -193,7 +213,9 @@ impl Entities {
             if m.riding.is_none_or(|v| v & MOB_VEHICLE == 0) {
                 continue;
             }
-            m.previous_pos = m.pos;
+            if first {
+                m.previous_pos = m.pos;
+            }
             match seat {
                 Some((p, v)) => {
                     m.pos = p;

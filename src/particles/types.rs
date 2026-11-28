@@ -50,10 +50,20 @@ pub enum Kind {
     /// v1.0 Track 5: `soul` (`EmissiveRisingParticle.EmissiveProvider`),
     /// from Soul Speed boots on soul sand and soul soil.
     Soul,
+    /// v1.0 gap track 6d: `dripping_dripstone_water`
+    /// (`DripstoneWaterHangProvider`): a blue drop hanging from a pointed
+    /// dripstone's tip for 40 ticks, falling and splashing.
+    WaterDrip,
+    /// v1.0 gap Track 2h: `SuspendedTownParticle.HappyVillagerProvider`
+    /// (`happy_villager`), from bone meal (level events 1505, 2011).
+    HappyVillager,
+    /// v1.0 gap Track 2h: `SuspendedTownParticle.ComposterFillProvider`
+    /// (`composter`), from a composter being filled (level event 1500).
+    Composter,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 29] = [
+    pub const ALL: [Kind; 32] = [
         Kind::Smoke,
         Kind::LargeSmoke,
         Kind::Rain,
@@ -83,6 +93,9 @@ impl Kind {
         Kind::EndRod,
         Kind::Nautilus,
         Kind::Soul,
+        Kind::WaterDrip,
+        Kind::HappyVillager,
+        Kind::Composter,
     ];
 
     pub fn sprite(self) -> u16 {
@@ -99,7 +112,7 @@ impl Kind {
             Self::Effect => 9,
             Self::Explosion => 10,
             Self::DragonBreath => 11,
-            Self::LavaDrip => 12,
+            Self::LavaDrip | Self::WaterDrip => 12,
             Self::CrimsonSpore | Self::WarpedSpore | Self::Ash | Self::WhiteAsh => 13,
             Self::SoulFlame => 14,
             Self::Note => 15,
@@ -112,6 +125,8 @@ impl Kind {
             Self::Nautilus => 6,
             // The soul flame's sprite stands in for Java's soul wisp.
             Self::Soul => 14,
+            Self::HappyVillager => 16,
+            Self::Composter => 17,
         }
     }
 }
@@ -170,6 +185,13 @@ pub struct System {
     /// v0.16 Track H: where potent sulfur's `animateTick` played its
     /// noxious gas sound since the game last asked.
     pub gas_sounds: Vec<DVec3>,
+    /// v1.0 gap Track 5c: where a Nether portal's `animateTick` played its
+    /// whoosh since the game last asked (the block's centre).
+    pub portal_sounds: Vec<DVec3>,
+    /// v1.0 gap track 6e: where a pointed dripstone's drop landed since the
+    /// game last asked, whether it was lava, and its volume (Java's random
+    /// 0.3 to 1 at pitch 1, `POINTED_DRIPSTONE_DRIP_WATER` or `_LAVA`).
+    pub drip_sounds: Vec<(DVec3, bool, f32)>,
 }
 
 impl System {
@@ -182,6 +204,8 @@ impl System {
             tracking: VecDeque::with_capacity(256),
             fireworks: VecDeque::with_capacity(64),
             gas_sounds: Vec::new(),
+            portal_sounds: Vec::new(),
+            drip_sounds: Vec::new(),
         }
     }
 
@@ -209,6 +233,11 @@ impl System {
         match request {
             Request::Particle(p) => self.pool.spawn(p),
             Request::Break { cell, block } => self.break_block(cell, block, world),
+            Request::Item { pos, vel, item } => {
+                if self.accept(setting, false, false) {
+                    self.item_particle(pos, vel, item);
+                }
+            }
             Request::Hit { cell, block, face } => self.hit_block(cell, block, face, world),
             Request::Burst(b) => self.burst(b, setting),
             Request::Tracking(burst) => {
@@ -242,6 +271,8 @@ impl System {
                     self.fireworks.push_back(super::firework::Starter::new(pos, vel, &f.explosions));
                 }
             }
+            Request::Composter { cell } => self.composter_fill(cell, setting, world),
+            Request::Growth { cell, count, bone_meal } => self.growth(cell, count, bone_meal, setting, world),
             Request::Honey { pos, count, .. } => {
                 for _ in 0..count {
                     if self.accept(setting, false, false) {
@@ -249,6 +280,68 @@ impl System {
                         self.pool.spawn(p);
                     }
                 }
+            }
+        }
+    }
+
+    /// v1.0 gap Track 2h: `ComposterBlock.handleFill`'s ten `composter`
+    /// particles over the compost at the centre (the shape's top there,
+    /// plus half a pixel), within the inner 0.625 across, moving by a
+    /// gaussian 0.02 each way.
+    fn composter_fill(&mut self, cell: IVec3, setting: Setting, world: &World) {
+        let Some(level) = world.get_block(cell).and_then(crate::world::composter::level) else { return };
+        let centre = crate::world::composter::centre_height(level) + 0.03125;
+        let base = cell.as_dvec3();
+        for _ in 0..10 {
+            let v = DVec3::new(gaussian(&mut self.rng), gaussian(&mut self.rng), gaussian(&mut self.rng)) * 0.02;
+            let x = base.x + 0.1875 + 0.625 * f64::from(self.rng.next_f32());
+            let y = base.y + centre + f64::from(self.rng.next_f32()) * (1.0 - centre);
+            let z = base.z + 0.1875 + 0.625 * f64::from(self.rng.next_f32());
+            if self.accept(setting, false, false) {
+                let p = self.make(Kind::Composter, DVec3::new(x, y, z), v);
+                self.pool.spawn(p);
+            }
+        }
+    }
+
+    /// v1.0 gap Track 2h: bone meal's happy-villager particles.
+    /// `bone_meal` is level event 1505's `BoneMealItem.addGrowthParticles`:
+    /// a neighbour spreader (grass, nylium, netherrack, moss) or water
+    /// scatters `count * 3` over 3 blocks each way above it (only over a
+    /// block), any other bone-mealable block `count` within its cell up to
+    /// its shape's top (rooted dirt and mangrove leaves below them);
+    /// otherwise (level event 2011, a bee's growth) always within the cell
+    /// (`ParticleUtils.spawnParticleInBlock`).
+    fn growth(&mut self, cell: IVec3, count: u8, bone_meal: bool, setting: Setting, world: &World) {
+        let block = world.get_block(cell).unwrap_or(Block::AIR);
+        let count = u32::from(count);
+        let (at, count, width, height, floating) = match bone_meal.then(|| crate::world::growth::bone_meal_kind(block))
+        {
+            Some(None) => return,
+            Some(Some(crate::world::growth::BoneMealKind::Spreader)) => (cell + IVec3::Y, count * 3, 3.0, 1.0, false),
+            Some(Some(crate::world::growth::BoneMealKind::Water)) => (cell, count * 3, 3.0, 1.0, false),
+            Some(Some(crate::world::growth::BoneMealKind::GrowerBelow)) => {
+                let below = cell - IVec3::Y;
+                (below, count, 0.5, in_block_height(world, below), true)
+            }
+            Some(Some(crate::world::growth::BoneMealKind::Grower)) | None => {
+                (cell, count, 0.5, in_block_height(world, cell), true)
+            }
+        };
+        let base = at.as_dvec3();
+        for _ in 0..count.min(256) {
+            let v = DVec3::new(gaussian(&mut self.rng), gaussian(&mut self.rng), gaussian(&mut self.rng)) * 0.02;
+            let start = 0.5 - width;
+            let x = base.x + start + self.rng.next_f64() * width * 2.0;
+            let y = base.y + self.rng.next_f64() * height;
+            let z = base.z + start + self.rng.next_f64() * width * 2.0;
+            let pos = DVec3::new(x, y, z);
+            if !floating && world.get_block(pos.floor().as_ivec3() - IVec3::Y).is_none_or(|b| b == Block::AIR) {
+                continue;
+            }
+            if self.accept(setting, false, false) {
+                let p = self.make(Kind::HappyVillager, pos, v);
+                self.pool.spawn(p);
             }
         }
     }
@@ -268,6 +361,21 @@ impl System {
 
     pub fn tick(&mut self, world: &World, setting: Setting) {
         self.pool.tick(world);
+        // v1.0 gap track 6e: a dripstone drop landed: water leaves Java's
+        // `SPLASH` (no velocity given) where it fell, and both sound.
+        let landed = std::mem::take(&mut self.pool.landed);
+        for &(pos, lava) in &landed {
+            if !lava && self.accept(setting, false, false) {
+                let splash = self.make(Kind::Splash, pos, DVec3::ZERO);
+                self.pool.spawn(splash);
+            }
+            if self.drip_sounds.len() < 64 {
+                let volume = 0.3 + self.rng.next_f32() * 0.7;
+                self.drip_sounds.push((pos, lava, volume));
+            }
+        }
+        self.pool.landed = landed;
+        self.pool.landed.clear();
         self.tick_fireworks();
         let n = self.tracking.len();
         for _ in 0..n {
@@ -416,7 +524,7 @@ impl System {
                 p.size *= rng.range(0.2, 2.2);
                 p.lifetime = (16.0 / rng.range(0.2, 1.0)) as u16;
             }
-            Kind::LavaDrip => {
+            Kind::LavaDrip | Kind::WaterDrip => {
                 // Hang for 40 ticks (gravity 0.06 * 0.02, then *0.02 friction),
                 // fall with gravity 0.06, and sit as the landing particle.
                 p.motion = Motion::DripHang;
@@ -425,9 +533,11 @@ impl System {
                 p.lifetime = 40;
                 p.successor_lifetime = (64.0 / rng.range(0.2, 1.0)) as u16;
                 p.landing_lifetime = (16.0 / rng.range(0.2, 1.0)) as u16;
-                p.color = [1.0, 1.0, 0.5, 1.0];
+                // `DripstoneWaterHangProvider`'s (0.2, 0.3, 1).
+                p.color = if kind == Kind::WaterDrip { [0.2, 0.3, 1.0, 1.0] } else { [1.0, 1.0, 0.5, 1.0] };
                 p.size = 0.05;
                 p.collision_size = 0.01;
+                p.dripstone = kind == Kind::WaterDrip;
             }
             Kind::Splash | Kind::Rain => {
                 p.motion = Motion::Splash;
@@ -545,6 +655,24 @@ impl System {
                 p.lifetime = 16;
                 p.color = if kind == Kind::Heart { [1.0, 0.1, 0.1, 1.0] } else { [1.0; 4] };
             }
+            Kind::HappyVillager | Kind::Composter => {
+                // v1.0 gap Track 2h: `SuspendedTownParticle`: the base
+                // random motion and the given one at a fiftieth, no
+                // collisions or gravity, 0.99 drag, 0.5 to 1.1 of the base
+                // size, white (the colour is the sprite's); a happy
+                // villager lives 20 / (0.2..1.0) ticks, a composter's
+                // particle 3 to 7 (`ComposterFillProvider`).
+                p.physics = false;
+                p.friction = 0.99;
+                p.velocity = java_velocity(rng, velocity) * 0.02;
+                p.size *= rng.range(0.5, 1.1);
+                p.color = [1.0; 4];
+                p.lifetime = if kind == Kind::Composter {
+                    3 + rng.next_int(5) as u16
+                } else {
+                    (20.0 / rng.range(0.2, 1.0)) as u16
+                };
+            }
             Kind::CrimsonSpore | Kind::WarpedSpore => {
                 // SuspendedParticle: hangs where it spawns (an eighth lower),
                 // no physics or gravity, lifetime 16 / (0.2..1.0) ticks.
@@ -605,8 +733,32 @@ impl System {
         p
     }
 
+    /// v1.0 gap Track 2g: `BreakingItemParticle` (`ItemParticleOption`):
+    /// the particle's own random velocity cut to a tenth plus `vel`,
+    /// gravity 1, half the usual size, white, and a random quarter of the
+    /// item's sprite (`uo`, `vo` up to 3 of 4); block items show their
+    /// block's particle texture.
+    fn item_particle(&mut self, pos: DVec3, vel: DVec3, item: crate::item::Item) {
+        let texture = match item.icon_layer() {
+            Some(layer) => Texture::Item(layer.saturating_sub(crate::world::block::tex::ITEM_BASE)),
+            None => match item.block() {
+                Some(b) if b != Block::AIR => Texture::Block(b),
+                _ => return,
+            },
+        };
+        let mut p = Particle::new(pos, texture);
+        p.gravity = 1.0;
+        p.size = 0.05 * self.rng.range(1.0, 2.0);
+        p.velocity = java_velocity(&mut self.rng, DVec3::ZERO) * 0.1 + vel;
+        p.lifetime = (4.0 / self.rng.range(0.1, 1.0)) as u16;
+        let u = self.rng.next_f32() * 3.0 / 4.0;
+        let v = self.rng.next_f32() * 3.0 / 4.0;
+        p.uv = [u + 0.25, v, u, v + 0.25];
+        self.pool.spawn(p);
+    }
+
     fn break_block(&mut self, cell: IVec3, block: Block, world: &World) {
-        if block == Block::AIR || block.is_fluid() || block == Block::NETHER_PORTAL {
+        if block == Block::AIR || block.is_fluid() || block.is_nether_portal() {
             return;
         }
         // Selection boxes preserve stairs/slabs/doors and 64 crumbs for a cube.
@@ -672,6 +824,15 @@ pub fn random_vec(rng: &mut Rng) -> DVec3 {
     DVec3::new(rng.next_f32() as f64, rng.next_f32() as f64, rng.next_f32() as f64)
 }
 
+/// `spawnParticleInBlock`'s height: a whole block over air, else the
+/// block's shape's top.
+fn in_block_height(world: &World, cell: IVec3) -> f64 {
+    if world.get_block(cell).is_none_or(|b| b == Block::AIR) {
+        return 1.0;
+    }
+    f64::from(world.outline(cell).1[1])
+}
+
 fn java_velocity(rng: &mut Rng, supplied: DVec3) -> DVec3 {
     let v = supplied + (random_vec(rng) * 2.0 - DVec3::ONE) * 0.4;
     let speed = (rng.next_f32() + rng.next_f32() + 1.0) as f64 * 0.15 * 0.4;
@@ -688,6 +849,51 @@ mod tests {
     use super::*;
     fn world() -> World {
         World::new_headless(std::sync::Arc::new(crate::world::terrain::Generator::new(42)), Default::default(), 2)
+    }
+
+    /// v1.0 gap Track 2g: `BreakingItemParticle`: an item's sprite from the
+    /// item icon array, a quarter of it, gravity 1, half size, white, its
+    /// motion a tenth of the base plus the given velocity; a block item
+    /// shows its block; Minimal drops them.
+    #[test]
+    fn item_particles_take_a_quarter_of_the_sprite() {
+        let world = world();
+        let mut system = System::new(3);
+        let vel = DVec3::new(0.0, 0.2, 0.0);
+        for _ in 0..20 {
+            system.request(
+                Request::Item { pos: DVec3::new(0.0, 150.0, 0.0), vel, item: crate::item::Item::SNOWBALL },
+                Setting::All,
+                &world,
+            );
+        }
+        let layer = crate::item::Item::SNOWBALL.icon_layer().unwrap() - crate::world::block::tex::ITEM_BASE;
+        let mut n = 0;
+        for p in system.pool.iter() {
+            assert!(matches!(p.texture, Texture::Item(l) if l == layer));
+            assert_eq!((p.gravity, p.color), (1.0, [1.0; 4]));
+            assert!((0.05..=0.1).contains(&p.size));
+            assert!((p.uv[0] - p.uv[2] - 0.25).abs() < 1e-6 && (p.uv[3] - p.uv[1] - 0.25).abs() < 1e-6);
+            assert!(p.uv[2] >= 0.0 && p.uv[0] <= 1.0);
+            // A tenth of at most 0.06 across plus 0.1 up, and the given 0.2.
+            assert!((p.velocity - vel).length() <= 0.03, "{}", p.velocity);
+            n += 1;
+        }
+        assert_eq!(n, 20);
+        let mut system = System::new(3);
+        system.request(
+            Request::Item { pos: DVec3::new(0.0, 150.0, 0.0), vel, item: crate::item::Item::from(Block::STONE) },
+            Setting::All,
+            &world,
+        );
+        assert!(system.pool.iter().all(|p| matches!(p.texture, Texture::Block(Block::STONE))));
+        let mut system = System::new(3);
+        system.request(
+            Request::Item { pos: DVec3::ZERO, vel, item: crate::item::Item::SNOWBALL },
+            Setting::Minimal,
+            &world,
+        );
+        assert_eq!(system.pool.iter().count(), 0);
     }
 
     #[test]

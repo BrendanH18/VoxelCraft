@@ -44,6 +44,7 @@ pub mod equipment;
 pub mod eye;
 pub mod fireball;
 pub mod firework;
+pub mod fox;
 pub mod frog;
 pub mod golem;
 pub mod happy_ghast;
@@ -59,11 +60,14 @@ mod look;
 mod m3_restart_tests;
 pub mod minecart;
 mod mob;
+pub mod mob_anim;
 pub mod mob_combat;
 mod mob_index;
+pub mod mob_steps;
 pub mod model;
 mod monster_spawns;
 pub mod mooshroom;
+pub mod motion;
 pub mod mounts;
 pub mod nautilus;
 pub mod nether;
@@ -73,14 +77,17 @@ pub mod orb;
 pub mod panda;
 pub mod pearl;
 pub mod phantom;
+pub mod piglin_ride;
 mod piston_push;
 pub mod player_model;
 mod player_pose;
 pub mod polar_bear;
+pub mod portal_travel;
 pub mod potion;
 mod projectile;
 pub mod raid;
 mod replica;
+pub mod saved_projectiles;
 pub mod sculk_events;
 pub mod shadow;
 pub mod shulker;
@@ -173,11 +180,13 @@ pub enum MobSound {
     /// A thrown eye of ender dropping or shattering.
     EyeDeath,
     DragonFlap,
+    /// The dragon's growl as Java's client plays it (`playLocalSound` at
+    /// the dragon, volume 2.5, pitch 0.8 to 1.1): now and then in flight,
+    /// and every tick of the sitting roar.
+    DragonRoar,
     DragonGrowl,
     /// The dragon spitting a fireball or breathing fire.
     DragonShoot,
-    /// The dragon crashing through blocks.
-    DragonSmash,
     DragonDeath,
     CopperGolem(copper_golem::Sound, u8),
     Sniffer(sniffer::Cue),
@@ -202,6 +211,31 @@ pub enum MobSound {
     /// v0.16 Track D: sulfur cube squishes, swallowed and ejected blocks,
     /// hits, pushes and buckets.
     SulfurCube(sulfur_cube::Cue),
+    /// v1.0 gap Track 3b: camels sitting, standing and dashing, and
+    /// horses, donkeys, mules, zombie horses and llamas made mad.
+    Mount(mounts::Cue),
+    /// v1.0 final Track F4: a mob's own footstep (`playStepSound`).
+    Step(mob_steps::StepCue),
+    /// v1.0 final Track F4: a baby turtle's hurt (false) or death (true)
+    /// cry (`entity.turtle.hurt_baby`, `death_baby`).
+    BabyTurtle(bool),
+    /// v1.0 gap Track 2f: the fox's own sounds (aggro, bite, eat, screech,
+    /// sleep, sniff, spit).
+    Fox(fox::Cue),
+    /// v1.0 gap Track 2g: the goat's long jump and landing.
+    Goat(animals::long_jump::Cue),
+    /// v1.0 gap Track 8f: `Villager.setUnhappy`'s `entity.villager.no`
+    /// with the head shake; true for a child (`getVoicePitch` 0.5 higher).
+    VillagerNo(bool),
+    /// v1.0 gap Track 2h: a panda eating what it holds
+    /// (`Panda.addEatingParticles`' `PANDA_EAT`).
+    PandaEat,
+    /// v1.0 gap Track 2h: a villager starting work at its job site
+    /// (`WorkAtPoi.start`'s `playWorkSound`).
+    VillagerWork(villager::Profession),
+    /// v1.0 final F9: an item frame or painting a piston broke
+    /// (`ITEM_FRAME_BREAK`, `GLOW_ITEM_FRAME_BREAK` or `PAINTING_BREAK`).
+    DecorBroken(decor::Kind),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -222,8 +256,16 @@ pub enum EntityEvent {
         pos: DVec3,
         normal: IVec3,
         arrow: bool,
-        /// The projectile is on fire (a Flame arrow), which lights candles.
+        /// The projectile is on fire (a Flame arrow, or one set alight),
+        /// which lights candles and (v1.0 gap Track 8b) campfires and
+        /// primes TNT.
         burning: bool,
+        /// v1.0 gap Track 8b: a mob's projectile, which lights campfires
+        /// and primes TNT only with `mob_griefing` on (`Projectile.mayInteract`).
+        mob_owned: bool,
+        /// v1.0 gap Track 8e: the projectile's owner, whom TNT it primes
+        /// names (`TntBlock.onProjectileHit`).
+        by: Option<trident::Owner>,
     },
     /// A mob or arrow hit `player`: apply `damage` and add `knockback` to
     /// their velocity; `cause` is the death message. A hit with `java` set
@@ -261,6 +303,8 @@ pub enum EntityEvent {
         player: PlayerId,
         physical: f32,
         magic: f32,
+        /// v1.0 final F8: the guardian (`Mob::uid`), both hits' attacker.
+        guardian: u32,
     },
     /// Fixed, armored contact damage (guardian spikes and pufferfish).
     /// `poison` ticks of Poison follow only when the sting hurts, as in
@@ -295,6 +339,8 @@ pub enum EntityEvent {
         from: DVec3,
         vel: DVec3,
         potion: crate::potion::Potion,
+        /// v1.0 gap Track 8g: the witch, the potion's owner.
+        thrower: u32,
     },
     LingeringCloud {
         pos: DVec3,
@@ -311,6 +357,10 @@ pub enum EntityEvent {
     PlayerMagic {
         player: PlayerId,
         amount: f32,
+        /// v1.0 gap Track 8g: Java's source for the harm: `indirectMagic`
+        /// naming the thrower (or the potion, or the cloud) for a splash
+        /// or lingering potion, `magic` for a tipped arrow's effect.
+        cause: crate::simulation::damage::Cause,
     },
     /// A creeper, ghast fireball or TNT exploded: break blocks and hurt
     /// everything nearby (see [`explosion_damage`]). [`Entities::explode`]
@@ -360,6 +410,13 @@ pub enum EntityEvent {
         block: Block,
         drops: bool,
     },
+    /// v1.0 gap Track 2: `BreakDoorGoal` finished on the door at `cell`
+    /// (a zombie's or a vindicator's): `removeBlock(cell)`, whose shape
+    /// update destroys the door's other half with particles, its break sound
+    /// and (for a lower half) the door item, then `zombie.break_wooden_door`.
+    DoorBroken {
+        cell: IVec3,
+    },
     /// A drowned threw its trident at `target` (turned into a thrown trident internally).
     ThrowTrident {
         from: DVec3,
@@ -372,6 +429,8 @@ pub enum EntityEvent {
         from: DVec3,
         dir: DVec3,
         large: bool,
+        /// v1.0 gap Track 8e: the blaze or ghast (`Mob::uid`), its owner.
+        shooter: u32,
     },
     /// A fireball set `player` alight for `secs`.
     Ignite {
@@ -379,8 +438,12 @@ pub enum EntityEvent {
         secs: f32,
     },
     /// A fireball hit a block next to the empty `cell`: light a fire there.
+    /// v1.0 gap Track 8f: `mob_owned` when a mob shot it, which needs
+    /// `mob_griefing` (`SmallFireball.onHitBlock`); a dispensed fire charge
+    /// sets its fire whatever the rule.
     IgniteBlock {
         cell: IVec3,
+        mob_owned: bool,
     },
     /// A thrown ender pearl landed at `pos`: teleport its thrower there.
     PearlLanded {
@@ -391,6 +454,21 @@ pub enum EntityEvent {
     OwnerHurt {
         player: PlayerId,
         attacker: u32,
+    },
+    /// v1.0 gap Track 4c: a projectile other than an arrow struck an End
+    /// crystal or a dragon part with `blow`, thrown by player `by`;
+    /// [`Entities::update`] applies it once the projectiles have moved
+    /// (none of them acts on whether the hit landed).
+    DragonStruck {
+        hit: dragon::Hit,
+        blow: dragon::Blow,
+        by: Option<PlayerId>,
+    },
+    /// v1.0 gap Track 4c: a splash or cloud of Healing reached the dragon
+    /// `hit` names (`LivingEntity.heal`).
+    DragonHealed {
+        hit: dragon::Hit,
+        amount: f32,
     },
     /// An arrow hit a vehicle, cushion or decoration (`motion` in blocks
     /// per second); [`Entities::update`] applies it.
@@ -426,6 +504,18 @@ pub enum EntityEvent {
     BreakBlock {
         cell: IVec3,
     },
+    /// v1.0 gap Track 2f: level event 2001 (`addDestroyBlockEffect` and the
+    /// block's break sound) for the block at `cell`, which stays: a
+    /// faceplanted fox kicking up the snow it is in.
+    DestroyEffect {
+        cell: IVec3,
+    },
+    /// v1.0 gap Track 8: a dragon's part broke blocks this tick
+    /// (`EnderDragon.checkWalls`' level event 2008): one explosion particle
+    /// at the middle of `cell`.
+    DragonSmashed {
+        cell: IVec3,
+    },
     /// A trident faster than 0.6 blocks a tick hit pointed dripstone
     /// (`SpeleothemBlock.onProjectileHit`): destroy it with drops, if the
     /// thrower may (`mob_owned` needs `mobGriefing`) and projectiles may break
@@ -443,9 +533,44 @@ pub enum EntityEvent {
     VillagerDoor {
         cell: IVec3,
     },
-    /// A farmer villager harvests the ripe crop at `cell` and replants it (Java `HarvestFarmland`).
+    /// A farmer villager breaks the ripe crop at `cell` (Java
+    /// `HarvestFarmland`'s `destroyBlock`, which drops its items).
     VillagerHarvest {
         cell: IVec3,
+    },
+    /// v1.0 gap Track 2g: a farmer plants `block` from its inventory on the
+    /// farmland under `cell` (`HarvestFarmland`, `item.crop.plant`).
+    VillagerPlant {
+        cell: IVec3,
+        block: crate::world::block::Block,
+    },
+    /// v1.0 gap Track 2g: a villager uses bone meal on the crop at `cell`
+    /// (`UseBonemeal`: `BoneMealItem.growCrop`, level event 1505).
+    VillagerBonemeal {
+        cell: IVec3,
+    },
+    /// v1.0 gap Track 2g: a farmer's `WorkAtComposter` took the composter at
+    /// `cell` from level `from` (8: emptied first) to `to`.
+    VillagerCompost {
+        cell: IVec3,
+        from: u8,
+        to: u8,
+    },
+    /// v1.0 gap Track 2g: an `ItemParticleOption` particle from a pass that
+    /// only has the event list (thrown snowballs and eggs breaking, a fox
+    /// eating); handled internally into [`Entities::particles`].
+    ItemParticle {
+        pos: DVec3,
+        vel: DVec3,
+        item: crate::item::Item,
+    },
+    /// v1.0 gap Track 2g: a mob throws or drops `stack` from `pos` at `vel`
+    /// (blocks a second), 10 ticks before it can be picked up
+    /// (`BehaviorUtils.throwItem`, `spawnAtLocation`); handled internally.
+    ThrowItem {
+        stack: crate::inventory::Stack,
+        pos: DVec3,
+        vel: DVec3,
     },
     /// v1.0 Track 6: a villager rings its meeting bell before a raid
     /// (`RingBell`, `BellBlock.attemptToRing` with the villager as source).
@@ -520,6 +645,25 @@ pub enum EntityEvent {
         attacker: u32,
         damage: f32,
         knockback: DVec3,
+        /// A direct melee hit (`Mob.doHurtTarget`), whose main-hand weapon's
+        /// Smite or Bane of Arthropods the target's kind decides; projectiles
+        /// and the warden's sonic boom aren't.
+        melee: bool,
+    },
+    /// v1.0 gap Track 2b: a mob's lowered spear struck another mob
+    /// (`LivingEntity.stabAttack`; handled internally with the mob hits).
+    MobStab(weapon_hits::MobStab),
+    /// v1.0 gap Track 2b: a push on `player` without damage, as
+    /// `causeExtraKnockback` gives (a spear contact that knocks back);
+    /// applied whether or not a hit landed just before it.
+    PlayerShove {
+        player: PlayerId,
+        pushes: [Option<crate::knockback::Push>; 2],
+    },
+    /// v1.0 gap Track 2b: a spear contact takes `player` off its vehicle
+    /// (`Entity.stopRiding`).
+    PlayerDismount {
+        player: PlayerId,
     },
     /// A mob's equipment drops at `pos` outside a death (`Mob.spawnAtLocation`,
     /// e.g. preserved gear on a zombie villager's cure; handled internally).
@@ -553,6 +697,8 @@ pub enum EntityEvent {
         center: DVec3,
         power: f32,
         dangerous: bool,
+        /// v1.0 gap Track 8e: the Wither behind the blast (`Mob::uid`).
+        owner: Option<u32>,
     },
     /// v0.16 Track C: a hurt Wither breaks every breakable block in the box
     /// (`destroyBlocksTick`, under `mobGriefing`), with drops.
@@ -699,6 +845,9 @@ pub trait MobWorld: BlockSource {
     /// Generation 4 village residents (v0.15 Track G): spawn cells of
     /// Java's villager, cat, golem and animal pieces.
     fn village_residents(&self, _visit: &mut dyn FnMut(IVec3, crate::world::village::Resident)) {}
+    /// v1.0 final F5: generation 7 mineshafts' chest minecarts (rail cell,
+    /// `abandoned_mineshaft` loot seed) still to spawn.
+    fn mineshaft_carts(&self, _visit: &mut dyn FnMut(IVec3, u64)) {}
     fn seed(&self) -> u64 {
         0
     }
@@ -808,6 +957,9 @@ impl MobWorld for World {
     }
     fn village_residents(&self, visit: &mut dyn FnMut(IVec3, crate::world::village::Resident)) {
         self.visit_village_residents(visit);
+    }
+    fn mineshaft_carts(&self, visit: &mut dyn FnMut(IVec3, u64)) {
+        self.visit_mineshaft_carts(visit);
     }
     fn seed(&self) -> u64 {
         self.generator.seed
@@ -961,9 +1113,42 @@ pub struct Target {
     /// v0.16 Track C: the mob head worn in the helmet slot, which halves
     /// how far its own kind sees this player (`MobVisibility`).
     pub head: Option<crate::world::skulls::Kind>,
+    /// v1.0 gap Track 8d: `abilities.invulnerable` (creative), which
+    /// refuses every hit but `#bypasses_invulnerability`.
+    pub invulnerable: bool,
+    /// v1.0 gap Track 8d: the hurt cooldown's `lastHurt` while it is in
+    /// its first half, when a hit no harder is refused.
+    pub last_hurt: Option<f32>,
+    /// The world's difficulty, which scales a mob's hit on a player
+    /// (`Player.hurtServer`'s `scalesWithDifficulty`).
+    pub difficulty: crate::simulation::difficulty::Difficulty,
 }
 
 impl Target {
+    /// v1.0 gap Track 8d: whether this player's `hurtServer` refuses a hit of
+    /// `damage` outright (creative, or a hit no harder than the last within
+    /// the hurt cooldown), after the difficulty scales a mob's hit (`scaled`).
+    /// A refused arrow or trident bounces off.
+    pub fn refuses_hit(&self, damage: f32, scaled: bool) -> bool {
+        let damage = if scaled { self.difficulty.mob_damage(damage) } else { damage };
+        self.invulnerable || damage <= 0.0 || self.last_hurt.is_some_and(|last| damage <= last)
+    }
+
+    /// `getEyeHeight` for the player's pose: 1.62 standing, 1.27 crouching,
+    /// 0.4 swimming, gliding or crawling (Track 2d: the eye mobs look at).
+    pub fn eye_height(&self) -> f64 {
+        match self.shape.height {
+            h if h < 1.0 => 0.4,
+            h if h < 1.6 => 1.27,
+            _ => crate::player::EYE_HEIGHT,
+        }
+    }
+
+    /// The player's eye position.
+    pub fn eye(&self) -> DVec3 {
+        self.pos + DVec3::Y * self.eye_height()
+    }
+
     /// Whether the target has `effect` active.
     pub fn has_effect(&self, effect: crate::simulation::effects::Effect) -> bool {
         self.effects & (1u64 << effect as u32) != 0
@@ -1023,6 +1208,9 @@ impl Target {
             time_since_rest: 0,
             darkness_ticks: 0,
             head: None,
+            invulnerable: false,
+            last_hurt: None,
+            difficulty: crate::simulation::difficulty::Difficulty::Normal,
             blocking: false,
             fall_flying: false,
             vel: DVec3::ZERO,
@@ -1113,6 +1301,11 @@ impl Rng {
         splitmix64(&mut self.0)
     }
 
+    /// A double in `[0, 1)` (Java's `nextDouble`, 53 bits).
+    pub fn next_f64(&mut self) -> f64 {
+        (splitmix64(&mut self.0) >> 11) as f64 / (1u64 << 53) as f64
+    }
+
     pub fn range(&mut self, lo: f32, hi: f32) -> f32 {
         lo + (hi - lo) * self.next_f32()
     }
@@ -1127,6 +1320,13 @@ impl Rng {
     }
 }
 
+/// v1.0 final F8: how long a departed mob is remembered for a death
+/// message, in seconds: the combat tracker's longest memory
+/// (`RESET_COMBAT_STATUS_TIME`) and a few seconds more.
+pub const DEPARTED_MEMORY: f32 = 20.0;
+/// v1.0 final F8: at most this many departed mobs are remembered.
+pub const DEPARTED_MAX: usize = 64;
+
 pub struct Entities {
     pub mobs: Vec<Mob>,
     /// v0.15 Track A: evoker fangs (not saved; each lives under two seconds).
@@ -1139,6 +1339,10 @@ pub struct Entities {
     pub particles: crate::particles::Requests,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
+    /// v1.0 final F11: Java chunks where a pearl renewed its owner's
+    /// `ENDER_PEARL` ticket this tick ([`pearl::Pearl::ticket`]); the game
+    /// takes them into its level's tickets.
+    pub pearl_tickets: Vec<glam::IVec2>,
     pub potions: Vec<potion::ThrownPotion>,
     pub clouds: Vec<lingering::Cloud>,
     pub thrown: Vec<thrown::Thrown>,
@@ -1241,6 +1445,11 @@ pub struct Entities {
     pub world_spawn: Option<IVec3>,
     /// The mobGriefing gamerule, shared by villager, piglin and allay item pickup.
     pub villager_griefing: bool,
+    /// v1.0 gap Track 2f: each player's `lastHurtByMob` (a mob's uid), the
+    /// hurt's number and its age in ticks, for the foxes'
+    /// `DefendTrustedTargetGoal`.
+    pub(crate) player_hurt_by: rustc_hash::FxHashMap<PlayerId, (fox::Attacker, u32, u32)>,
+    pub(crate) player_hurts: u32,
     /// v0.15 Track D: the `max_entity_cramming` gamerule, which caps
     /// Oozing's slimes.
     pub max_entity_cramming: i32,
@@ -1262,6 +1471,12 @@ pub struct Entities {
     merge_timer: f32,
     /// Next [`Mob::uid`] to hand out.
     next_uid: u32,
+    /// v1.0 final F8: mobs gone from the level in the last
+    /// [`DEPARTED_MEMORY`] seconds, as a death message names them: Java's
+    /// `DamageSource` holds its entity, so a creeper's own blast (or a
+    /// zombie that died or despawned since its hit) still names it by its
+    /// custom name. Not saved; at most [`DEPARTED_MAX`].
+    departed: Vec<(u32, crate::simulation::death_message::Attacker, f32)>,
     /// Living mobs as nether mobs saw them this update (reused buffer).
     nether_view: Vec<nether::Seen>,
     /// Players at the last update, to credit melee hits on nether mobs.
@@ -1285,18 +1500,31 @@ pub struct Entities {
     /// landed stops updating (no AI, movement, burning or sounds), faces this
     /// point and keeps its lighting fresh, so its pose is the same in every run.
     pub still: Option<DVec3>,
+    /// v1.0 gap Track 8d: `--burning`: still mobs hold still on fire.
+    pub still_burning: bool,
     /// Updates since `still` was set, after which fliers hold still too.
     still_ticks: u32,
     /// v0.18 Track 6: this frame's shadow casters, kept to reuse the allocation.
     casters: Vec<shadow::Caster>,
     /// v0.18 Track 6: the mobs' simulation poses while `mesh` draws interpolated ones.
-    poses: Vec<[f32; 5]>,
+    poses: Vec<mob::Pose>,
+    /// v1.0 gap Track 2c: each mob's heading and body while it is drawn.
+    headings: Vec<(f32, f32)>,
+}
+
+impl Entities {
+    /// v1.0 gap Track 2: the cracks of the doors mobs are breaking
+    /// (`BreakDoorGoal`'s `destroyBlockProgress`), as crack fractions.
+    pub fn door_cracks(&self) -> impl Iterator<Item = (IVec3, f32)> + '_ {
+        self.mobs.iter().filter(|m| m.alive()).filter_map(|m| m.door_crack())
+    }
 }
 
 impl Entities {
     /// Creates an empty entity simulation with deterministic randomness from `seed`.
-    /// Drops sounds no frame will play (the headless harness has no audio).
-    pub(crate) fn clear_pending_sounds(&mut self) {
+    /// Drops sounds no frame will play (the headless harness has no audio,
+    /// and nobody hears a background level, v1.0 final F11).
+    pub fn clear_pending_sounds(&mut self) {
         self.pending_sounds.clear();
     }
 
@@ -1311,6 +1539,7 @@ impl Entities {
             particles: Default::default(),
             arrows: Vec::new(),
             pearls: Vec::new(),
+            pearl_tickets: Vec::new(),
             potions: Vec::new(),
             clouds: Vec::new(),
             thrown: Vec::new(),
@@ -1372,6 +1601,8 @@ impl Entities {
             spawner_blocks: true,
             world_spawn: None,
             villager_griefing: true,
+            player_hurt_by: rustc_hash::FxHashMap::default(),
+            player_hurts: 0,
             max_entity_cramming: 24,
             effect_deaths: Vec::new(),
             gossip_timer: 5.0,
@@ -1383,6 +1614,7 @@ impl Entities {
             generation_populated: Default::default(),
             merge_timer: 0.0,
             next_uid: 1,
+            departed: Vec::new(),
             nether_view: Vec::new(),
             player_spots: Vec::new(),
             hurt_by: Vec::new(),
@@ -1394,9 +1626,11 @@ impl Entities {
             rendered: 0,
             mesh: model::EntityMesh::default(),
             still: None,
+            still_burning: false,
             still_ticks: 0,
             casters: Vec::new(),
             poses: Vec::new(),
+            headings: Vec::new(),
         }
     }
 
@@ -1426,6 +1660,53 @@ impl Entities {
 
     pub fn count(&self, kind: MobKind) -> usize {
         self.mobs.iter().filter(|m| m.kind == kind && m.alive()).count()
+    }
+
+    /// v1.0 gap Track 8g: the mob `uid` as a death message names it
+    /// (`Entity.getDisplayName`: its custom name, else its kind's Java
+    /// name) with its main-hand item's custom name; None once it's gone.
+    /// v1.0 final F8: the Ender Dragon ([`dragon::DRAGON_UID`]) as
+    /// "Ender Dragon", alive while one is; a mob gone from the level since
+    /// as it was ([`Entities::depart`]), no longer alive.
+    pub fn attacker(&self, uid: u32) -> Option<crate::simulation::death_message::Attacker> {
+        use crate::simulation::death_message::Attacker;
+        if uid == dragon::DRAGON_UID {
+            let fight = self.fight.as_ref().and_then(|f| f.dragon.as_ref()).is_some_and(|d| d.health > 0.0);
+            let wild = self.wild_dragons.dragons.iter().any(|w| w.dragon.health > 0.0);
+            return Some(Attacker { name: "Ender Dragon".into(), weapon: None, alive: fight || wild });
+        }
+        let Some(m) = self.mobs.iter().find(|m| m.uid == uid) else {
+            return self.departed.iter().find(|(u, ..)| *u == uid).map(|(_, a, _)| a.clone());
+        };
+        Some(Self::attacker_of(m))
+    }
+
+    fn attacker_of(m: &Mob) -> crate::simulation::death_message::Attacker {
+        crate::simulation::death_message::Attacker {
+            name: m.name.as_str().map_or_else(|| crate::simulation::death_message::mob_name(m.kind), str::to_string),
+            weapon: m.equipment.main_hand().and_then(|s| s.name.as_str()).map(str::to_string),
+            alive: m.alive(),
+        }
+    }
+
+    /// v1.0 final F8: remembers `m`, leaving the level, for
+    /// [`Entities::attacker`].
+    pub(crate) fn depart(&mut self, m: &Mob) {
+        if self.departed.len() >= DEPARTED_MAX {
+            self.departed.remove(0);
+        }
+        let attacker = crate::simulation::death_message::Attacker { alive: false, ..Self::attacker_of(m) };
+        self.departed.push((m.uid, attacker, DEPARTED_MEMORY));
+    }
+
+    /// v1.0 final F8: forgets departed mobs [`DEPARTED_MEMORY`] seconds on.
+    pub(crate) fn age_departed(&mut self, dt: f32) {
+        if !self.departed.is_empty() {
+            self.departed.retain_mut(|(_, _, t)| {
+                *t -= dt;
+                *t > 0.0
+            });
+        }
     }
 
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
@@ -1564,13 +1845,13 @@ impl Entities {
     /// it before the blast breaks any blocks: Java hurts entities first, so
     /// the walls about to go still shield them.
     pub fn explode<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
-        self.blast(world, center, power, false, true);
+        self.blast(world, center, power, false, true, None);
     }
 
     /// As [`Entities::explode`], but mobs it kills count as the player's
     /// (a ghast fireball punched back).
     pub fn explode_credited<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
-        self.blast(world, center, power, true, true);
+        self.blast(world, center, power, true, true, None);
     }
 
     /// [`Entities::explode`] with its source's rules: `credit_player` as for
@@ -1586,7 +1867,21 @@ impl Entities {
         credit_player: bool,
         breaks_blocks: bool,
     ) {
-        self.blast(world, center, power, credit_player, breaks_blocks);
+        self.blast(world, center, power, credit_player, breaks_blocks, None);
+    }
+
+    /// v1.0 gap Track 8f: [`Entities::explode_with`] with `by` behind the
+    /// blast (`DamageSource.getEntity`: primed TNT's owner, a ghast for its
+    /// fireball's), whom every mob it hurts takes as its attacker.
+    pub fn explode_by<W: BlockSource + ?Sized>(
+        &mut self,
+        world: &W,
+        center: DVec3,
+        power: f32,
+        (credit_player, breaks_blocks): (bool, bool),
+        by: Option<trident::Owner>,
+    ) {
+        self.blast(world, center, power, credit_player, breaks_blocks, by);
     }
 
     fn blast<W: BlockSource + ?Sized>(
@@ -1596,6 +1891,7 @@ impl Entities {
         power: f32,
         credit_player: bool,
         breaks_blocks: bool,
+        by: Option<trident::Owner>,
     ) {
         // Java gathers the entities before hurting any, so drops from what
         // this blast breaks or kills are spared.
@@ -1603,9 +1899,9 @@ impl Entities {
         self.blast_carts(world, center, power);
         self.blast_decor(center, power);
         if let Some(fight) = &mut self.fight {
-            fight.explode(center, power);
+            fight.explode(world, center, power);
         }
-        self.wild_dragons.explode(center, power);
+        self.wild_dragons.explode(world, center, power);
         self.crystals.explode(center, power);
         // v0.16 Track C: a charged creeper's blast knocks one head off.
         let charged = self
@@ -1615,7 +1911,8 @@ impl Entities {
             .map(|i| self.charged_blasts.swap_remove(i))
             .is_some();
         let mut killed = Vec::new();
-        for m in &mut self.mobs {
+        let mut hurt = Vec::new();
+        for (i, m) in self.mobs.iter_mut().enumerate() {
             if !m.alive() || m.pos.distance(center) > f64::from(power) * 2.0 {
                 continue;
             }
@@ -1624,7 +1921,7 @@ impl Entities {
             let Some((damage, knockback)) = explosion_damage(power, m.pos.distance(center), exposure) else {
                 continue;
             };
-            let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let eye = m.look_eye();
             let push = (eye - center).normalize_or_zero() * knockback;
             if credit_player {
                 m.player_hit();
@@ -1641,8 +1938,18 @@ impl Entities {
                 }
                 None => push,
             };
-            if m.blast(damage, push, &mut self.rng) {
+            let before = m.health;
+            let dead = m.blast(damage, push, &mut self.rng);
+            if dead {
                 killed.push((m.kind, m.pos, m.burning));
+            }
+            if dead || m.health < before {
+                hurt.push((i, dead));
+            }
+        }
+        if let Some(by) = by {
+            for (i, dead) in hurt {
+                self.blamed_for_blast(i, by, dead);
             }
         }
         self.particles.push(crate::particles::Request::Explosion { pos: center, large: power >= 2.0 });
@@ -1681,6 +1988,7 @@ impl Entities {
         };
         if items {
             let sculk = &mut self.sculk;
+            let mut destroyed = Vec::new();
             self.items.retain_mut(|item| match hit(item.pos, item.aabb(), item::ItemEntity::EYE) {
                 // v0.16 Track C: the Nether star's `damage_resistant`
                 // spares it the damage, not the push.
@@ -1693,10 +2001,17 @@ impl Entities {
                     // v1.0 Track 9: `ItemEntity.hurtServer` posts `entity_damage`.
                     let none = crate::world::vibration::EventSource::NONE;
                     sculk.post(item.pos, crate::world::vibration::GameEvent::EntityDamage, none, None);
-                    item.hurt(damage)
+                    let alive = item.hurt(damage);
+                    if !alive {
+                        destroyed.push(*item);
+                    }
+                    alive
                 }
                 None => true,
             });
+            for item in destroyed {
+                self.spill_destroyed(&item);
+            }
         }
         self.orbs.retain_mut(|orb| match hit(orb.pos, orb.aabb(), orb::XpOrb::EYE) {
             Some((damage, push)) => {
@@ -1953,6 +2268,20 @@ impl Entities {
         }
     }
 
+    /// v1.0 gap track 6: `Item.onDestroyed` for an item entity that burnt or
+    /// was blown up: a bundle's contents (and since track 6b a shulker box's,
+    /// `BlockItem.onDestroyed`) come out where it was
+    /// (`ItemUtils.onContainerDestroyed`), each as a fresh item entity with
+    /// `ItemEntity`'s own random start, 0.2 up and up to 0.1 sideways a tick,
+    /// and no pickup delay.
+    pub(crate) fn spill_destroyed(&mut self, item: &item::ItemEntity) {
+        for stack in crate::content::bundle::destroyed_contents(&item.stack) {
+            let mut side = || f64::from(self.rng.next_f32()) * 0.2 - 0.1;
+            let vel = DVec3::new(side(), 0.2, side()) * 20.0;
+            self.items.push(item::ItemEntity::new(stack, item.pos, vel, 0.0, &mut self.rng));
+        }
+    }
+
     /// Drops a stack that popped out of the block at `cell` (mined, spilled
     /// from a container, blown up).
     pub fn drop_from_block(&mut self, stack: crate::inventory::Stack, cell: IVec3) {
@@ -2137,6 +2466,8 @@ impl Entities {
         if !self.wild_dragons.dragons.is_empty() {
             props.insert("ender_dragons".to_string(), self.wild_dragons.serialize());
         }
+        // v1.0 gap Track 8e: projectiles with their fire, and primed TNT.
+        self.save_projectiles(props);
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -2180,6 +2511,7 @@ impl Entities {
             self.crystals.load(c);
         }
         self.wild_dragons = props.get("ender_dragons").map(|d| dragon::Wild::load(d)).unwrap_or_default();
+        self.load_projectiles(props);
     }
 
     pub fn load_items(&mut self, text: &str) {
@@ -2263,16 +2595,21 @@ impl Entities {
         // v0.18 Track 6: draw each mob turned and mid-stride as of `alpha`,
         // then put the simulation's values back.
         self.poses.clear();
+        self.headings.clear();
         for m in &mut self.mobs {
             self.poses.push(m.pose_values());
+            // v1.0 gap Track 2c: the models draw `yaw` as the body; the
+            // simulation's heading (`yRot`) and body come back after.
+            self.headings.push((m.yaw, m.body_yaw));
             m.set_pose_values(m.render_pose(alpha as f32));
         }
-        self.rendered = model::build(&self.mobs, camera, forward, view, time, alpha, &mut self.mesh);
-        for (m, &pose) in self.mobs.iter_mut().zip(&self.poses) {
+        self.rendered = model::build(&self.mobs, camera, forward, view, alpha, &mut self.mesh);
+        for ((m, &pose), &(yaw, body)) in self.mobs.iter_mut().zip(&self.poses).zip(&self.headings) {
             m.set_pose_values(pose);
+            (m.yaw, m.body_yaw) = (yaw, body);
         }
-        model::build_arrows(&self.arrows, camera, alpha, &mut self.mesh);
-        model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
+        model::build_arrows(&self.arrows, camera, forward, time, alpha, &mut self.mesh);
+        model::build_tridents(&self.tridents, camera, forward, time, alpha, &mut self.mesh);
         model::build_fangs(&self.fangs, camera, &mut self.mesh);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.mesh);
         model::build_fireworks(&self.fireworks, camera, alpha, &mut self.mesh);
@@ -2284,6 +2621,26 @@ impl Entities {
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.mesh);
         model::build_wither_skulls(&self.wither_skulls, camera, time, alpha, &mut self.mesh);
         model::build_shulker_bullets(&self.shulker_bullets, camera, time, alpha, &mut self.mesh);
+        // v1.0 gap Track 8d: Java's flame on every other burning projectile
+        // (`displayFireAnimation`) over its box: thrown items, pearls,
+        // potions, fireballs (always alight, `shouldBurn`), rockets and
+        // hooks. Wither skulls and shulker bullets are never `isOnFire`.
+        let burning = self
+            .thrown
+            .iter()
+            .filter(|t| t.burning())
+            .map(|t| (t.previous_pos, t.pos, t.kind.size()))
+            .chain(self.pearls.iter().filter(|p| p.burning()).map(|p| (p.previous_pos, p.pos, 0.25)))
+            .chain(self.potions.iter().filter(|p| p.burning()).map(|p| (p.previous_pos, p.pos, 0.25)))
+            .chain(self.fireballs.iter().map(|f| (f.previous_pos, f.pos, f.size())))
+            .chain(self.fireworks.iter().filter(|r| r.burning()).map(|r| (r.previous_pos, r.pos, 0.25)))
+            .chain(self.bobbers.iter().filter(|b| b.burning()).map(|b| (b.previous_pos, b.pos, 0.25)));
+        // Their positions are their models' centres; the flame stands on
+        // the box's bottom.
+        for (from, to, size) in burning {
+            let rel = (from.lerp(to, alpha) - camera - DVec3::Y * (size / 2.0)).as_vec3();
+            model::flame(&mut self.mesh, rel, (size as f32, size as f32), forward, 230, time);
+        }
         model::build_lightning(&self.lightning, camera, &mut self.mesh);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
         model::build_orbs(&self.orbs, camera, &view, time, alpha, &mut self.mesh);
@@ -2397,10 +2754,10 @@ impl Entities {
         Some(i)
     }
 
-    /// Punches the ghast fireball under the crosshair back along `dir`.
-    pub fn punch_fireball(&mut self, eye: DVec3, dir: DVec3, max_dist: f64) -> bool {
+    /// Player `by` punches the ghast fireball under the crosshair back along `dir`.
+    pub fn punch_fireball(&mut self, eye: DVec3, dir: DVec3, max_dist: f64, by: PlayerId) -> bool {
         let Some(i) = self.large_fireball(eye, dir, max_dist) else { return false };
-        self.fireballs[i].deflect(dir);
+        self.fireballs[i].deflect(dir, by);
         true
     }
 
@@ -2437,13 +2794,23 @@ impl Entities {
         }
     }
 
+    /// v1.0 gap Track 2d: `blow` on a dragon part (fight or wild), as
+    /// `EnderDragonPart.hurtServer`; returns whether it landed.
+    pub fn strike_blow(&mut self, hit: dragon::Hit, blow: dragon::Blow) -> bool {
+        match hit {
+            dragon::Hit::Crystal(_) => false,
+            dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, blow)),
+            dragon::Hit::Wild(id, part) => self.wild_dragons.strike(id, part, blow),
+        }
+    }
+
     /// [`Entities::strike`] by a player who may be in Creative (whose hits
     /// get through the ritual crystals' invulnerability).
     pub fn strike_as(&mut self, hit: dragon::Hit, damage: f32, by: PlayerId, creative: bool) -> bool {
         match hit {
             dragon::Hit::Crystal(id) => self.crystals.hit(id, crystal::Blow::Player { id: by, creative }),
-            dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, damage, false)),
-            dragon::Hit::Wild(id, part) => self.wild_dragons.strike(id, part, damage, false),
+            dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, dragon::Blow::melee(damage))),
+            dragon::Hit::Wild(id, part) => self.wild_dragons.strike(id, part, dragon::Blow::melee(damage)),
         }
     }
 
@@ -2474,11 +2841,15 @@ impl Entities {
 
     /// Lights the TNT block at `cell` (now gone from the world): a short
     /// random fuse if a blast `chained` it, the full four seconds otherwise.
-    pub fn prime_tnt(&mut self, cell: IVec3, chained: bool) {
+    /// v1.0 gap Track 8e: `owner` is who lit it (`PrimedTnt.owner`), whom
+    /// its blast names.
+    pub fn prime_tnt(&mut self, cell: IVec3, chained: bool, owner: Option<trident::Owner>) {
         let fuse = if chained { self.rng.range(0.5, 1.5) } else { tnt::FUSE };
         let a = self.rng.range(0.0, TAU);
         let vel = DVec3::new(a.cos() as f64 * 0.4, 2.0, a.sin() as f64 * 0.4);
-        self.tnt.push(tnt::PrimedTnt::new(cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), vel, fuse));
+        let mut primed = tnt::PrimedTnt::new(cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), vel, fuse);
+        primed.owner = owner;
+        self.tnt.push(primed);
     }
 
     /// `ThrownEnderpearl.tick` under `ender_pearls_vanish_on_death`: pearls
@@ -2700,14 +3071,21 @@ impl Entities {
         if mob.allay.as_ref().is_some_and(|s| s.player == Some(owner)) {
             return None;
         }
+        // v1.0 gap Track 8d: a hit the hurt cooldown refuses (no harder than
+        // the last within its first ten ticks) does nothing: `hurtServer`
+        // returns false before blaming anyone.
+        if mob.refuses_hit(damage) {
+            return None;
+        }
         let kind = mob.kind;
         // v0.15 Track E: the killer a raid credits as a hero.
         mob.player_hit_by(owner);
         if kind == MobKind::IronGolem && !self.neutral_universal_anger {
             mob.angry_player = Some(owner);
         }
-        let pushes: Vec<_> = pushes.iter().flatten().copied().collect();
-        let killed = mob.damage_pushed(damage, &pushes, &mut self.rng);
+        // `hurtServer`'s own push lands only with a full hit; the attack's
+        // extra or sweep push with any hit that lands.
+        let killed = mob.damage_knocked(damage, pushes[0], pushes[1].as_slice(), &mut self.rng);
         // The hit's attacker, for `Zombie.hurtServer`'s reinforcement call.
         if mob.reinforce_call.is_some() {
             mob.reinforce_call = Some(Some(owner));
@@ -2795,7 +3173,7 @@ impl Entities {
         }
         let spiked = matches!(target.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && target.aquatic.as_ref().is_some_and(|a| a.beam.is_some() || target.vel.length_squared() < 0.1);
-        let (kind, pos, shape) = (target.kind, target.pos, target.shape());
+        let (kind, pos, shape, target_uid) = (target.kind, target.pos, target.shape(), target.uid);
         // `Player.attack`: the item's `getAttackDamageBonus` (the mace's smash)
         // joins after the charge scaling and before the critical multiplier.
         let base = ((crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0)
@@ -2808,14 +3186,18 @@ impl Entities {
         let damage = base + magic * strength;
         let (knockback, fire) = crate::mining::weapon_extras(held);
         let extra = crate::knockback::attack_strength(0.0, u32::from(knockback), sprint_knockback);
-        if fire > 0.0 {
+        // Fire Aspect is a post-attack effect: a hit `hurtServer` refuses
+        // (the hurt cooldown, v1.0 gap Track 8d) sets nothing alight.
+        if fire > 0.0 && !self.mobs[index].refuses_hit(damage) {
             self.mobs[index].ignite(fire);
         }
         if spiked {
             self.pending_sounds.push(EntityEvent::PlayerSting {
                 player: owner,
                 damage: 2.0,
-                cause: crate::simulation::damage::Cause::GUARDIAN_SPIKES,
+                // v1.0 final F8: `thorns(guardian)`, the guardian named.
+                cause: crate::simulation::damage::Cause::GUARDIAN_SPIKES
+                    .by(Some(crate::entity::trident::Owner::Mob(target_uid))),
                 poison: 0,
             });
         }
@@ -3093,6 +3475,33 @@ mod tests {
         }
     }
 
+    /// v1.0 final F8: a named creeper gone in its own blast is still named
+    /// by its custom name (Java's `DamageSource` holds the creeper), no
+    /// longer alive, and forgotten after [`DEPARTED_MEMORY`]; the dragon's
+    /// uid names the Ender Dragon.
+    #[test]
+    fn a_departed_attacker_keeps_its_name_for_the_message() {
+        let world = Grid::flat(0);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Creeper, DVec3::new(0.5, 0.0, 0.5));
+        let uid = 42;
+        e.mobs[0].uid = uid;
+        e.mobs[0].name = crate::inventory::StackName::new("Boom").unwrap();
+        e.mobs[0].health = 0.0;
+        e.mobs[0].dying = Some(mob::DEATH_TIME);
+        let c = ctx(DVec3::new(0.5, 0.0, 0.5));
+        e.update(0.05, &world, &c);
+        assert!(e.mobs.iter().all(|m| m.uid != uid), "gone");
+        let a = e.attacker(uid).expect("remembered");
+        assert_eq!((a.name.as_str(), a.alive), ("Boom", false));
+        for _ in 0..((DEPARTED_MEMORY / 0.5) as usize + 1) {
+            e.update(0.5, &world, &c);
+        }
+        assert_eq!(e.attacker(uid), None);
+        let dragon = e.attacker(dragon::DRAGON_UID).unwrap();
+        assert_eq!((dragon.name.as_str(), dragon.alive), ("Ender Dragon", false), "no dragon about");
+    }
+
     /// Hostile kinds that fill their cap on the flat plains test grid.
     fn plains_spawner(kind: MobKind) -> bool {
         kind.is_hostile()
@@ -3206,7 +3615,14 @@ mod tests {
             e.spawn(MobKind::Husk, DVec3::new(0.5, 10.0, 0.5));
             let mut c = ctx(DVec3::new(100.0, 10.0, 0.5));
             c.players.push(Target::new(PlayerId(2), DVec3::new(1.0, 10.0, 0.5), true));
-            let events = e.update_difficulty(0.05, &Grid::flat(10), &c, difficulty);
+            // The husk finds its target on Java's schedule (`chase`), then hits.
+            let mut events = Vec::new();
+            for _ in 0..200 {
+                events.extend(e.update_difficulty(0.05, &Grid::flat(10), &c, difficulty));
+                if events.iter().any(|ev| matches!(ev, EntityEvent::PlayerHit { .. })) {
+                    break;
+                }
+            }
             let hunger = events.iter().find_map(|ev| match ev {
                 EntityEvent::PlayerEffect { player: PlayerId(2), effect: Effect::Hunger, ticks, .. } => Some(*ticks),
                 _ => None,
@@ -3219,7 +3635,8 @@ mod tests {
         assert_eq!(MobKind::Drowned.biome_chance(Biome::River), 1.0);
         assert_eq!(MobKind::Drowned.biome_chance(Biome::Desert), 0.0);
         assert!(MobKind::Zombie.biome_chance(Biome::Desert) < 0.5);
-        // About one in twenty zombies is a baby: half size, 50% faster.
+        // About one in twenty zombies is a baby: `Zombie.BABY_DIMENSIONS`
+        // (0.49 by 0.98, v1.0 gap Track 2e), 50% faster.
         let mut e = Entities::new(5);
         for _ in 0..2000 {
             e.spawn(MobKind::Zombie, DVec3::ZERO);
@@ -3227,7 +3644,7 @@ mod tests {
         let babies = e.mobs.iter().filter(|m| m.baby).count();
         assert!((60..140).contains(&babies), "{babies}");
         let baby = e.mobs.iter().find(|m| m.baby).unwrap();
-        assert_eq!(baby.shape().height, MobKind::Zombie.shape().height * 0.5);
+        assert_eq!(baby.shape().height, 0.98);
     }
 
     #[test]
@@ -3377,13 +3794,15 @@ mod tests {
         e.mobs[0].limb_amp = 0.0;
         e.snapshot_positions();
         // One tick turns it across the -pi/pi seam and starts it walking.
-        e.mobs[0].set_pose_values([-3.0, 0.4, -0.2, 2.0, 1.0]);
+        e.mobs[0].set_pose_values([-3.0, 0.4, -0.2, 2.0, 1.0, 0.0, 0.0]);
         let half =
             e.mesh(&Default::default(), DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 0.5).boxes().to_vec();
-        assert_eq!(e.mobs[0].pose_values(), [-3.0, 0.4, -0.2, 2.0, 1.0], "the simulation keeps its pose");
+        assert_eq!(e.mobs[0].pose_values(), [-3.0, 0.4, -0.2, 2.0, 1.0, 0.0, 0.0], "the simulation keeps its pose");
         let mid = e.mobs[0].render_pose(0.5);
         assert!((mid[0] - std::f32::consts::PI).abs() < 1e-4, "the short way round: {}", mid[0]);
-        for (got, want) in mid[1..].iter().zip([0.2, -0.1, 1.0, 0.5]) {
+        // v1.0 gap Track 7: the walk position runs back by half the tick's
+        // speed (`WalkAnimationState.position(partial)`).
+        for (got, want) in mid[1..].iter().zip([0.2, -0.1, 1.5, 0.5, 0.0, 0.0]) {
             assert!((got - want).abs() < 1e-5, "{mid:?}");
         }
         // The same mob posed halfway, drawn at the end of its tick, looks the same.
@@ -3399,6 +3818,47 @@ mod tests {
                 assert!(ra.iter().zip(rb).all(|(x, y)| (x - y).abs() < 1e-4), "{ra:?} vs {rb:?}");
             }
         }
+    }
+
+    /// v1.0 gap Track 7: a dead mob is drawn at Java's `deathTime` 1 to 19
+    /// (toppled over by 13.5) and is gone as that reaches 20; it shows red
+    /// throughout, as a hit does for exactly ten ticks.
+    #[test]
+    fn the_dead_topple_for_twenty_ticks_and_the_hurt_flash_ten() {
+        let world = Grid::flat(10);
+        let c = ctx(DVec3::new(40.5, 10.0, 0.5));
+        let red = |e: &mut Entities| {
+            let mesh = e.mesh(&Default::default(), DVec3::new(0.0, 11.0, -6.0), glam::Vec3::Z, 64.0, 0.0, 1.0);
+            let boxes = mesh.boxes();
+            assert!(!boxes.is_empty());
+            assert!(boxes.iter().all(|b| b.light[2] == boxes[0].light[2]));
+            boxes[0].light[2] == 255
+        };
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5));
+        e.update(0.05, &world, &c);
+        assert!(!red(&mut e));
+        let mut rng = Rng::new(1);
+        assert!(!e.mobs[0].damage(1.0, None, &mut rng), "not killed");
+        let mut flash = 0;
+        for _ in 0..12 {
+            flash += usize::from(red(&mut e));
+            e.update(0.05, &world, &c);
+        }
+        assert_eq!(flash, 10, "`hurtTime` 10 down to 1");
+
+        e.mobs[0].health = 0.0;
+        e.update(0.05, &world, &c);
+        assert_eq!(e.mobs[0].dying, Some(0.0));
+        for tick in 1..20 {
+            e.update(0.05, &world, &c);
+            assert_eq!(e.mobs.len(), 1, "still there at deathTime {tick}");
+            assert!((e.mobs[0].death_ticks(0.0) - tick as f32).abs() < 1e-3);
+            assert!(red(&mut e));
+        }
+        assert_eq!(motion::death_fall(e.mobs[0].death_ticks(1.0)), 1.0);
+        e.update(0.05, &world, &c);
+        assert!(e.mobs.is_empty(), "removed as deathTime reaches 20");
     }
 
     /// v0.18 Track 6: `--still-mobs` holds landed mobs where they are,
@@ -3438,7 +3898,7 @@ mod tests {
         let mut c = ctx(DVec3::new(1.0, 10.0, 0.5));
         c.players[0].targetable = true;
         c.daylight = 0.0;
-        let events = e.update(0.05, &Grid::flat(10), &c);
+        let events: Vec<_> = (0..200).flat_map(|_| e.update(0.05, &Grid::flat(10), &c)).collect();
         assert!(
             events.iter().any(|ev| matches!(ev, EntityEvent::PlayerEffect { effect: Effect::Wither, ticks: 200, .. }))
         );
@@ -3505,7 +3965,7 @@ mod tests {
         let mut e = Entities::new(7);
         e.spawn(MobKind::MagmaCube, DVec3::new(0.5, 10.0, 0.5));
         e.mobs[0].set_size(1);
-        let events = e.update(0.05, &world, &c);
+        let events: Vec<_> = (0..200).flat_map(|_| e.update(0.05, &world, &c)).collect();
         assert!(events.iter().any(|e| matches!(e, EntityEvent::PlayerHit { damage: 3.0, .. })));
         e.attack(0, DVec3::ZERO, 100.0);
         e.drop_loot(MobKind::MagmaCube, e.mobs[0].pos);
@@ -3565,7 +4025,7 @@ mod tests {
         let ball = e.fireballs[0].pos;
         let heading = e.fireballs[0].heading().as_dvec3();
         let eye = ball + heading * 3.0;
-        assert!(e.punch_fireball(eye, -heading, 6.0));
+        assert!(e.punch_fireball(eye, -heading, 6.0, PlayerId::HOST));
         assert!(e.fireballs[0].heading().dot((-heading).as_vec3()) > 0.9);
 
         let mut e = Entities::new(6);
@@ -3738,6 +4198,9 @@ mod tests {
         e.attack(0, DVec3::X, 1.0);
         assert_eq!(sounds(e.update(1.0 / 60.0, &world, &c)), vec![MobSound::Hurt(MobKind::Cow)]);
         e.mobs[0].hurt = 0.0;
+        // v1.0 gap Track 8d: a later hit, past the first one's hurt cooldown
+        // (a kill inside it dies silently, as `hurtServer`'s does).
+        e.mobs[0].damage_cooldown = 0;
         e.attack(0, DVec3::X, 100.0);
         assert!(sounds(e.update(1.0 / 60.0, &world, &c)).contains(&MobSound::Death(MobKind::Cow)));
     }
@@ -3984,13 +4447,21 @@ mod tests {
                 thorns: [7, 0, 0, 0],
                 ..Target::new(PlayerId::HOST, DVec3::new(1.5, 10.0, 0.5), true)
             }],
+            // Night, so the zombie doesn't burn while it finds its target.
+            daylight: 0.0,
             ..ctx(DVec3::ZERO)
         };
         let mut max_damage = 0.0f32;
         for seed in 0..32 {
             let mut e = Entities::new(seed);
             e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
-            e.update(1.0 / 60.0, &world, &c);
+            // Until its first hit draws the Thorns response.
+            for _ in 0..200 {
+                e.update(0.05, &world, &c);
+                if e.mobs[0].health < MobKind::Zombie.max_health() {
+                    break;
+                }
+            }
             let damage = MobKind::Zombie.max_health() - e.mobs[0].health;
             assert!((1.0..5.0).contains(&damage));
             assert_ne!(damage.fract(), 0.0);
@@ -4041,15 +4512,29 @@ mod tests {
             dimension: Dimension::Overworld,
         };
         let mut hits = Vec::new();
-        for _ in 0..90 {
-            hits.extend(e.update(1.0 / 60.0, &world, &c).into_iter().filter(is_hit));
+        let mut at = Vec::new();
+        for tick in 0..200 {
+            let new: Vec<_> = e.update(0.05, &world, &c).into_iter().filter(is_hit).collect();
+            if !new.is_empty() {
+                at.push(tick);
+            }
+            hits.extend(new);
         }
-        // 1.5 s: an immediate hit plus one after the 1 s cooldown.
-        assert_eq!(hits.len(), 2, "{hits:?}");
+        // `MeleeAttackGoal`: 20 ticks between hits; against a player standing
+        // still the goal ends with its path and restarts at its next 20-tick
+        // `canUse` check, hitting at once.
+        assert!(at.len() >= 5, "{at:?}");
+        assert!(at.windows(2).all(|w| (20..=24).contains(&(w[1] - w[0]))), "{at:?}");
         let EntityEvent::PlayerHit { player: id, damage, knockback, cause, .. } = hits[0] else { panic!("{hits:?}") };
         assert_eq!(id, PlayerId::HOST);
         assert!(damage > 0.0 && knockback.x > 0.0 && knockback.y > 0.0);
-        assert_eq!(cause, crate::simulation::damage::Cause::mob("was slain by a zombie"));
+        // v1.0 gap Track 8g: with the zombie as the attacker.
+        let uid = e.mobs[0].uid;
+        assert_eq!(
+            cause,
+            crate::simulation::damage::Cause::mob("was slain by a zombie")
+                .by(Some(crate::entity::trident::Owner::Mob(uid)))
+        );
 
         // Creative players are ignored.
         let c = Ctx { players: vec![Target::new(PlayerId::HOST, player, false)], ..c };
@@ -4072,7 +4557,11 @@ mod tests {
             raining: false,
             dimension: Dimension::Overworld,
         };
-        let hit = (0..60 * 10).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
+        // v1.0 gap Track 2c: 20 seconds, not 10. The zombie first strolls
+        // until a 1-in-5 target search sees the player past the pillar, so
+        // the first hit's time follows the random stream, which the idle
+        // look goals now draw from too (it came at 10.15 s).
+        let hit = (0..60 * 20).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
         assert!(hit, "zombie stuck at {:?}", e.mobs[0].pos);
     }
 
@@ -4081,13 +4570,14 @@ mod tests {
         let world = Grid::flat(10);
         let mut e = Entities::new(3);
         e.spawn(MobKind::Chicken, DVec3::new(0.5, 10.0, 0.5));
-        let grown = e.mobs[0].shape().height;
         e.mobs[0].egg_timer = 0.01;
         e.update(0.05, &world, &ctx(DVec3::new(40.0, 10.0, 0.0)));
         assert!(e.items.iter().any(|item| item.stack.item == crate::item::Item::EGG));
         e.spawn_baby(MobKind::Chicken, DVec3::new(2.5, 10.0, 0.5));
         let chick = e.mobs.iter().find(|m| m.age < 0).unwrap();
-        assert!((chick.shape().height - grown * 0.5).abs() < 1e-4);
+        // `Chicken.BABY_DIMENSIONS` (0.3 by 0.4, v1.0 gap Track 2e), not
+        // half the adult's 0.7.
+        assert!((chick.shape().height - 0.4).abs() < 1e-4);
     }
 
     #[test]
@@ -4152,8 +4642,10 @@ mod tests {
         assert!(e.raycast(eye, DVec3::NEG_X, 6.0).is_none());
 
         // Pigs have 10 HP: three hits with a wooden sword (4 each).
+        // v1.0 gap Track 8d: hits spaced past the hurt cooldown.
         let killed = (0..3).any(|_| {
             e.mobs[1].hurt = 0.0;
+            e.mobs[1].damage_cooldown = 0;
             e.attack(1, DVec3::X, 4.0).is_some()
         });
         assert!(killed && !e.mobs[1].alive());
@@ -4203,7 +4695,10 @@ mod tests {
             }
             let expected = if plains_spawner(kind) { kind.spawn_cap(o) } else { 0 };
             // One zombie in twenty spawns as a zombie villager instead.
+            // Zombie horses (with their riders) are a rare night spawn whose
+            // count depends on the roll sequence.
             if kind == MobKind::ZombieVillager
+                || kind == MobKind::ZombieHorse
                 || kind.biome_chance(crate::world::terrain::Biome::Plains).clamp(0.0, 1.0) % 1.0 > 0.0
             {
                 assert!(e.count(kind) <= kind.spawn_cap(o).max(MobKind::Zombie.spawn_cap(o)), "{kind:?}");
@@ -4251,7 +4746,9 @@ mod tests {
         let shots: Vec<_> = events
             .iter()
             .filter_map(|ev| match ev {
-                EntityEvent::PlayerHit { player, cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. } => {
+                EntityEvent::PlayerHit { player, cause, .. }
+                    if cause.text == crate::simulation::damage::Cause::SKELETON_ARROW.text =>
+                {
                     Some(*player)
                 }
                 _ => None,
@@ -4307,7 +4804,9 @@ mod tests {
         // Each player fills their own local monster cap of 70.
         for center in [a, b] {
             let near = e.mobs.iter().filter(|m| m.pos.distance(center) < 160.0).count();
-            assert!((60..=73).contains(&near), "{near} monsters near {center}");
+            // A pack (or a zombie horseman, two mobs) started under the cap
+            // may finish a few over it, as in Java.
+            assert!((60..=75).contains(&near), "{near} monsters near {center}");
         }
     }
 
@@ -4458,7 +4957,9 @@ mod tests {
         let events = run(&mut e, &world, &night(DVec3::new(9.5, 10.0, 0.5)), 5.0);
         assert!(events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Bow, .. })));
         let shot = |ev: &EntityEvent| {
-            matches!(ev, EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. })
+            // v1.0 gap Track 8g: the skeleton is the arrow's attacker.
+            matches!(ev, EntityEvent::PlayerHit { cause, .. }
+                if cause.text == crate::simulation::damage::Cause::SKELETON_ARROW.text && cause.by.is_some())
         };
         assert!(events.iter().any(shot), "{events:?}");
 
@@ -4540,7 +5041,8 @@ mod tests {
         assert_eq!(e.mobs[0].ai, Ai::Chase, "provoked");
         let mut e = Entities::new(6);
         e.spawn(MobKind::Spider, DVec3::new(0.5, 10.0, 0.5));
-        run(&mut e, &world, &night(DVec3::new(5.5, 10.0, 0.5)), 0.2);
+        // The target search runs one full update in five (`chase`).
+        run(&mut e, &world, &night(DVec3::new(5.5, 10.0, 0.5)), 3.0);
         assert_eq!(e.mobs[0].ai, Ai::Chase, "hunts at night");
 
         // A 4-high wall stops a pig but not a spider, which climbs onto it
@@ -5162,7 +5664,7 @@ mod tests {
     fn tnt_blows_after_its_fuse() {
         let world = Grid::flat(10);
         let mut e = Entities::new(14);
-        e.prime_tnt(IVec3::new(0, 10, 0), false);
+        e.prime_tnt(IVec3::new(0, 10, 0), false, None);
         let c = ctx(DVec3::new(30.0, 10.0, 0.0));
         let early = run(&mut e, &world, &c, 3.5);
         assert!(!early.iter().any(|ev| matches!(ev, EntityEvent::Explosion { .. })));
@@ -5182,7 +5684,7 @@ mod tests {
         for explodes in [true, false] {
             let mut e = Entities::new(14);
             e.tnt_explodes = explodes;
-            e.prime_tnt(IVec3::new(0, 10, 0), false);
+            e.prime_tnt(IVec3::new(0, 10, 0), false, None);
             let events = run(&mut e, &world, &c, 5.0);
             let booms = events
                 .iter()
@@ -5254,6 +5756,45 @@ mod tests {
         e.orbs.push(orb::XpOrb::new(3, DVec3::new(1.0, 10.0, 0.5), &mut rng));
         e.explode_with(&world, center, 4.0, false, false);
         assert_eq!((e.items.len(), e.items[0].health, e.orbs.len()), (1, 5, 0));
+    }
+
+    #[test]
+    fn a_bundle_blown_up_spills_its_contents_where_it_lay() {
+        use crate::content::bundle;
+        use crate::inventory::{Stack, components::Payload};
+        let world = Grid::flat(10);
+        let mut e = Entities::new(9);
+        let mut rng = Rng::new(2);
+        let held = [Stack::new(crate::item::Item::DIAMOND, 3), Stack::new(crate::item::Item::STICK, 5)];
+        let filled = Stack::new(bundle::BUNDLE, 1).with_payload(Payload::Bundle(held.to_vec()));
+        let at = DVec3::new(1.0, 10.0, 0.5);
+        e.items.push(ItemEntity::new(filled, at, DVec3::ZERO, 0.0, &mut rng));
+        e.explode(&world, DVec3::new(0.5, 10.5, 0.5), 4.0);
+        // `BundleItem.onDestroyed`: the bundle is gone and its stacks lie
+        // where it was, front first, each thrown up at 0.2 a tick.
+        let stacks: Vec<Stack> = e.items.iter().map(|i| i.stack).collect();
+        assert_eq!(stacks, held);
+        for item in &e.items {
+            assert_eq!(item.pos, at);
+            assert_eq!(item.vel.y, 4.0);
+            assert!(item.vel.x.abs() <= 2.0 && item.vel.z.abs() <= 2.0);
+            assert_eq!(item.pickup_delay, 0.0);
+        }
+        // Anything else burns or blows up with nothing to spill.
+        let mut e = Entities::new(9);
+        e.spill_destroyed(&ItemEntity::new(held[0], at, DVec3::ZERO, 0.0, &mut rng));
+        assert!(e.items.is_empty());
+        // v1.0 gap track 6b: a shulker box spills its `container` in slot
+        // order, empty slots skipped (`BlockItem.onDestroyed`).
+        let slots = vec![None, Some(held[1]), None, Some(held[0])];
+        let shulker = crate::content::shulker_box::item(None);
+        let filled = Stack::new(shulker, 1).with_payload(Payload::Container(slots));
+        let mut e = Entities::new(9);
+        e.items.push(ItemEntity::new(filled, at, DVec3::ZERO, 0.0, &mut rng));
+        e.explode(&world, DVec3::new(0.5, 10.5, 0.5), 4.0);
+        let stacks: Vec<Stack> = e.items.iter().map(|i| i.stack).collect();
+        assert_eq!(stacks, [held[1], held[0]]);
+        assert!(e.items.iter().all(|i| i.pos == at && i.pickup_delay == 0.0));
     }
 
     #[test]

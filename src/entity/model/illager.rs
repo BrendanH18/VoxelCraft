@@ -63,36 +63,84 @@ fn body_of(kind: MobKind) -> &'static [Cuboid] {
 
 /// An illager in the arm pose its state asks for. The parts follow the
 /// humanoid order (body, legs, arms, head) so armor and held items attach.
-pub(super) fn pose(m: &Mob, swing: f32, head_rot: Quat, time: f32) -> Parts {
+/// v1.0 gap Track 7: `IllagerModel.setupAnim`: arms swing with the walk and
+/// legs at half the usual stride, or the riding pose on a ravager; then
+/// the arm pose (an armed attacker swings its weapon down, an unarmed one
+/// raises its arms like a zombie).
+pub(super) fn pose(m: &Mob, head_rot: Quat, time: f32, alpha: f32) -> Parts {
     let rx = Quat::from_rotation_x;
-    let rz = Quat::from_rotation_z;
     let s = m.illager.as_deref();
     let arm_pose = s.map_or(ArmPose::Crossed, |s| s.arm_pose(m.kind, m.main_hand().map(|h| h.item)));
-    let age = time * 20.0;
-    let pitch = m.head_pitch;
-    let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.9 } else { 0.0 };
-    let (right, left): (Quat, Quat) = match arm_pose {
-        ArmPose::Crossed => (Quat::IDENTITY, Quat::IDENTITY),
-        ArmPose::Attacking => (rx(-1.2 + chop - swing * 0.2), rx(-1.0 + swing * 0.2)),
+    let age = age_ticks(time);
+    // Java's `head.yRot` (Track 7b: on Java's sides, see `Part::on_java_side`).
+    let (hx, hy) = (head_x(m), m.head_yaw);
+    let riding = m.riding.is_some();
+    let mut h = Humanoid::walk(m, 0.5);
+    let (mut right_leg, mut left_leg) =
+        (Limb { x: h.right_leg, ..Limb::default() }, Limb { x: h.left_leg, ..Limb::default() });
+    if riding {
+        h.right_arm = Limb { x: -PI / 5.0, ..Limb::default() };
+        h.left_arm = h.right_arm;
+        right_leg = Limb { x: -1.413_716_7, y: PI / 10.0, z: 0.078_539_82 };
+        left_leg = Limb { x: -1.413_716_7, y: -PI / 10.0, z: -0.078_539_82 };
+    }
+    let swing = m.swing.anim;
+    match arm_pose {
+        ArmPose::Crossed | ArmPose::Neutral => {}
+        ArmPose::Attacking if m.main_hand().is_none() => {
+            let (x, y) = motion::zombie_arms(true, true, swing);
+            h.right_arm = Limb { x, y: -y, z: 0.0 };
+            h.left_arm = Limb { x, y, z: 0.0 };
+            h.bob(age);
+        }
+        ArmPose::Attacking => {
+            let (weapon, other) = motion::weapon_down(swing, age);
+            h.right_arm = Limb { x: weapon, y: PI / 20.0, z: 0.0 };
+            h.left_arm = Limb { x: other, y: -PI / 20.0, z: 0.0 };
+            h.bob(age);
+        }
         ArmPose::Spellcasting => {
             let wave = (age * 0.6662).cos() * 0.25;
-            (rz(2.36) * rx(wave), rz(-2.36) * rx(-wave))
+            h.right_arm = Limb { x: wave, y: 0.0, z: PI * 0.75 };
+            h.left_arm = Limb { x: wave, y: 0.0, z: -PI * 0.75 };
         }
-        ArmPose::BowAndArrow => (rx(-FRAC_PI_2 - pitch), rx(-FRAC_PI_2 - pitch) * Quat::from_rotation_y(-0.5)),
-        ArmPose::CrossbowHold => (rx(-FRAC_PI_2 - pitch), rx(-FRAC_PI_2 - pitch) * Quat::from_rotation_y(-0.6)),
-        ArmPose::CrossbowCharge => (rx(-0.97), rx(-1.4) * Quat::from_rotation_y(0.4)),
+        ArmPose::BowAndArrow => {
+            h.right_arm = Limb { x: -FRAC_PI_2 + hx, y: -0.1 + hy, z: h.right_arm.z };
+            h.left_arm = Limb { x: -0.942_477_9 + hx, y: hy - 0.4, z: FRAC_PI_2 };
+        }
+        ArmPose::CrossbowHold => {
+            h.right_arm = Limb { x: -FRAC_PI_2 + hx + 0.1, y: -0.3 + hy, z: h.right_arm.z };
+            h.left_arm = Limb { x: -1.5 + hx, y: 0.6 + hy, z: h.left_arm.z };
+        }
+        ArmPose::CrossbowCharge => {
+            // v1.0 gap Track 7b: `AnimationUtils.animateCrossbowCharge`:
+            // the pulling arm draws back from 0.4 to 0.85 and up to level
+            // over the charge (`ticksUsingItem` over the crossbow's charge
+            // duration, the goal's use timer with the partial tick).
+            let quick =
+                m.main_hand().map_or(0, |c| c.active_enchants().level(crate::enchant::Enchantment::QuickCharge));
+            let max = crate::entity::illager::charge_ticks(quick).max(1) as f32;
+            let used = s.map_or(0.0, |s| s.use_ticks as f32 + alpha).clamp(0.0, max) / max;
+            h.right_arm = Limb { x: -0.970_796_35, y: -0.8, z: h.right_arm.z };
+            h.left_arm = Limb {
+                x: -0.970_796_35 + (-FRAC_PI_2 + 0.970_796_35) * used,
+                y: 0.4 + (0.85 - 0.4) * used,
+                z: h.left_arm.z,
+            };
+        }
         ArmPose::Celebrating => {
             let wave = (age * 0.6662).cos() * 0.05;
-            (rx(-PI + wave) * rz(0.3), rx(-PI - wave) * rz(-0.3))
+            h.right_arm = Limb { x: wave, y: 0.0, z: 2.670_354 };
+            h.left_arm = Limb { x: wave, y: 0.0, z: -PI * 0.75 };
         }
-        ArmPose::Neutral => (rx(swing * 0.6), rx(-swing * 0.6)),
-    };
+    }
+    let (right, left) = (h.right_arm.quat(), h.left_arm.quat());
     let crossed = arm_pose == ArmPose::Crossed;
     let head_boxes: &'static [Cuboid] = if m.kind == MobKind::Illusioner { &HEAD_ILLUSIONER } else { &HEAD };
     let mut out = parts![
         part(body_of(m.kind), [0.0; 3], Quat::IDENTITY),
-        part(LEG, [-2.0, 12.0, 0.0], rx(swing)),
-        part(LEG, [2.0, 12.0, 0.0], rx(-swing)),
+        part(LEG, [-2.0, 12.0, 0.0], left_leg.quat()),
+        part(LEG, [2.0, 12.0, 0.0], right_leg.quat()),
         part(if crossed { &[] } else { ARM }, [-5.0, 22.0, 0.0], left),
         part(if crossed { &[] } else { ARM }, [5.0, 22.0, 0.0], right),
         part(head_boxes, [0.0, 24.0, 0.0], head_rot),
@@ -103,6 +151,10 @@ pub(super) fn pose(m: &Mob, swing: f32, head_rot: Quat, time: f32) -> Parts {
         out.push(part(SLEEVE, [-5.0, 22.0, 0.0], left));
         out.push(part(SLEEVE, [5.0, 22.0, 0.0], right));
     }
+    // v1.0 gap Track 7b: everything but the head on Java's sides.
+    out.java_side(0..5);
+    let len = out.len();
+    out.java_side(6..len);
     out
 }
 
@@ -139,24 +191,44 @@ const VEX_ARM: &[Cuboid] = &[cube([-0.75, -5.0, -0.75], [0.75, 0.0, 0.75], VEX_S
 const VEX_WING_L: &[Cuboid] = &[cube([0.0, -3.0, -0.1], [5.0, 2.0, 0.1], [226, 236, 244], 6)];
 const VEX_WING_R: &[Cuboid] = &[cube([-5.0, -3.0, -0.1], [0.0, 2.0, 0.1], [226, 236, 244], 6)];
 
-/// The vex: arms down, or both raised toward its target while charging,
-/// wings beating fast.
+/// v1.0 gap Track 7b: `VexModel.setupAnim`. The arms hang 36 degrees out,
+/// swaying on `cos(ageInTicks * 5.5 degrees) * 0.1`, the body leaning 9
+/// degrees; charging, the body straightens and the arms reach forward
+/// (70 degrees), or the armed one thrusts up and over (210 degrees). The
+/// wings beat on `cos(ageInTicks * 45.84 degrees) * 16.2 degrees` (round
+/// this model's own rest angle). The sword hand is the right, on -X.
 pub(super) fn vex(m: &Mob, head_rot: Quat, time: f32) -> Parts {
     let rx = Quat::from_rotation_x;
+    let age = age_ticks(time);
     let charging = m.illager.as_deref().is_some_and(|s| s.charging);
-    let flap = (time * 20.0 * 0.8).cos() * 0.6;
-    // Arms reach forward, raised high while charging.
-    let arm = if charging { rx(-2.2) } else { rx(-1.1) };
-    parts![
-        part(VEX_BODY, [0.0; 3], if charging { rx(0.5) } else { Quat::IDENTITY }),
+    let armed = m.main_hand().is_some();
+    let bob = (age * 5.5f32.to_radians()).cos() * 0.1;
+    let flap = (age * 45.836_624f32.to_radians()).cos() * 16.2f32.to_radians();
+    let mut right = Limb { z: PI / 5.0 + bob, ..Limb::default() };
+    let mut left = Limb { z: -(PI / 5.0 + bob), ..Limb::default() };
+    if charging {
+        let reach = |x: f32, y: f32, z: f32| Limb { x, y, z };
+        if armed {
+            right = reach(PI * 7.0 / 6.0, PI / 12.0, -0.471_238_88 - bob);
+        } else {
+            right = reach(-1.221_730_5, PI / 12.0, -0.471_238_88 - bob);
+            left = reach(-1.221_730_5, -PI / 12.0, 0.471_238_88 + bob);
+        }
+    }
+    // The limbs as Java's turned through the origin (left on -X), then
+    // moved onto Java's sides like the humanoids'.
+    let mut p = parts![
+        part(VEX_BODY, [0.0; 3], if charging { Quat::IDENTITY } else { rx(PI / 20.0) }),
         part(&[], [0.0; 3], Quat::IDENTITY),
         part(&[], [0.0; 3], Quat::IDENTITY),
-        part(VEX_ARM, [-2.0, 7.0, 0.0], arm),
-        part(VEX_ARM, [2.0, 7.0, 0.0], arm),
+        part(VEX_ARM, [-2.0, 7.0, 0.0], left.quat()),
+        part(VEX_ARM, [2.0, 7.0, 0.0], right.quat()),
         part(VEX_HEAD, [0.0, 7.5, 0.0], head_rot),
         part(VEX_WING_L, [0.5, 6.5, -1.0], Quat::from_rotation_y(0.5 + flap)),
         part(VEX_WING_R, [-0.5, 6.5, -1.0], Quat::from_rotation_y(-0.5 - flap)),
-    ]
+    ];
+    p.java_side(3..5);
+    p
 }
 
 const HIDE: Rgb = [86, 80, 74];
@@ -201,25 +273,44 @@ const RAVAGER_LEG: &[Cuboid] = &[
 
 /// The ravager: a heavy beast whose head lunges and jaw drops when it bites
 /// or roars, and shakes while stunned.
-pub(super) fn ravager(m: &Mob, swing: f32, head_rot: Quat, time: f32) -> Parts {
+/// v1.0 gap Track 7: `RavagerModel.setupAnim`: legs swing `0.4 * speed`;
+/// a bite thrusts the neck forward up to 12 pixels (a cubed triangle wave
+/// over its 10 ticks) and opens the mouth; stunned, the neck droops and
+/// sways; a roar opens the mouth wide. Counters run down with the partial
+/// tick as `RavagerRenderer` reads them.
+pub(super) fn ravager(m: &Mob, head_rot: Quat, alpha: f32) -> Parts {
     let rx = Quat::from_rotation_x;
     let s = m.illager.as_deref();
     let (attack, stun, roar) = s.map_or((0, 0, 0), |s| (s.attack_tick, s.stun_tick, s.roar_tick));
-    let bite = if attack > 0 { (attack as f32 / 10.0 * PI).sin() } else { 0.0 };
-    let shout = if roar > 0 { (roar as f32 / 20.0 * PI).sin() } else { 0.0 };
-    let shake = if stun > 0 { (time * 40.0).sin() * 0.15 } else { 0.0 };
-    let jaw = rx(0.6 * bite + 0.9 * shout);
-    let lunge = rx(-0.3 * bite + 0.2 * shout) * Quat::from_rotation_y(shake);
-    let head = head_rot * lunge;
+    let left = |t: i32| if t > 0 { t as f32 - alpha } else { 0.0 };
+    let (attack, stun) = (left(attack), left(stun));
+    let (mut neck_x, mut neck_z, mut neck_rot) = (0.0, 0.0, 0.0);
+    let mouth = if attack > 0.0 {
+        let scaled = (1.0 + motion::triangle_wave(attack, 10.0)) * 0.5;
+        neck_z = 12.0 - scaled * scaled * scaled * 12.0;
+        if attack > 5.0 { ((-4.0 + attack) / 4.0).sin() * PI * 0.4 } else { PI / 20.0 * (PI * attack / 10.0).sin() }
+    } else if stun > 0.0 {
+        neck_rot = 0.219_911_49;
+        neck_x = ((stun / 40.0) * 10.0).sin() * 3.0;
+        PI * 0.05
+    } else if roar > 0 {
+        let anim = (20.0 - roar as f32 + alpha) / 20.0;
+        FRAC_PI_2 * (anim * PI * 0.25).sin()
+    } else {
+        PI * 0.01
+    };
+    let lunge = rx(neck_rot);
+    let head = lunge * head_rot;
+    let leg = walk_cos(m) * 0.4;
     parts![
         part(RAVAGER_BODY, [0.0; 3], Quat::IDENTITY),
-        part(RAVAGER_LEG, [-5.0, 14.0, -8.0], rx(swing * 0.6)),
-        part(RAVAGER_LEG, [5.0, 14.0, -8.0], rx(-swing * 0.6)),
-        part(RAVAGER_LEG, [-5.0, 14.0, 6.0], rx(-swing * 0.6)),
-        part(RAVAGER_LEG, [5.0, 14.0, 6.0], rx(swing * 0.6)),
-        part(RAVAGER_NECK, [0.0, 24.0, 12.0], lunge),
-        part(RAVAGER_HEAD, [0.0, 22.0, 20.0], head),
-        part(RAVAGER_JAW, [0.0, 18.0, 21.0], head * jaw),
+        part(RAVAGER_LEG, [-5.0, 14.0, -8.0], rx(-leg)),
+        part(RAVAGER_LEG, [5.0, 14.0, -8.0], rx(leg)),
+        part(RAVAGER_LEG, [-5.0, 14.0, 6.0], rx(leg)),
+        part(RAVAGER_LEG, [5.0, 14.0, 6.0], rx(-leg)),
+        part(RAVAGER_NECK, [neck_x, 24.0, 12.0 + neck_z], lunge),
+        part(RAVAGER_HEAD, [neck_x, 22.0, 20.0 + neck_z], head),
+        part(RAVAGER_JAW, [neck_x, 18.0, 21.0 + neck_z], head * rx(mouth)),
     ]
 }
 

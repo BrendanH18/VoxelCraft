@@ -12,6 +12,8 @@ pub struct State {
     pub sprinting: bool,
     pub ticks: u32,
     pub(super) prey: Option<(u32, DVec3)>,
+    /// The prey's eye height (Track 2d: `OcelotAttackGoal` looks at it).
+    pub(super) prey_eye: f64,
     pub(super) tempt_anchor: Option<(PlayerId, DVec3, DVec3)>,
     pub(super) leaping: bool,
     sense: u8,
@@ -104,6 +106,7 @@ impl Entities {
                     });
                 s.prey = target.map(|j| (self.mobs[j].uid, self.mobs[j].pos));
             }
+            s.prey_eye = s.prey.and_then(|(u, _)| by_uid.get(&u)).map_or(0.5, |&j| self.mobs[j].eye_height());
             self.mobs[i].ocelot = Some(s);
         }
     }

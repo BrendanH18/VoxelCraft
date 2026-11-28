@@ -17,6 +17,8 @@ mod colour;
 mod copper;
 #[path = "copper_golem_statue_textures.rs"]
 mod copper_golem_statue;
+#[path = "fire_1_textures.rs"]
+pub(crate) mod fire_1;
 #[path = "gen5_textures.rs"]
 mod gen5;
 #[path = "material_textures.rs"]
@@ -108,7 +110,25 @@ fn points(layer: u16, n: usize) -> Vec<(f32, f32)> {
 
 const STONE: [u8; 3] = [125, 125, 125];
 
+/// v1.0 gap Track 2c: a mob material pattern's texel (layers
+/// `entity::model::PATTERN_TEX`..), for the mount screen's preview, which
+/// draws without the GPU's entity shader.
+pub fn mob_pattern_pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    mob::pixel(layer, x % SIZE, y % SIZE)
+}
+
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    // v1.0 final track F3: fire's second texture, packed.
+    if (tex::FIRE_1..tex::FIRE_1_END).contains(&layer) {
+        return fire_1::packed(layer - tex::FIRE_1, x, y);
+    }
+    // v1.0 gap track 6b: the item models' plant layers.
+    if (voxelcraft::content::item_models::DIODE_TEX..voxelcraft::content::item_models::DIODE_TEX_END).contains(&layer) {
+        return voxelcraft::content::item_models::diode_pixel(layer, x, y);
+    }
+    if (voxelcraft::content::item_models::TEX..voxelcraft::content::item_models::TEX_END).contains(&layer) {
+        return voxelcraft::content::item_models::pixel(layer, x, y);
+    }
     // v0.18 Track 3: the materials, workstations and fixtures it redrew.
     // Stone (layer 0) stays the authored asset; nothing here draws it.
     if let Some(pixel) = material::pixel(layer, x, y) {
@@ -989,6 +1009,12 @@ pub fn texel(layer: u16, x: usize, y: usize) -> Rgba {
     let recovery = clock + crate::item::CLOCK_FRAMES;
     let effects = recovery + crate::item::RECOVERY_FRAMES;
     match tex::item_index(layer) {
+        Some(index) if index >= crate::item::block_item_icon_base() => {
+            super::block_item_sprites::pixel(index - crate::item::block_item_icon_base(), x, y)
+        }
+        Some(index) if index >= crate::item::open_bundle_icon_base() => {
+            crate::item::open_bundle_sprite(index).map_or([0, 0, 0, 0], |s| super::item_sprites::pixel(s, x, y))
+        }
         Some(index) if index >= effects => Effect::ALL
             .get((index - effects) as usize)
             .map_or([0, 0, 0, 0], |&e| super::item_sprites::effect_pixel(e, x, y)),
@@ -1033,9 +1059,14 @@ pub fn generate_mips() -> Vec<Vec<u8>> {
 }
 
 /// Layers of the item icon array: every item's icon, the compass and clock
-/// frames, then the status effect icons.
+/// frames, the status effect icons, the open bundles, then the block items
+/// drawn as sprites (v1.0 gap track 6b).
 pub fn item_layers() -> u32 {
-    crate::item::icon_count() + crate::item::animated_icons() + crate::simulation::effects::Effect::ALL.len() as u32
+    crate::item::icon_count()
+        + crate::item::animated_icons()
+        + crate::simulation::effects::Effect::ALL.len() as u32
+        + crate::item::OPEN_BUNDLE_ICONS
+        + voxelcraft::content::block_item_sprites::ICONS
 }
 
 /// Mip levels of the item icon array (see [`generate_mips`]).
@@ -1177,6 +1208,21 @@ mod tests {
     fn final_art_b_sheet() {
         let Ok(path) = std::env::var("VC_FINAL_ART_B_SHEET") else { return };
         write_sheet(&path, &final_art_b_layers());
+    }
+
+    /// Writes v1.0 gap Track 7's layers (the amethyst buds and cluster
+    /// standing then hanging, the bamboo's two leaf sprites, the potted
+    /// bamboo and its leaf) as a review sheet to `$VC_FINAL_ART_C_SHEET`.
+    #[test]
+    #[ignore]
+    fn final_art_c_sheet() {
+        let Ok(path) = std::env::var("VC_FINAL_ART_C_SHEET") else { return };
+        use crate::world::overworld_blocks::t as ob;
+        let mut layers: Vec<u16> = (ob::BUDS..ob::BUDS + 8).collect();
+        layers.extend([ob::BAMBOO_SMALL_LEAVES, ob::BAMBOO_LARGE_LEAVES]);
+        layers.push(crate::world::utilities::t::POTTED + crate::world::utilities::POTTED_BAMBOO as u16);
+        layers.push(crate::world::utilities::POTTED_BAMBOO_LEAF);
+        write_sheet(&path, &layers);
     }
 
     /// Writes one FNV-1a checksum per block layer (every layer below

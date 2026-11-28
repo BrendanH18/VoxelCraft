@@ -239,46 +239,103 @@ impl Ui {
         self.quad([[px0, py0], [px1, py0], [px1, py1], [px0, py1]], uv, layer as f32, color);
     }
 
-    /// Isometric block icon filling a `size` square: a cube, a lowered one
-    /// for low blocks, or the boxes of a shaped block.
-    pub fn block_icon(&mut self, x: f32, y: f32, size: f32, block: Block) {
-        let t = block.info().tex;
+    /// v1.0 gap track 6c: a block item in the `size`-pixel item area at
+    /// (x, y) of a slot (16 pixels of an 18-pixel slot, inset by one), as
+    /// Java's `GuiItemAtlas` draws it: the item's boxes with their faces'
+    /// textures, placed by its model's GUI display transform
+    /// ([`Ui::gui_model`]). Until 2026-11-27 icons were an isometric cube
+    /// mirrored left to right from Java's view.
+    pub fn block_icon(&mut self, x: f32, y: f32, size: f32, block: Block, glint: bool) {
         if block.flat_icon() {
-            // Plants, torches and ladders show their flat sprite, like items.
-            self.icon(x - 1.0, y - 1.0, size + 2.0, t[0], WHITE);
+            // Plants, torches and ladders show their flat sprite, like items
+            // (v1.0 gap track 6b: an item sprite of its own where it has one).
+            let layer = crate::item::Item::from_block(block).flat_layer().unwrap_or(block.info().tex[0]);
+            self.icon(x, y, size, layer, WHITE);
             return;
         }
-        let mut boxes = shape::item_shape(block);
-        if boxes.is_empty() {
-            boxes = shape::Boxes::from_box(shape::Box16 { min: [0; 3], max: [16, 16 - block.top_drop(), 16] });
-        }
-        // Half width `s`: the top diamond is `s` tall, each side face `s` tall.
-        let (l, s) = (x, size / 2.0);
-        let q = s / 2.0;
-        // A point of the unit cube in icon pixels: +X runs down-right, +Z
-        // up-right, +Y up. The top, -Z (left) and +X (right) faces show.
-        let at = |p: [f32; 3]| [l + s * (p[0] + p[2]), y + q * (1.0 + p[0] - p[2]) + s * (1.0 - p[1])];
-        let shade = |f: f32| [f, f, f, 1.0];
-        // Far boxes first, so nearer ones paint over them.
-        let mut order: Vec<_> = boxes.as_slice().to_vec();
-        order.sort_by_key(|b| {
-            b.min[0] as i32 + b.max[0] as i32 + b.min[1] as i32 + b.max[1] as i32 - b.min[2] as i32 - b.max[2] as i32
-        });
-        for b in order {
-            let (lo, hi) = (b.min.map(|c| c as f32 / 16.0), b.max.map(|c| c as f32 / 16.0));
-            let top = [[lo[0], hi[1], lo[2]], [lo[0], hi[1], hi[2]], [hi[0], hi[1], hi[2]], [hi[0], hi[1], lo[2]]];
-            let left = [[lo[0], hi[1], lo[2]], [hi[0], hi[1], lo[2]], [hi[0], lo[1], lo[2]], [lo[0], lo[1], lo[2]]];
-            let right = [[hi[0], hi[1], lo[2]], [hi[0], hi[1], hi[2]], [hi[0], lo[1], hi[2]], [hi[0], lo[1], lo[2]]];
-            // UVs as on the cube: (z, x) on top, (x or z, 1 - y) on the sides.
-            let face = |c: [[f32; 3]; 4], uv: fn([f32; 3]) -> [f32; 2]| (c.map(at), c.map(uv));
-            for ((p, uv), layer, colour) in [
-                (face(top, |p| [p[2], p[0]]), t[2], WHITE),
-                (face(left, |p| [p[0], 1.0 - p[1]]), t[5], shade(0.8)),
-                (face(right, |p| [p[2], 1.0 - p[1]]), t[0], shade(0.62)),
-            ] {
-                self.quad(p, uv, layer as f32, colour);
+        let stack = voxelcraft::inventory::Stack::new(crate::item::Item::from_block(block.base()), 1);
+        let display = voxelcraft::content::item_display::drawn(&stack);
+        self.gui_model(x, y, size, &block_item_quads(block), &display, glint);
+    }
+
+    /// v1.0 gap track 6b: an item mesh (`content::item_models`) in the
+    /// `size`-pixel item area at (x, y), placed with its GUI display
+    /// transform ([`Ui::gui_model`]).
+    pub fn item_mesh(&mut self, x: f32, y: f32, size: f32, mesh: &voxelcraft::content::item_models::Mesh, glint: bool) {
+        self.gui_model(x, y, size, &mesh.quads, &mesh.display, glint);
+    }
+
+    /// v1.0 gap track 6c: model-space quads (a block is 0..1) in the
+    /// `size`-pixel item area at (x, y), as `GuiItemAtlas` draws an item:
+    /// the GUI display transform about the area's centre, one block across
+    /// the area, x right, y up and z toward the viewer (Java scales the
+    /// pose by (16, -16, 16) and flips the atlas back); faces turned away
+    /// are dropped and far ones drawn first, each lit by Java's GUI lights
+    /// for its turn ([`gui_shade`](voxelcraft::content::item_display::gui_shade):
+    /// `ITEMS_3D` for block models, `ITEMS_FLAT` for `gui_light: front`).
+    /// `glint` lays the enchantment glint over every face.
+    pub fn gui_model(
+        &mut self,
+        x: f32,
+        y: f32,
+        size: f32,
+        quads: &[voxelcraft::world::colour_blocks::banner::Quad],
+        display: &voxelcraft::content::item_display::Display,
+        glint: bool,
+    ) {
+        use voxelcraft::content::item_display::{Context, gui_shade};
+        let m = Context::Gui.matrix(display);
+        let (cx, cy) = (x + size / 2.0, y + size / 2.0);
+        let mut placed: Vec<_> = quads
+            .iter()
+            .map(|q| (q.corners.map(|c| m.transform_point3(c)), m.transform_vector3(q.normal).normalize_or_zero(), q))
+            .filter(|(_, n, _)| n.z > 1e-4)
+            .collect();
+        let depth = |c: &[glam::Vec3; 4]| c.iter().map(|c| c.z).sum::<f32>();
+        placed.sort_by(|a, b| depth(&a.0).total_cmp(&depth(&b.0)));
+        for (corners, normal, q) in placed {
+            let shade = gui_shade(normal, display.front_light);
+            let [r, g, b] = q.tint.map_or([1.0; 3], |t| [t[0], t[1], t[2]].map(|v| f32::from(v) / 255.0));
+            let p = corners.map(|c| [cx + c.x * size, cy - c.y * size]);
+            self.quad(p, q.uv, q.layer as f32, [r * shade, g * shade, b * shade, 1.0]);
+            if glint {
+                self.glint_quad(p, q.uv, q.layer);
             }
         }
+    }
+
+    /// The enchantment glint over one face of a 3D item (as the flat icons'
+    /// glint in `hud`): a faint purple sheen over the face's texture shape
+    /// with a brighter band sweeping down it along the texture's v.
+    fn glint_quad(&mut self, p: [[f32; 2]; 4], uv: [[f32; 2]; 4], layer: u16) {
+        let sheen = [0.55, 0.25, 1.0, -0.3];
+        self.quad(p, uv, layer as f32, sheen);
+        let band = 0.3;
+        let top = (glint_clock() * 0.6).fract() * (1.0 + band) - band;
+        let (v0, v1) = (top.max(0.0), (top + band).min(1.0));
+        if v1 <= v0 {
+            return;
+        }
+        // The face is a parallelogram with its texture mapped affinely: v
+        // runs along one pair of opposite edges (0 to 3 and 1 to 2, or 0 to
+        // 1 and 3 to 2); the band is cut out of it along that pair.
+        let (a, b, c, d) = if (uv[3][1] - uv[0][1]).abs() > 1e-6 { (0, 3, 1, 2) } else { (0, 1, 3, 2) };
+        let (va, vb) = (uv[a][1], uv[b][1]);
+        if (vb - va).abs() < 1e-6 {
+            return;
+        }
+        let at = |t: f32, from: usize, to: usize| {
+            let k = ((t - va) / (vb - va)).clamp(0.0, 1.0);
+            let mix = |x: [f32; 2], y: [f32; 2]| [x[0] + (y[0] - x[0]) * k, x[1] + (y[1] - x[1]) * k];
+            (mix(p[from], p[to]), mix(uv[from], uv[to]))
+        };
+        let (lo, hi) = (v0.max(va.min(vb)), v1.min(va.max(vb)));
+        if hi <= lo {
+            return;
+        }
+        let (a0, b0) = (at(lo, a, b), at(lo, c, d));
+        let (a1, b1) = (at(hi, a, b), at(hi, c, d));
+        self.quad([a0.0, b0.0, b1.0, a1.0], [a0.1, b0.1, b1.1, a1.1], layer as f32, [0.8, 0.6, 1.0, -0.35]);
     }
 
     /// Width of the ink of `s` in UI pixels: the advances less the last
@@ -369,6 +426,159 @@ impl Ui {
         self.rect(x - 1.0, y - 1.0, w + 2.0, font::LINE_HEIGHT as f32 + 1.0, [0.0, 0.0, 0.0, 0.4]);
         self.text_flat(x, y, s, color);
     }
+}
+
+/// Seconds since the first glint was drawn: the glint's clock.
+pub fn glint_clock() -> f32 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_secs_f32()
+}
+
+/// v1.0 gap track 6c: the quads of a block item's model in Java's item
+/// model space (a block is 0..1): the item's boxes ([`shape::item_boxes`]
+/// of [`Block::item_facing`]) with the block's face layers and Java's face
+/// UVs (each face's texture upright and unmirrored seen from outside, as
+/// `FaceBakery`'s default UVs map it). A head's full cube is Java's 8 × 8 × 8
+/// skull box on the floor of the block (`SkullModel`).
+pub fn block_item_quads(block: Block) -> Vec<voxelcraft::world::colour_blocks::banner::Quad> {
+    use glam::Vec3;
+    let block = block.item_facing();
+    let tex = block.info().tex;
+    let head = crate::world::skulls::decode(block.canonical()).is_some();
+    if matches!(block.shaped(), Some(voxelcraft::world::block::Shaped::Fence)) {
+        return fence_inventory_quads(tex);
+    }
+    let mut out = Vec::with_capacity(6);
+    for (i, b) in shape::item_boxes(block).as_slice().iter().enumerate() {
+        // Candle wicks, the beacon's plinth and core: their own layers.
+        let tex = shape::item_box_layer(block, i).map_or(tex, |l| [l; 6]);
+        let (lo, hi) = (Vec3::from_array(b.min.map(f32::from)) / 16.0, Vec3::from_array(b.max.map(f32::from)) / 16.0);
+        let place = |p: Vec3| if head { Vec3::new(0.25 + p.x * 0.5, p.y * 0.5, 0.25 + p.z * 0.5) } else { p };
+        for (face, &layer) in tex.iter().enumerate() {
+            let (d, positive) = (face / 2, face % 2 == 0);
+            let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+            let corner = |a: bool, b: bool| {
+                let mut p = [0.0f32; 3];
+                p[d] = if positive { hi[d] } else { lo[d] };
+                p[u] = if a { hi[u] } else { lo[u] };
+                p[v] = if b { hi[v] } else { lo[v] };
+                Vec3::from_array(p)
+            };
+            let c = if positive {
+                [corner(false, false), corner(true, false), corner(true, true), corner(false, true)]
+            } else {
+                [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
+            };
+            // v1.0 gap track 6f: trapdoors' rims take the jar's item UVs.
+            let uv = voxelcraft::mesh::item_face_uvs(
+                block,
+                face,
+                b.min,
+                b.max,
+                c.map(|p| voxelcraft::mesh::face_uv(face, p.to_array())),
+            );
+            let mut normal = Vec3::ZERO;
+            normal[d] = if positive { 1.0 } else { -1.0 };
+            out.push(voxelcraft::world::colour_blocks::banner::Quad {
+                corners: c.map(place),
+                uv,
+                layer,
+                normal,
+                tint: None,
+            });
+        }
+    }
+    out
+}
+
+/// v1.0 gap track 6d: Java's `fence_inventory` model, element by element
+/// (from, to, and each face's explicit UV in texels, `None` for a face the
+/// model leaves out), faces +X, -X, +Y, -Y, +Z, -Z: two posts at z 0-4 and
+/// 12-16, and two bars from z -2 to 18 in three pieces each, reaching 2/16
+/// beyond the block.
+const FENCE_INVENTORY: [voxelcraft::content::item_models::Element; 8] = {
+    const fn f(u0: f32, v0: f32, u1: f32, v1: f32) -> Option<[f32; 4]> {
+        Some([u0, v0, u1, v1])
+    }
+    [
+        // Left post: east, west, up, down, south, north.
+        (
+            [6., 0., 0.],
+            [10., 16., 4.],
+            [
+                f(0., 0., 4., 16.),
+                f(0., 0., 4., 16.),
+                f(6., 0., 10., 4.),
+                f(6., 0., 10., 4.),
+                f(6., 0., 10., 16.),
+                f(6., 0., 10., 16.),
+            ],
+        ),
+        // Right post.
+        (
+            [6., 0., 12.],
+            [10., 16., 16.],
+            [
+                f(12., 0., 16., 16.),
+                f(12., 0., 16., 16.),
+                f(6., 12., 10., 16.),
+                f(6., 12., 10., 16.),
+                f(6., 0., 10., 16.),
+                f(6., 0., 10., 16.),
+            ],
+        ),
+        // Top bar, and its ends beyond the block.
+        (
+            [7., 12., 0.],
+            [9., 15., 16.],
+            [f(0., 1., 16., 4.), f(0., 1., 16., 4.), f(7., 0., 9., 16.), f(7., 0., 9., 16.), None, None],
+        ),
+        (
+            [7., 12., -2.],
+            [9., 15., 0.],
+            [f(0., 1., 2., 4.), f(14., 1., 16., 4.), f(7., 14., 9., 16.), f(7., 0., 9., 2.), None, f(7., 1., 9., 4.)],
+        ),
+        (
+            [7., 12., 16.],
+            [9., 15., 18.],
+            [f(14., 1., 16., 4.), f(0., 1., 2., 4.), f(7., 0., 9., 2.), f(7., 14., 9., 16.), f(7., 1., 9., 4.), None],
+        ),
+        // Lower bar, and its ends.
+        (
+            [7., 6., 0.],
+            [9., 9., 16.],
+            [f(0., 7., 16., 10.), f(0., 7., 16., 10.), f(7., 0., 9., 16.), f(7., 0., 9., 16.), None, None],
+        ),
+        (
+            [7., 6., -2.],
+            [9., 9., 0.],
+            [
+                f(0., 7., 2., 10.),
+                f(14., 7., 16., 10.),
+                f(7., 14., 9., 16.),
+                f(7., 0., 9., 2.),
+                None,
+                f(7., 7., 9., 10.),
+            ],
+        ),
+        (
+            [7., 6., 16.],
+            [9., 9., 18.],
+            [
+                f(14., 7., 16., 10.),
+                f(0., 7., 2., 10.),
+                f(7., 0., 9., 2.),
+                f(7., 14., 9., 16.),
+                f(7., 7., 9., 10.),
+                None,
+            ],
+        ),
+    ]
+};
+
+/// [`FENCE_INVENTORY`]'s quads with the fence's face layers.
+fn fence_inventory_quads(tex: [u16; 6]) -> Vec<voxelcraft::world::colour_blocks::banner::Quad> {
+    voxelcraft::content::item_models::element_quads(&FENCE_INVENTORY, tex)
 }
 
 #[cfg(test)]
@@ -508,5 +718,76 @@ mod scale_tests {
         assert_eq!(Ui::view_scale((800.0, 450.0), window, 1), 1.0, "a smaller choice stays");
         // Never below one physical pixel per UI pixel.
         assert_eq!(Ui::view_scale((200.0, 100.0), window, 0), 1.0);
+    }
+}
+
+#[cfg(test)]
+mod item_view_tests {
+    use super::*;
+
+    /// v1.0 gap track 6d: a fence item is Java's `fence_inventory`: two
+    /// posts and two bars running north to south, the bars reaching 2/16
+    /// beyond the block, 40 faces, each with its explicit UV (the left
+    /// post's east face samples texels 0-4 across, its top 6-10).
+    #[test]
+    fn fence_items_are_javas_fence_inventory() {
+        let quads = block_item_quads(crate::world::block::Block::OAK_FENCE);
+        assert_eq!(quads.len(), 40);
+        let (lo, hi) = quads
+            .iter()
+            .flat_map(|q| q.corners)
+            .fold((glam::Vec3::MAX, glam::Vec3::MIN), |(lo, hi), c| (lo.min(c), hi.max(c)));
+        assert!((lo - glam::Vec3::new(6.0, 0.0, -2.0) / 16.0).abs().max_element() < 1e-6, "{lo}");
+        assert!((hi - glam::Vec3::new(10.0, 16.0, 18.0) / 16.0).abs().max_element() < 1e-6, "{hi}");
+        let east = &quads[0];
+        let us: Vec<f32> = east.uv.iter().map(|uv| uv[0] * 16.0).collect();
+        assert!(us.iter().all(|u| (*u - 0.0).abs() < 1e-4 || (*u - 4.0).abs() < 1e-4), "{us:?}");
+        // Seen from outside the east face runs unmirrored: u grows toward -z.
+        let at_north = east.corners.iter().zip(&east.uv).find(|(c, _)| c.z < 1e-6).unwrap().1[0];
+        assert!((at_north * 16.0 - 4.0).abs() < 1e-4);
+        let top = &quads[2];
+        assert!(top.uv.iter().all(|uv| (6.0 - 1e-4..=10.0 + 1e-4).contains(&(uv[0] * 16.0))), "{:?}", top.uv);
+    }
+
+    /// The x (UI pixels) of the quads drawn with `layer`, by their vertices.
+    fn xs(ui: &Ui, layer: u16) -> Vec<f32> {
+        ui.verts.iter().filter(|v| v.layer == layer as f32).map(|v| (v.pos[0] + 1.0) / 2.0 * ui.width).collect()
+    }
+
+    /// v1.0 gap track 6c: a furnace's front (its item model's north face)
+    /// shows on the right of a slot and its east side on the left, as
+    /// Java's `block/block` GUI turn (30, 225, 0) places them; stairs show
+    /// their profile on the left (`block/stairs`' 135); a head its face on
+    /// the right (`item/template_skull`'s 45, the face south). The top is
+    /// lit fully, the left 0.65 and the right 0.4 (Java's GUI lights).
+    #[test]
+    fn slot_icons_take_javas_orientation_and_light() {
+        use crate::world::block::tex;
+        let mut ui = Ui::with_scale(64.0, 64.0, 1.0);
+        ui.block_icon(0.0, 0.0, 64.0, Block::FURNACE, false);
+        let front = xs(&ui, tex::FURNACE_FRONT);
+        assert!(!front.is_empty() && front.iter().all(|&x| x >= 32.0 - 1e-3), "{front:?}");
+        let shades: Vec<f32> = ui.verts.iter().map(|v| linear_to_srgb(v.color[0])).collect();
+        for expected in [1.0, 0.6505, 0.4] {
+            assert!(shades.iter().any(|s| (s - expected).abs() < 2e-3), "{expected} in {shades:?}");
+        }
+        let mut head = Ui::with_scale(64.0, 64.0, 1.0);
+        let skull = crate::world::skulls::item_block(crate::world::skulls::Kind::Zombie);
+        head.block_icon(0.0, 0.0, 64.0, skull, false);
+        let face = skull.info().tex[4];
+        let x = xs(&head, face);
+        assert!(!x.is_empty() && x.iter().all(|&x| x >= 32.0 - 1e-3), "{x:?}");
+    }
+
+    /// v1.0 gap track 6c: an enchanted 3D item glints in a slot: each face
+    /// is drawn again as the glint's texture-shaped sheen.
+    #[test]
+    fn enchanted_3d_items_glint_in_a_slot() {
+        let mut plain = Ui::with_scale(64.0, 64.0, 1.0);
+        plain.block_icon(0.0, 0.0, 64.0, Block::STONE, false);
+        let mut glinting = Ui::with_scale(64.0, 64.0, 1.0);
+        glinting.block_icon(0.0, 0.0, 64.0, Block::STONE, true);
+        assert!(glinting.verts.len() > plain.verts.len());
+        assert!(glinting.verts.iter().any(|v| v.color[3] < 0.0), "the sheen is drawn through the texture's shape");
     }
 }

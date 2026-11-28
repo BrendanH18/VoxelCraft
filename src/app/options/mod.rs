@@ -4,24 +4,27 @@
 //! saves `options.txt` when it closes, as Java does.
 
 mod accessibility;
+mod chat;
 mod controls;
 mod credits;
 mod keybinds;
 mod sound;
 mod video;
+mod world;
 
 pub(super) use accessibility::Accessibility;
 pub(super) use controls::{Controls, MouseSettings};
 pub(super) use keybinds::KeyBinds;
 pub(super) use sound::MusicAndSounds;
 pub(super) use video::VideoSettings;
+pub(super) use world::WorldOptions;
 
-use super::gui::{self, Confirm, Host, Look, OptionList, Rect, Screen, Size, Stack, Step, Widget};
+use super::gui::{self, Host, Look, OptionList, Rect, Screen, Size, Stack, Step, Widget};
 use super::settings::{FOV, Settings};
 use crate::render::ui::Ui;
 use crate::simulation::difficulty::Difficulty;
 
-/// The open world's difficulty, as the Options screen shows it.
+/// The open world's difficulty, as World Options shows it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) struct WorldDifficulty {
     pub level: Difficulty,
@@ -48,7 +51,8 @@ pub(super) trait OptionsHost: Host {
     fn difficulty(&self) -> Option<WorldDifficulty> {
         None
     }
-    fn cycle_difficulty(&mut self) {}
+    /// Sets the world's difficulty (World Options' Apply Changes).
+    fn set_difficulty(&mut self, _: Difficulty) {}
     /// Locks the world's difficulty for good.
     fn lock_difficulty(&mut self) {}
 }
@@ -126,6 +130,7 @@ pub(super) fn open_screens<H: OptionsHost>(stack: &mut Stack<H>, name: &str) {
             stack.open(KeyBinds::default());
         }
         "accessibility" => stack.open(Accessibility),
+        "chat" => stack.open(chat::ChatSettings),
         _ => {}
     }
 }
@@ -154,24 +159,20 @@ pub(in crate::app) fn save_failed(reason: String) -> gui::Notice {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Id {
     Fov,
-    Difficulty,
-    Lock,
     Sound,
     Video,
     Controls,
+    Chat,
     Accessibility,
     Credits,
     CheckUpdates,
     Done,
 }
 
-/// Java's `LockIconButton` is square, beside a narrowed difficulty button.
-const LOCK_W: f32 = 20.0;
-
 /// The Options screen: Java 26.3's, without the screens VoxelCraft has no
-/// use for (Online, Skin Customization, Language, Chat, Resource Packs,
-/// Telemetry). Difficulty and its lock sit where Java's Online button is;
-/// Java 26.3 moved them to the pause menu's World Options screen.
+/// use for (Online, Skin Customization, Language, Resource Packs,
+/// Telemetry). Difficulty and its lock moved to the pause menu's World
+/// Options in Java 26.3, and in VoxelCraft with v1.0 final F6.
 pub(super) struct Options;
 
 impl<H: OptionsHost> Screen<H> for Options {
@@ -190,66 +191,28 @@ impl<H: OptionsHost> Screen<H> for Options {
         let z = [0.0; 4];
         let mut list = OptionList::new(size);
         let fov = Widget::slider(Id::Fov, z, fov_label(s.fov), frac(s.fov, FOV), (FOV.1 - FOV.0) as u32);
-        let world = host.difficulty();
-        let difficulty = world.map(|d| {
-            let w = Widget::button(Id::Difficulty, z, format!("Difficulty: {}", d.level));
-            if d.hardcore {
-                w.enabled(false).tooltip("Cannot change the difficulty in a hardcore world.")
-            } else if d.locked {
-                w.enabled(false).tooltip("Difficulty is locked.")
-            } else {
-                w
-            }
-        });
-        list.pair(fov, difficulty);
-        list.pair(
+        list.pair(fov, None);
+        // Java's grid order, without the screens VoxelCraft leaves out.
+        list.pairs(vec![
             Widget::button(Id::Sound, z, "Music & Sounds..."),
-            Some(Widget::button(Id::Video, z, "Video Settings...")),
-        );
-        list.pair(
+            Widget::button(Id::Video, z, "Video Settings..."),
             Widget::button(Id::Controls, z, "Controls..."),
-            Some(Widget::button(Id::Accessibility, z, "Accessibility Settings...")),
-        );
-        list.pair(
+            Widget::button(Id::Chat, z, "Chat Settings..."),
+            Widget::button(Id::Accessibility, z, "Accessibility Settings..."),
             Widget::button(Id::Credits, z, "Credits & Attribution..."),
-            Some(
-                Widget::button(Id::CheckUpdates, z, format!("Check for Updates: {}", gui::on_off(s.check_updates)))
-                    .tooltip("Look for a newer VoxelCraft release when the game starts."),
-            ),
-        );
-        let mut widgets = list.done(Widget::button(Id::Done, z, "Done"), size);
-        // The lock takes the right end of the difficulty button.
-        if let (Some(d), Some(i)) = (world, widgets.iter().position(|w| w.id == Id::Difficulty)) {
-            let [x, y, w, h] = widgets[i].rect;
-            widgets[i].rect = [x, y, w - LOCK_W, h];
-            let lock = Widget::custom(Id::Lock, [x + w - LOCK_W, y, LOCK_W, h]).scrolling();
-            let lock = if d.locked || d.hardcore { lock.enabled(false) } else { lock.tooltip("Lock World Difficulty") };
-            widgets.insert(i + 1, lock);
-        }
-        widgets
+            Widget::button(Id::CheckUpdates, z, format!("Check for Updates: {}", gui::on_off(s.check_updates)))
+                .tooltip("Look for a newer VoxelCraft release when the game starts."),
+        ]);
+        list.done(Widget::button(Id::Done, z, "Done"), size)
     }
 
     fn activate(&mut self, host: &mut H, id: Id) -> Step<H> {
         match id {
             Id::Fov => {}
-            Id::Difficulty => host.cycle_difficulty(),
-            Id::Lock => {
-                let Some(d) = host.difficulty() else { return Step::Stay };
-                let question = format!(
-                    "Are you sure you want to lock the difficulty of this world? This will set this world to always be {}, and you will never be able to change that again.",
-                    d.level
-                );
-                return Step::push(
-                    Confirm::new("Lock World Difficulty", vec![question], "Yes", |host: &mut H| {
-                        host.lock_difficulty();
-                        Step::Stay
-                    })
-                    .no("No"),
-                );
-            }
             Id::Sound => return Step::push(MusicAndSounds),
             Id::Video => return Step::push(VideoSettings),
             Id::Controls => return Step::push(Controls),
+            Id::Chat => return Step::push(chat::ChatSettings),
             Id::Accessibility => return Step::push(Accessibility),
             Id::Credits => return Step::push(credits::CreditsAndAttribution),
             // Takes effect at the next launch's title screen.
@@ -268,15 +231,10 @@ impl<H: OptionsHost> Screen<H> for Options {
     fn back(&mut self, host: &mut H) -> Step<H> {
         close(host)
     }
-
-    fn draw_custom(&self, host: &H, ui: &mut Ui, _: Id, rect: Rect, look: Look) {
-        let locked = host.difficulty().is_some_and(|d| d.locked || d.hardcore);
-        draw_lock(ui, rect, locked, look);
-    }
 }
 
 /// Java's lock icon on a button: a padlock, its shackle open until locked.
-fn draw_lock(ui: &mut Ui, rect: Rect, locked: bool, look: Look) {
+pub(super) fn draw_lock(ui: &mut Ui, rect: Rect, locked: bool, look: Look) {
     gui::draw_button(ui, rect, "", look);
     let [x, y, _, _] = rect;
     let colour = if look.enabled { [0.86, 0.86, 0.86, 1.0] } else { [0.55, 0.55, 0.55, 1.0] };

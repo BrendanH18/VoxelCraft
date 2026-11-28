@@ -126,10 +126,51 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             )
         }
         l if (t::COCOA..t::COCOA + 3).contains(&l) => {
-            let age = l - t::COCOA;
-            let c = [[110, 130, 40], [170, 110, 50], [140, 76, 36]][age as usize];
-            let ridge = x.is_multiple_of(3);
-            shade(c, if ridge { 0.78 } else { 0.92 + r * 0.12 })
+            // v1.0 final F10: Java's `cocoa_stage*` layout: the pod's top
+            // and underside in the top-left square (4, 6 or 8 texels by
+            // age), its sides at the right from row 4 (4 x 5, 6 x 7 or 8 x
+            // 9, flush with column 15), the stem's plane in the top-right
+            // 4 x 4, and the rest clear.
+            let age = (l - t::COCOA) as usize;
+            let c = [[110, 130, 40], [170, 110, 50], [140, 76, 36]][age];
+            let (size, tall) = [(4, 5), (6, 7), (8, 9)][age];
+            let (side, top) = (16 - size - [1, 1, 0][age], size);
+            if x >= 12 && y < 4 {
+                // The stem: a twig from the pod's top (bottom left) up to
+                // the log (top right).
+                let twig = matches!((x, y), (12 | 13, 3) | (13 | 14, 2) | (14 | 15, 1) | (15, 0));
+                return if twig { shade([96, 78, 40], 0.9 + r * 0.1) } else { [0; 4] };
+            }
+            if x < top && y < top {
+                // The pod's ends: ridges meeting at a darker middle.
+                let mid = (x * 2 + 1).abs_diff(top) <= 2 && (y * 2 + 1).abs_diff(top) <= 2;
+                return shade(
+                    c,
+                    if mid {
+                        0.7
+                    } else if (x + y).is_multiple_of(3) {
+                        0.8
+                    } else {
+                        0.95 + r * 0.1
+                    },
+                );
+            }
+            if x >= side && x < side + size && (4..4 + tall).contains(&y) {
+                // The sides: ridges running down, the outer columns darker.
+                let edge = x == side || x == side + size - 1 || y == 3 + tall;
+                let ridge = (x - side).is_multiple_of(2);
+                return shade(
+                    c,
+                    if edge {
+                        0.72
+                    } else if ridge {
+                        0.82
+                    } else {
+                        0.95 + r * 0.1
+                    },
+                );
+            }
+            [0; 4]
         }
         t::RED_MUSHROOM_BLOCK => {
             let spot = rnd(layer, x / 3, y / 3, 5) < 0.25 && rnd(layer, x, y, 6) < 0.8;

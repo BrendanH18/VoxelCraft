@@ -226,3 +226,132 @@ fn wall_stack_update_timing() {
     println!("40-wall stack: {:.3} ms/cap edit (2,000 edits)", start.elapsed().as_secs_f64() * 1000. / 2000.);
     posts(&w, 40, false);
 }
+
+/// v1.0 final F7: walls saved before stored posts load with every post
+/// raised; reading their chunk from `chunks.bin` gives each the post the
+/// edit path (Java's `updateShape`) would have, across a chunk boundary
+/// too, before anything near them changes.
+#[test]
+fn legacy_walls_take_java_posts_when_their_chunk_loads() {
+    use crate::world::chunk::{CHUNK_SIZE_I, chunk_of};
+    let mut w = world();
+    let mut walls = Vec::new();
+    let mut put = |w: &mut World, p: IVec3, b: Block| {
+        w.set_block(p, b);
+        if up(b).is_some() {
+            walls.push(p);
+        }
+    };
+    let run = |z: i32, y: i32| (8..=10).map(move |x| IVec3::new(x, y, z));
+    // A straight run; a corner; a torch on a run's middle.
+    for p in run(8, 140) {
+        put(&mut w, p, WALL);
+    }
+    for p in [IVec3::new(8, 140, 12), IVec3::new(9, 140, 12), IVec3::new(9, 140, 13)] {
+        put(&mut w, p, WALL);
+    }
+    for p in run(16, 140) {
+        put(&mut w, p, WALL);
+    }
+    put(&mut w, IVec3::new(9, 141, 16), Block::TORCH);
+    // Two runs stacked across the boundary between chunk rows 4 and 5,
+    // and a lone wall over a run's middle there.
+    let boundary = 5 * CHUNK_SIZE_I;
+    for p in run(20, boundary - 1).chain(run(20, boundary)).chain(run(24, boundary - 1)) {
+        put(&mut w, p, WALL);
+    }
+    put(&mut w, IVec3::new(9, boundary, 24), WALL);
+    let expected: Vec<Block> = walls.iter().map(|&p| w.get_block(p).unwrap()).collect();
+    assert!(expected.iter().any(|&b| up(b) == Some(false)), "some posts drop");
+    assert!(expected.iter().any(|&b| up(b) == Some(true)), "some stay");
+    // What an old save holds: every wall with its post raised.
+    let legacy = |c: IVec3| {
+        let mut d = (*w.section_data(c).unwrap()).clone();
+        for &p in walls.iter().filter(|&&p| chunk_of(p) == c) {
+            let l = p - c * CHUNK_SIZE_I;
+            d.set(l.x as usize, l.y as usize, l.z as usize, with_up(w.get_block(p).unwrap(), true));
+        }
+        Arc::new(d)
+    };
+    let (lower, upper) = (IVec3::new(0, 4, 0), IVec3::new(0, 5, 0));
+    let saved: rustc_hash::FxHashMap<IVec3, Arc<ChunkData>> =
+        [(lower, legacy(lower)), (upper, legacy(upper))].into_iter().collect();
+    let old = World::new_headless(Arc::new(Generator::new(7)), saved.clone(), 2);
+    for c in [lower, upper] {
+        let migrated = old.migrate_legacy_wall_posts(c, saved[&c].clone(), &mut Vec::new());
+        for (&p, &want) in walls.iter().zip(&expected).filter(|(p, _)| chunk_of(**p) == c) {
+            let l = p - c * CHUNK_SIZE_I;
+            assert_eq!(migrated.get(l.x as usize, l.y as usize, l.z as usize), want, "wall at {p}");
+        }
+    }
+    // Walls saved with their posts already right are left alone.
+    let current = w.section_data(lower).unwrap();
+    assert!(Arc::ptr_eq(&w.migrate_legacy_wall_posts(lower, current.clone(), &mut Vec::new()), &current));
+}
+
+/// A wall whose neighbour's chunk isn't available keeps its saved post
+/// rather than guessing at air.
+#[test]
+fn legacy_walls_beside_an_unavailable_chunk_keep_their_posts() {
+    let w = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+    let c = IVec3::new(0, 4, 0);
+    let mut d = ChunkData::Uniform(Block::AIR);
+    // A run along x through the chunk's west edge: the cell west of x = 0
+    // is in chunk x = -1, which nothing holds.
+    for x in 0..3 {
+        d.set(x, 12, 8, WALL);
+    }
+    let d = Arc::new(d);
+    let mut pending = Vec::new();
+    let migrated = w.migrate_legacy_wall_posts(c, d.clone(), &mut pending);
+    assert_eq!(migrated.get(0, 12, 8), WALL, "edge wall unknown: kept");
+    assert_eq!(pending, [IVec3::new(0, 140, 8)], "and waits for its neighbour");
+    assert_eq!(up(migrated.get(1, 12, 8)), Some(false), "the middle of the run drops its post");
+    assert_eq!(migrated.get(2, 12, 8), WALL, "the run's end is a corner");
+}
+
+/// The edge wall waiting on its neighbour takes its post when that chunk
+/// loads.
+#[test]
+fn a_waiting_legacy_wall_settles_when_its_neighbour_chunk_loads() {
+    let mut w = world();
+    let (west, edge) = (IVec3::new(30, 140, 8), IVec3::new(31, 140, 8));
+    w.set_block(west, WALL);
+    w.set_block(edge, WALL);
+    // Chunk x = 1 isn't loaded: the edge wall is the run's end, post up.
+    assert_eq!(up(w.get_block(edge).unwrap()), Some(true));
+    w.legacy_walls.insert(edge);
+    let mut east = ChunkData::Uniform(Block::AIR);
+    east.set(0, 12, 8, WALL);
+    w.insert_chunk(IVec3::new(1, 4, 0), Arc::new(east), true);
+    assert_eq!(up(w.get_block(edge).unwrap()), Some(false), "now the middle of a run");
+    assert!(w.legacy_walls.is_empty());
+}
+
+/// v1.0 final F9: the wait list is saved (`legacy_walls`, only while some
+/// wall waits) and a wall read back from it settles once its neighbour's
+/// chunk loads, as in the session that found it.
+#[test]
+fn the_legacy_wall_wait_list_is_saved_and_a_reloaded_wall_still_settles() {
+    let mut w = world();
+    assert!(!w.has_legacy_walls());
+    assert_eq!(w.legacy_walls_to_string(), "");
+    let (west, edge) = (IVec3::new(30, 140, 8), IVec3::new(31, 140, 8));
+    w.legacy_walls.insert(edge);
+    w.legacy_walls.insert(IVec3::new(-3, 120, 40));
+    let saved = w.legacy_walls_to_string();
+    assert_eq!(saved, "-3,120,40;31,140,8", "sorted");
+    // A later session: the same blocks, the list read back.
+    let mut later = world();
+    later.set_block(west, WALL);
+    later.set_block(edge, WALL);
+    later.load_legacy_walls(&saved);
+    later.load_legacy_walls("damaged;1,2;4,5,6,7");
+    assert_eq!(later.legacy_walls.len(), 2, "damaged entries skipped");
+    assert_eq!(up(later.get_block(edge).unwrap()), Some(true));
+    let mut east = ChunkData::Uniform(Block::AIR);
+    east.set(0, 12, 8, WALL);
+    later.insert_chunk(IVec3::new(1, 4, 0), Arc::new(east), true);
+    assert_eq!(up(later.get_block(edge).unwrap()), Some(false), "settled after the reload");
+    assert_eq!(later.legacy_walls_to_string(), "-3,120,40", "the other still waits");
+}

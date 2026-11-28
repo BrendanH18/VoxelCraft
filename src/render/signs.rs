@@ -139,11 +139,7 @@ pub fn vertices(models: &[SignModel], camera: DVec3, out: &mut Vec<BlockVertex>)
                 for i in [0, 1, 2, 2, 3, 0] {
                     let p = c[i];
                     // UVs as the chunk shader's planar mapping, in the sign's frame.
-                    let uv = match d {
-                        0 => [p.z, 1.0 - p.y],
-                        1 => [p.x, p.z],
-                        _ => [p.x, 1.0 - p.y],
-                    };
+                    let uv = crate::mesh::face_uv(face, p.to_array());
                     out.push(BlockVertex {
                         pos: place(p).to_array(),
                         uv,
@@ -415,38 +411,62 @@ fn lay_out(sign: Sign, cell: IVec3, text: &SignText, front: bool, side: &mut Cac
 
 // ---- Shelf items -------------------------------------------------------
 
-/// The items on shelves within [`RANGE`] of `camera`, a quarter of a block
-/// each (Java's `ShelfRenderer`).
+/// The items on shelves within [`RANGE`] of `camera`, as Java's
+/// `ShelfRenderer` places them (v1.0 gap track 6c): from the cell's centre,
+/// turned to the shelf's facing (`-toYRot`), the slot's offset of 5/16
+/// across and a quarter back, a quarter size, then the item's model with
+/// its `on_shelf` display transform, raised so the middle of its bounds
+/// (`getModelBoundingBox`) sits there. Java's `align_items_to_bottom` is
+/// only ever read from saved data, so items are always centred.
 pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
+    use glam::Mat4;
+    use voxelcraft::content::{item_display, item_models};
     for (&cell, items) in world.wood_entities().shelves() {
         if (cell.as_dvec3() + DVec3::splat(0.5)).distance_squared(camera) > RANGE * RANGE {
             continue;
         }
         let Some(shelf) = world.get_block(cell).and_then(shelves::shelf) else { continue };
         let (sky_light, block_light) = light(world, cell);
+        // `Direction.toYRot`: south 0, west 90, north 180, east 270.
+        let y_rot = match shelf.facing {
+            crate::world::block::Facing::South => 0.0f32,
+            crate::world::block::Facing::West => 90.0,
+            crate::world::block::Facing::North => 180.0,
+            crate::world::block::Facing::East => 270.0,
+        };
         for (slot, stack) in items.iter().enumerate() {
             let Some(stack) = stack else { continue };
-            let (anchor, yaw) = shelves::item_anchor(shelf, slot);
-            let block = crate::world::copper_golem_statue::item_model(*stack)
-                .or_else(|| stack.item.block())
-                .filter(|b| !b.flat_icon());
-            let icon = match block {
-                Some(_) => None,
-                None => stack.item.block().map(|b| b.info().tex[0]).or_else(|| stack.item.icon_layer()),
+            let mesh = item_models::has_mesh(stack.item).then_some((*stack, item_models::Context::OnShelf));
+            let block = if mesh.is_some() { None } else { crate::item::model_block(stack) };
+            let icon = match (mesh, block) {
+                (None, None) => stack.item.flat_layer(),
+                _ => None,
             };
-            let size = 0.25;
+            let local = item_models::Context::OnShelf.matrix(&item_display::drawn(stack));
+            let (low, high) = super::block_model::extent_y(stack, block, local);
+            let transform = Mat4::from_translation((cell.as_dvec3() - camera).as_vec3() + Vec3::splat(0.5))
+                * Mat4::from_rotation_y((-y_rot).to_radians())
+                * Mat4::from_translation(Vec3::new((slot as f32 - 1.0) * 0.3125, 0.0, -0.25))
+                * Mat4::from_scale(Vec3::splat(0.25))
+                * Mat4::from_translation(Vec3::new(0.0, -(low + high) / 2.0, 0.0))
+                * local;
             out.push(BlockModel {
                 patterns: None,
                 lid: None,
-                min: cell.as_dvec3() + anchor - DVec3::splat(size / 2.0),
-                size: size as f32,
+                swing: None,
+                min: DVec3::ZERO,
+                size: 1.0,
                 block: block.unwrap_or(Block::AIR),
                 sky_light,
                 block_light,
-                yaw: yaw.to_radians(),
+                yaw: 0.0,
                 icon,
                 orient: None,
                 tint: crate::inventory::components::dye_tint_bytes(*stack),
+                glint: stack.has_foil(),
+                translucent: crate::item::translucent(stack),
+                mesh,
+                transform: Some(transform),
             });
         }
     }
@@ -710,12 +730,18 @@ mod tests {
         assert_eq!(models.len(), 2);
         assert_eq!((models[0].block, models[0].icon), (Block::STONE, None));
         assert!(models[1].icon.is_some(), "a stick draws as its sprite");
+        // v1.0 gap track 6c: placed by Java's `ShelfRenderer` chain and the
+        // `on_shelf` transform, a quarter of a block across, inside the cell
+        // and centred at half height.
+        let centre = |m: &BlockModel| m.transform.unwrap().transform_point3(Vec3::splat(0.5));
         for m in &models {
-            assert_eq!(m.size, 0.25);
-            let centre = m.min + DVec3::splat(0.125) - AT.as_dvec3();
-            assert!(centre.min_element() > 0.0 && centre.max_element() < 1.0, "{centre}");
+            let c = centre(m);
+            assert!(c.min_element() > 0.0 && c.max_element() < 1.0, "{c}");
+            assert!((c.y - 0.5).abs() < 1e-4, "{c}");
+            let across = m.transform.unwrap().transform_vector3(Vec3::X).length();
+            assert!((across - 0.25).abs() < 1e-4, "{across}");
         }
         // Left of the front as the player sees it (west, -x) for slot 0.
-        assert!(models[0].min.x < models[1].min.x);
+        assert!(centre(&models[0]).x < centre(&models[1]).x);
     }
 }

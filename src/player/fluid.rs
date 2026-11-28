@@ -190,6 +190,12 @@ impl FluidContact {
         push
     }
 
+    /// v1.0 gap Track 3: water's push alone (0.014) for a mob, Java
+    /// normalising the summed flow as for any entity but a player.
+    pub fn entity_water_impulse(&self, movement: DVec3) -> DVec3 {
+        if self.in_water() { self.water_current.impulse_for(movement, 0.014, false) } else { DVec3::ZERO }
+    }
+
     /// The push water (0.014) and lava give this tick, given the movement before it.
     pub fn current_impulse(&self, movement: DVec3, fast_lava: bool) -> DVec3 {
         let mut push = DVec3::ZERO;

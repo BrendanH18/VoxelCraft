@@ -93,7 +93,13 @@ pub const HAY_FALL_MULTIPLIER: f32 = 0.2;
 /// Damage for landing on hay after falling `distance` blocks: Java's
 /// `floor((distance + 1e-6 - 3) * (double)0.2f)`.
 pub fn hay_fall_damage(distance: f64) -> f32 {
-    ((distance + 1e-6 - SAFE_FALL) * f64::from(HAY_FALL_MULTIPLIER)).floor().max(0.0) as f32
+    scaled_fall_damage(distance, HAY_FALL_MULTIPLIER)
+}
+
+/// `LivingEntity.calculateFallDamage` with a block's `damageModifier`:
+/// `floor((distance + 1e-6 - 3) * modifier)`.
+pub fn scaled_fall_damage(distance: f64, modifier: f32) -> f32 {
+    ((distance + 1e-6 - SAFE_FALL) * f64::from(modifier)).floor().max(0.0) as f32
 }
 
 /// What the player is touching this frame.
@@ -107,6 +113,10 @@ pub struct Env {
     pub in_water: bool,
     /// On a ladder: also breaks falls.
     pub climbing: bool,
+    /// v1.0 final F8: `FallLocation.getCurrentFallLocation`: the block at
+    /// the last climbable cell held since standing on the ground, else
+    /// water when in it.
+    pub fall_location: Option<super::death_message::FallLocation>,
     /// Eyes under water: uses up air.
     pub head_in_water: bool,
     /// Respiration level of the worn helmet: air lasts `level + 1` times
@@ -134,6 +144,10 @@ pub struct Env {
     /// v0.16 Track D: `Block.fallOn`'s `fallDistanceReduction` of the block
     /// landed on (0.5 for a shelf mushroom): the fall counts that much less.
     pub fall_reduction: f32,
+    /// v1.0 gap Track 1: standing on an upward pointed dripstone tip, whose
+    /// `fallOn` adds 2.5 blocks to the fall and doubles its damage, typed
+    /// `stalagmite`.
+    pub on_stalagmite: bool,
     /// Landing on a slime block. Java 26.3's `SlimeBlock.fallOn` multiplies
     /// the damage by zero, and when sneaking suppresses the bounce it
     /// returns without calling `causeFallDamage` at all.
@@ -177,6 +191,8 @@ pub struct Hurts {
     pub freeze: f32,
     /// A falling stalactite (`DamageTypes.FALLING_STALACTITE`).
     pub stalactite: f32,
+    /// A landing on an upward dripstone tip (`DamageTypes.STALAGMITE`).
+    pub stalagmite: f32,
     /// v0.16 Track B: a glide into a wall (`fly_into_wall`).
     pub kinetic: f32,
 }
@@ -305,6 +321,10 @@ pub struct Vitals {
     /// v0.16 Track A: seconds before more chorus fruit can be eaten
     /// (`useCooldown(1.0F)`).
     pub chorus_cooldown: f32,
+    /// v1.0 final Track F4: seconds before a goat horn can be blown again
+    /// (`InstrumentItem.use`'s 140-tick cooldown on the `goat_horn` item,
+    /// which every instrument shares).
+    pub horn_cooldown: f32,
     /// Potion and other status effects.
     pub effects: super::effects::Effects,
     /// Seconds since the last damage (drives the hurt flash).
@@ -337,6 +357,26 @@ pub struct Vitals {
     /// The damage type of the hit that killed the player, while it is known
     /// (not saved: a restored dead player keeps only the text).
     killed_by: Option<super::damage::DamageType>,
+    /// v1.0 gap Track 8f: the player the death message names ("was slain
+    /// by" them) until the game puts in their profile name
+    /// ([`Vitals::name_killer`]). v1.0 gap Track 8g: any attacker, mob or
+    /// player, with how the message names them (a custom name, a named
+    /// weapon, a kill credit). Not saved: a saved death keeps its text.
+    pub killer: Option<super::death_message::Pending>,
+    /// v1.0 gap Track 8g: `CombatTracker`, the hits that took health. Not
+    /// saved (nor is Java's).
+    pub combat: super::death_message::CombatTracker,
+    /// v1.0 gap Track 8g: `lastHurtByPlayer` and `lastHurtByMob`, with the
+    /// seconds each is remembered for, for the kill credit. Not saved.
+    credit_player: Option<(crate::entity::PlayerId, f32)>,
+    credit_mob: Option<(u32, f32)>,
+    /// v1.0 gap Track 8g: the distance of the fall whose damage the last
+    /// tick returned, for the combat tracker's fall entry.
+    last_fall: f32,
+    /// v1.0 final F8: where the last tick found the player
+    /// (`FallLocation.getCurrentFallLocation`, [`Env::fall_location`]), for
+    /// the combat tracker's entries. Not saved.
+    fall_location: Option<super::death_message::FallLocation>,
     peaceful_timer: f32,
     peaceful_food_timer: f32,
     /// Java TIME_SINCE_REST statistic, in entity ticks; zero for older saves.
@@ -365,6 +405,7 @@ impl Default for Vitals {
             pearl_cooldown: 0.0,
             wind_charge_cooldown: 0.0,
             chorus_cooldown: 0.0,
+            horn_cooldown: 0.0,
             effects: Default::default(),
             since_damage: 1e3,
             death_time: 0.0,
@@ -380,6 +421,12 @@ impl Default for Vitals {
             previous_fall_y: None,
             death: None,
             killed_by: None,
+            killer: None,
+            combat: Default::default(),
+            credit_player: None,
+            credit_mob: None,
+            last_fall: 0.0,
+            fall_location: None,
             peaceful_timer: 0.0,
             peaceful_food_timer: 0.0,
             ticks_frozen: 0,
@@ -409,13 +456,40 @@ impl Vitals {
         }
     }
 
-    /// Restores saved values; zero health means the player died.
+    /// Restores saved values; zero health means the player died. A death
+    /// message the game has since reworded ([`super::damage::Cause::RETIRED`])
+    /// comes back in today's words (v1.0 gap Track 8e).
     pub fn restore(health: f32, air: f32, death: Option<String>) -> Self {
         let mut v = Self { health: health.clamp(0.0, MAX_HEALTH), air: air.clamp(0.0, MAX_AIR), ..Self::default() };
         if v.health <= 0.0 {
-            v.death = Some(death.unwrap_or_else(|| "died".into()));
+            let death = death.unwrap_or_else(|| "died".into());
+            // v1.0 gap Track 8g: in Java's words, an old save's "a zombie"
+            // read back as "Zombie".
+            let death = super::damage::Cause::saved(&death).map_or(death, |c| c.text.to_string());
+            v.death = Some(super::death_message::java_words(&death).text);
         }
         v
+    }
+
+    /// v1.0 gap Track 8f: puts the profile name of the player the death
+    /// message names ([`Vitals::killer`]) in place of "a player", as Java's
+    /// `DamageSource.getLocalizedDeathMessage` names them. v1.0 gap Track
+    /// 8g: any attacker, as [`super::death_message::Pending::finish`] names
+    /// them; `lookup` finds them (None leaves the words as they are).
+    pub fn name_killer(
+        &mut self,
+        lookup: impl FnOnce(crate::entity::trident::Owner) -> Option<super::death_message::Attacker>,
+    ) {
+        if let (Some(pending), Some(death)) = (self.killer.take(), self.death.as_mut()) {
+            pending.finish(death, lookup);
+        }
+    }
+
+    /// v1.0 gap Track 8g: `getKillCredit`: the player who hurt this one in
+    /// the last five seconds, else the mob.
+    pub fn kill_credit(&self) -> Option<crate::entity::trident::Owner> {
+        use crate::entity::trident::Owner;
+        self.credit_player.map(|(p, _)| Owner::Player(p)).or(self.credit_mob.map(|(m, _)| Owner::Mob(m)))
     }
 
     /// Whether a death cause has been recorded; damage and survival ticks respect this state.
@@ -471,6 +545,12 @@ impl Vitals {
     }
 
     /// Seconds since the hit that started the immunity window; stronger hits within it do not reset this.
+    /// v1.0 gap Track 8d: `lastHurt` while the hurt cooldown is in its
+    /// first half (a hit no harder is refused), or `None`.
+    pub fn cooling_down(&self) -> Option<f32> {
+        (self.since_damage < INVULNERABLE && !self.is_dead()).then_some(self.last_damage)
+    }
+
     pub fn since_damage(&self) -> f32 {
         self.since_damage
     }
@@ -509,24 +589,35 @@ impl Vitals {
     /// `#bypasses_effects` and `#bypasses_resistance`, and the hit costs the
     /// type's food exhaustion.
     pub fn damage(&mut self, amount: f32, cause: impl Into<super::damage::Cause>, creative: bool) -> f32 {
+        self.hurt(amount, cause.into(), creative, |a| a).1
+    }
+
+    /// [`Vitals::damage`] in Java's order (v1.0 gap Track 8d): the hurt
+    /// cooldown compares `amount` as `hurtServer` has it, before armor, and
+    /// only what lands (all of a full hit, a stronger hit's excess) goes
+    /// through `reduce` (armor and the armor's enchantments,
+    /// `getDamageAfterArmorAbsorb` and `getDamageAfterMagicAbsorb`) and
+    /// Resistance. Returns what landed before `reduce` (what armor wears
+    /// by) and what was taken after it.
+    pub fn hurt(
+        &mut self,
+        amount: f32,
+        cause: super::damage::Cause,
+        creative: bool,
+        reduce: impl FnOnce(f32) -> f32,
+    ) -> (f32, f32) {
         use super::damage::DamageTag as Tag;
-        let cause = cause.into();
         let creative = creative && !cause.is(Tag::BypassesInvulnerability);
         if creative || self.is_dead() || amount <= 0.0 {
-            return 0.0;
+            return (0.0, 0.0);
         }
         if cause.is(Tag::IsFire) && self.effects.has(super::effects::Effect::FireResistance) {
-            return 0.0;
+            return (0.0, 0.0);
         }
-        let amount = if cause.is(Tag::BypassesEffects) || cause.is(Tag::BypassesResistance) {
-            amount
-        } else {
-            amount * self.effects.resistance_factor()
-        };
-        let taken = if self.since_damage < INVULNERABLE {
+        let landed = if self.since_damage < INVULNERABLE {
             // Only a stronger hit gets through, and only the difference.
             if amount <= self.last_damage {
-                return 0.0;
+                return (0.0, 0.0);
             }
             let extra = amount - self.last_damage;
             self.last_damage = amount;
@@ -538,6 +629,12 @@ impl Vitals {
             self.fresh_hit = true;
             amount
         };
+        let reduced = reduce(landed);
+        let taken = if cause.is(Tag::BypassesEffects) || cause.is(Tag::BypassesResistance) {
+            reduced
+        } else {
+            reduced * self.effects.resistance_factor()
+        };
         // Java's `Player.actuallyHurt`: absorption soaks up the hit before
         // health, and a hit it absorbs entirely costs no exhaustion. The hit
         // still lands (immunity, knockback, armor wear), so `taken` stays the
@@ -547,14 +644,46 @@ impl Vitals {
             self.health = (self.health - lost).max(0.0);
             self.hunger.exhaust(cause.kind.exhaustion());
         }
+        // v1.0 gap Track 8g: `resolveMobResponsibleForDamage` and
+        // `resolvePlayerResponsibleForDamage`, then `recordDamage` for a
+        // hit that took health.
+        match super::death_message::attacker(cause) {
+            Some(crate::entity::trident::Owner::Player(p)) => {
+                self.credit_player = Some((p, super::death_message::CREDIT_MEMORY));
+            }
+            Some(crate::entity::trident::Owner::Mob(m)) if !cause.is(Tag::NoAnger) => {
+                self.credit_mob = Some((m, super::death_message::CREDIT_MEMORY));
+            }
+            _ => {}
+        }
+        // v1.0 final F8: a tamed wolf's hit credits its owner.
+        if let Some(owner) = cause.credit {
+            self.credit_player = Some((owner, super::death_message::CREDIT_MEMORY));
+        }
+        if lost > 0.0 {
+            // A fall's damage that didn't come through this tick's landing
+            // (a ridden mount's) stands for a fall three blocks longer.
+            let fall = if cause.is(Tag::IsFall) {
+                match std::mem::take(&mut self.last_fall) {
+                    f if f > 0.0 => f,
+                    _ if cause.kind == super::damage::DamageType::Fall => amount + 3.0,
+                    _ => 0.0,
+                }
+            } else {
+                0.0
+            };
+            self.combat.record(cause, lost, fall, self.fall_location);
+        }
         if self.health <= 0.0 {
-            self.death = Some(cause.text.to_string());
+            let (death, killer) = self.combat.death_message(cause, self.kill_credit());
+            self.death = Some(death);
             self.killed_by = Some(cause.kind);
+            self.killer = killer;
             self.time_since_rest = 0;
         } else if self.effects.has(super::effects::Effect::Infested) {
             self.infested_hits = self.infested_hits.saturating_add(1);
         }
-        taken
+        (landed, taken)
     }
 
     /// Advances air, hunger, regeneration and fall tracking by `dt` seconds
@@ -582,11 +711,18 @@ impl Vitals {
         // `LivingEntity.tick` counts the impulse grace down once a tick.
         self.impulse_grace = self.impulse_grace.saturating_sub(1);
         self.since_damage = (self.since_damage + dt).min(1e3);
+        // v1.0 gap Track 8g: the kill credit's memory and the combat
+        // tracker's `recheckStatus`.
+        self.credit_player = self.credit_player.map(|(p, t)| (p, t - dt)).filter(|&(_, t)| t > 0.0);
+        self.credit_mob = self.credit_mob.map(|(m, t)| (m, t - dt)).filter(|&(_, t)| t > 0.0);
+        self.combat.tick(dt, !self.is_dead());
+        self.fall_location = env.fall_location;
         self.death_time = if self.is_dead() { (self.death_time + dt).min(1e3) } else { 0.0 };
         self.xp.tick(dt);
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
         self.wind_charge_cooldown = (self.wind_charge_cooldown - dt).max(0.0);
         self.chorus_cooldown = (self.chorus_cooldown - dt).max(0.0);
+        self.horn_cooldown = (self.horn_cooldown - dt).max(0.0);
         if self.is_dead() {
             self.time_since_rest = 0;
             // `LivingEntity.baseTick` keeps counting effects down on the death
@@ -688,7 +824,14 @@ impl Vitals {
                 // `LivingEntity.causeFallDamage` after a mace smash: the fall
                 // counts only from the impact height, and the context ends on
                 // landing above it, once its grace runs out or once it hurts.
-                let mut fallen = peak - env.y;
+                // `PointedDripstoneBlock.fallOn` passes `fallDistance + 2.5`,
+                // which the impulse clamp then sees.
+                let extra = if env.on_stalagmite && peak > env.y {
+                    crate::world::speleothem::STALAGMITE_FALL_EXTRA
+                } else {
+                    0.0
+                };
+                let mut fallen = peak - env.y + extra;
                 if fallen > 0.0
                     && let Some(impact) = self.impulse_impact_y
                 {
@@ -699,7 +842,11 @@ impl Vitals {
                     }
                 }
                 let distance = fallen - jump_levels;
-                hurts.fall = if env.on_slime {
+                if env.on_stalagmite {
+                    hurts.stalagmite =
+                        scaled_fall_damage(distance, crate::world::speleothem::STALAGMITE_FALL_MULTIPLIER);
+                }
+                hurts.fall = if env.on_slime || env.on_stalagmite {
                     0.0
                 } else if env.on_hay || env.on_honey {
                     hay_fall_damage(distance)
@@ -708,7 +855,8 @@ impl Vitals {
                 } else {
                     fall_damage(distance)
                 };
-                if hurts.fall > 0.0 {
+                if hurts.fall > 0.0 || hurts.stalagmite > 0.0 {
+                    self.last_fall = distance.max(0.0) as f32;
                     self.impulse_impact_y = None;
                     self.impulse_grace = 0;
                 }
@@ -898,6 +1046,106 @@ impl Vitals {
 mod tests {
     use super::*;
 
+    /// v1.0 gap Track 8f: a death a player caused names them by their
+    /// profile name, once the game looks it up; a mob's or the world's
+    /// death names no one, and a lookup that finds no one keeps the words.
+    #[test]
+    fn a_player_kill_names_the_killer() {
+        use crate::entity::{PlayerId, trident::Owner};
+        use crate::simulation::damage::Cause;
+        use crate::simulation::death_message::Attacker;
+        let named = |n: &str| Some(Attacker { name: n.into(), weapon: None, alive: true });
+        let mut v = Vitals::default();
+        v.hurt(100.0, Cause::PLAYER_ATTACK.by(Some(Owner::Player(PlayerId(2)))), false, |a| a);
+        assert_eq!(v.killer.as_ref().map(|k| k.owner), Some(Owner::Player(PlayerId(2))));
+        v.name_killer(|o| (o == Owner::Player(PlayerId(2))).then(|| named("Alex")).flatten());
+        assert_eq!(v.death.as_deref(), Some("was slain by Alex"));
+        assert_eq!(v.killer, None, "named once");
+        let mut v = Vitals::default();
+        v.hurt(100.0, Cause::PLAYER_ARROW.by(Some(Owner::Player(PlayerId(5)))), false, |a| a);
+        v.name_killer(|_| None);
+        assert_eq!(v.death.as_deref(), Some("was shot by a player"));
+        // v1.0 gap Track 8g: a mob is named as Java names it, or by its
+        // custom name.
+        let mut v = Vitals::default();
+        v.hurt(100.0, Cause::mob("was slain by a zombie").by(Some(Owner::Mob(3))), false, |a| a);
+        assert_eq!(v.death.as_deref(), Some("was slain by Zombie"));
+        v.name_killer(|_| named("Grumbles"));
+        assert_eq!(v.death.as_deref(), Some("was slain by Grumbles"));
+    }
+
+    /// v1.0 gap Track 8g: a player who drowns or burns within five seconds
+    /// of a hit is "trying to escape" whoever dealt it (`getKillCredit`),
+    /// and is no longer after that.
+    #[test]
+    fn a_death_names_who_the_player_was_escaping() {
+        use crate::entity::{PlayerId, trident::Owner};
+        use crate::simulation::damage::Cause;
+        use crate::simulation::death_message::Attacker;
+        let alex = || Some(Attacker { name: "Alex".into(), weapon: None, alive: true });
+        let mut v = Vitals::default();
+        v.hurt(2.0, Cause::PLAYER_ATTACK.by(Some(Owner::Player(PlayerId(2)))), false, |a| a);
+        v.tick(4.0, &Env::default(), false);
+        v.hurt(100.0, Cause::DROWN, false, |a| a);
+        assert_eq!(v.kill_credit(), Some(Owner::Player(PlayerId(2))));
+        v.name_killer(|_| alex());
+        assert_eq!(v.death.as_deref(), Some("drowned while trying to escape Alex"));
+        let mut v = Vitals::default();
+        v.hurt(2.0, Cause::PLAYER_ATTACK.by(Some(Owner::Player(PlayerId(2)))), false, |a| a);
+        v.tick(5.5, &Env::default(), false);
+        assert_eq!(v.kill_credit(), None);
+        v.hurt(100.0, Cause::LAVA, false, |a| a);
+        v.name_killer(|_| alex());
+        assert_eq!(v.death.as_deref(), Some(CAUSE_LAVA));
+    }
+
+    /// v1.0 final F8: a tamed wolf's hit credits its owner
+    /// (`resolvePlayerResponsibleForDamage`), and a goat's ram
+    /// (`mob_attack_no_aggro`) credits no one but names the goat when it
+    /// knocks the player off.
+    #[test]
+    fn a_tamed_wolfs_owner_takes_the_credit_and_a_goat_knocks_players_off() {
+        use crate::entity::{PlayerId, trident::Owner};
+        use crate::simulation::damage::Cause;
+        use crate::simulation::death_message::Attacker;
+        let wolf = Cause::mob("was slain by a wolf").by(Some(Owner::Mob(9))).credited(Some(PlayerId(2)));
+        let mut v = Vitals::default();
+        v.hurt(2.0, wolf, false, |a| a);
+        assert_eq!(v.kill_credit(), Some(Owner::Player(PlayerId(2))));
+        v.tick(1.0, &Env::default(), false);
+        v.hurt(100.0, Cause::DROWN, false, |a| a);
+        v.name_killer(|o| {
+            assert_eq!(o, Owner::Player(PlayerId(2)));
+            Some(Attacker { name: "Alex".into(), weapon: None, alive: true })
+        });
+        assert_eq!(v.death.as_deref(), Some("drowned while trying to escape Alex"));
+
+        let goat = Cause::GOAT_RAM.by(Some(Owner::Mob(5)));
+        let mut v = Vitals::default();
+        v.hurt(2.0, goat, false, |a| a);
+        assert_eq!(v.kill_credit(), None, "no_anger");
+        v.tick(1.0, &Env::default(), false);
+        v.last_fall = 20.0;
+        v.hurt(100.0, Cause::FALL, false, |a| a);
+        v.name_killer(|o| {
+            assert_eq!(o, Owner::Mob(5));
+            Some(Attacker { name: "Goat".into(), weapon: None, alive: true })
+        });
+        assert_eq!(v.death.as_deref(), Some("was doomed to fall by Goat"));
+    }
+
+    /// v1.0 final F8: a hit records where the last tick found the player.
+    #[test]
+    fn a_fall_off_a_ladder_says_so() {
+        use crate::simulation::damage::Cause;
+        use crate::simulation::death_message::FallLocation;
+        let mut v = Vitals::default();
+        v.tick(0.05, &Env { fall_location: Some(FallLocation::Ladder), ..Env::default() }, false);
+        v.last_fall = 20.0;
+        v.hurt(100.0, Cause::FALL, false, |a| a);
+        assert_eq!(v.death.as_deref(), Some("fell off a ladder"));
+    }
+
     const DT: f32 = 1.0 / 60.0;
 
     /// Java's `deathTime` starts at the fatal tick, not at the hit that opened
@@ -1043,6 +1291,26 @@ mod tests {
         let hay = Env { on_hay: true, ..ground(64.0) };
         assert_eq!(fall(&mut v, 84.0, 64.0, hay).fall, 3.0, "20 blocks onto hay vs 17 on stone");
         assert_eq!(fall(&mut v, 84.0, 64.0, ground(64.0)).fall, 17.0);
+    }
+
+    /// v1.0 gap Track 1: `PointedDripstoneBlock.fallOn` calls
+    /// `causeFallDamage(fallDistance + 2.5, 2, stalagmite)`: twenty blocks
+    /// onto an upward tip are `floor(19.5 * 2)` stalagmite damage, a short
+    /// hop onto one hurts too, and Jump Boost still counts.
+    #[test]
+    fn upward_dripstone_tips_double_the_fall_as_stalagmite_damage() {
+        let mut v = Vitals::default();
+        let tip = Env { on_stalagmite: true, ..ground(64.0) };
+        let h = fall(&mut v, 84.0, 64.0, tip);
+        assert_eq!((h.fall, h.stalagmite), (0.0, 39.0));
+        // One block: (1 + 2.5 - 3) * 2 = 1.
+        let h = fall(&mut v, 65.0, 64.0, tip);
+        assert_eq!((h.fall, h.stalagmite), (0.0, 1.0));
+        // Standing on one is no fall.
+        assert_eq!(v.tick(DT, &tip, false).stalagmite, 0.0);
+        use crate::simulation::damage::{Cause, DamageTag, DamageType};
+        assert_eq!(Cause::STALAGMITE.kind, DamageType::Stalagmite);
+        assert!(Cause::STALAGMITE.is(DamageTag::IsFall) && Cause::STALAGMITE.is(DamageTag::BypassesArmor));
     }
 
     /// v0.16 Track D: a shelf mushroom's `fallDistanceReduction(0.5F)`
@@ -1381,6 +1649,26 @@ mod tests {
         assert_eq!(v.damage(3.0, "test", false), 3.0);
     }
 
+    /// v1.0 gap Track 8d: `hurtServer` compares the hit with `lastHurt`
+    /// before armor; only what lands goes through armor (`reduce`) and
+    /// Resistance, and armor wears by that.
+    #[test]
+    fn the_hurt_cooldown_sees_hits_before_armor() {
+        let mut v = Vitals::default();
+        let half = |a: f32| a * 0.5;
+        let cause: super::super::damage::Cause = "test".into();
+        assert_eq!(v.hurt(6.0, cause, false, half), (6.0, 3.0));
+        assert_eq!(v.cooling_down(), Some(6.0));
+        // 7 after armor is 3.5, but what lands is 7 - 6 before it.
+        assert_eq!(v.hurt(7.0, cause, false, half), (1.0, 0.5));
+        assert_eq!(v.hurt(7.0, cause, false, half), (0.0, 0.0));
+        assert_eq!(v.health, 20.0 - 3.5);
+        for _ in 0..(INVULNERABLE / DT) as usize + 2 {
+            v.tick(DT, &ground(0.0), false);
+        }
+        assert_eq!(v.cooling_down(), None);
+    }
+
     /// Java's `Player.actuallyHurt`: absorption is spent first, after the
     /// reductions the caller applies, and an absorbed hit costs no exhaustion.
     #[test]
@@ -1526,6 +1814,17 @@ mod tests {
         assert!(restored.is_dead());
         let restored = Vitals::restore(7.5, 99.0, None);
         assert_eq!((restored.health, restored.air), (7.5, MAX_AIR));
+        // v1.0 gap Track 8e: an old save's TNT death comes back in Java's
+        // words; v1.0 gap Track 8g: so does a mob's, by Java's name for it,
+        // and one saved in Java's words stays.
+        let restored = Vitals::restore(0.0, 3.0, Some("was blown up by TNT".into()));
+        assert_eq!(restored.death.as_deref(), Some("blew up"));
+        let restored = Vitals::restore(0.0, 3.0, Some("was slain by a zombie".into()));
+        assert_eq!(restored.death.as_deref(), Some("was slain by Zombie"));
+        let restored = Vitals::restore(0.0, 3.0, Some("was fireballed by a ghast".into()));
+        assert_eq!(restored.death.as_deref(), Some("was blown up by Ghast"));
+        let restored = Vitals::restore(0.0, 3.0, Some("was slain by Grumbles".into()));
+        assert_eq!(restored.death.as_deref(), Some("was slain by Grumbles"));
     }
 }
 

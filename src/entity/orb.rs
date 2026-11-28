@@ -41,6 +41,12 @@ pub struct XpOrb {
     pub phase: f32,
     /// Java's `ExperienceOrb.health`: explosions take it, and at 0 the orb is gone.
     pub health: i32,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
+    /// v1.0 final F9: `Entity.fallDistance` (not saved), for powder snow's
+    /// collision shape: falling adds up, landing resets it.
+    pub fall_distance: f64,
 }
 
 /// Health of a fresh orb (`ExperienceOrb.health`).
@@ -51,7 +57,18 @@ impl XpOrb {
     pub fn new(value: u32, pos: DVec3, rng: &mut Rng) -> Self {
         let vel = DVec3::new(rng.range(-4.0, 4.0) as f64, rng.range(0.0, 8.0) as f64, rng.range(-4.0, 4.0) as f64);
         let phase = rng.range(0.0, std::f32::consts::TAU);
-        Self { value, count: 1, pos, previous_pos: pos, vel, age: 0.0, phase, health: HEALTH }
+        Self {
+            portal_cooldown: 0,
+            value,
+            count: 1,
+            pos,
+            previous_pos: pos,
+            vel,
+            age: 0.0,
+            phase,
+            health: HEALTH,
+            fall_distance: 0.0,
+        }
     }
 
     /// `ExperienceOrb(level, pos, roughly, value)`: a fresh orb whose random
@@ -115,7 +132,10 @@ impl XpOrb {
             self.vel += to.normalize_or_zero() * f * f * PULL * dt;
         }
         let delta = self.vel * dt;
-        let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, SHAPE);
+        let context = Some(physics::CollisionContext::entity(self.pos.y, self.fall_distance, false));
+        let start_y = self.pos.y;
+        let hit = physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, SHAPE, context);
+        self.fall_distance = super::item::fallen(self.fall_distance, hit.on_ground, start_y, self.pos.y);
         // Java's drag: 0.98 per tick, and ground friction sideways.
         let side = if hit.on_ground { 0.6f64 * 0.98 } else { 0.98 }.powf(ticks);
         self.vel *= DVec3::new(side, 0.98f64.powf(ticks), side);

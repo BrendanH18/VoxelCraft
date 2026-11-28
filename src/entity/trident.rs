@@ -14,8 +14,9 @@ use crate::inventory::Stack;
 use crate::weapons::{Cue, trident as tr};
 use crate::world::block::Block;
 
-/// Who threw it (`Projectile.owner`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Who threw it (`Projectile.owner`); v1.0 gap Track 8e: also who lit
+/// primed TNT (`PrimedTnt.owner`) and who is behind a blast.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Owner {
     Player(PlayerId),
     /// A mob, by [`Mob::uid`].
@@ -62,6 +63,9 @@ pub struct Trident {
     pub in_ground: bool,
     in_ground_time: u32,
     life: u32,
+    /// v1.0 gap Track 8c: a scripted scene's trident ([`Trident::stuck`]),
+    /// which never despawns. Not saved.
+    pinned: bool,
     pub shake: u8,
     dealt_damage: bool,
     /// Returning with Loyalty: flies through blocks toward its owner.
@@ -76,6 +80,19 @@ pub struct Trident {
     /// Pointing direction for rendering, kept once stuck.
     pub dir: Vec3,
     remainder: f64,
+    /// v1.0 gap Track 8b: `remainingFireTicks`. Fire and lava set it alight
+    /// (8 and 15 seconds), so does a perched dragon's scales (a second,
+    /// `AbstractDragonSittingPhase.onHurt`), and water and rain put it out.
+    /// A burning trident lights candles and campfires and primes TNT it
+    /// hits; `ThrownTrident.onHitEntity` sets nothing alight. Saved (`Fire`).
+    pub fire: u16,
+    /// v1.0 gap Track 8b: `yRot` and `xRot`, eased toward the motion each
+    /// tick and turned on a bounce, as an arrow's ([`super::projectile`]);
+    /// `None` until a tick in flight sets them.
+    rot: Option<(f32, f32)>,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Something a trident's tick asks the entity update to do afterwards.
@@ -90,6 +107,7 @@ pub(super) enum Effect {
 impl Trident {
     fn new(stack: Stack, pos: DVec3, vel: DVec3, owner: Option<Owner>, pickup: Pickup) -> Self {
         Self {
+            portal_cooldown: 0,
             stack: Stack { count: 1, ..stack },
             pos,
             previous_pos: pos,
@@ -99,6 +117,7 @@ impl Trident {
             in_ground: false,
             in_ground_time: 0,
             life: 0,
+            pinned: false,
             shake: 0,
             dealt_damage: false,
             no_physics: false,
@@ -107,7 +126,21 @@ impl Trident {
             last_block: None,
             dir: vel.normalize_or(DVec3::X).as_vec3(),
             remainder: 0.0,
+            fire: 0,
+            rot: None,
         }
+    }
+
+    /// v1.0 gap Track 8c: a scripted scene's trident (`--projectile`), stuck
+    /// in the ground at `pos` pointing along `dir`, with `fire` ticks of
+    /// fire, which never despawns (software captures take minutes).
+    pub fn stuck(pos: DVec3, dir: DVec3, fire: u16) -> Self {
+        let mut t = Self::new(Stack::new(crate::weapons::TRIDENT, 1), pos, dir, None, Pickup::Disallowed);
+        t.in_ground = true;
+        t.vel = DVec3::ZERO;
+        t.fire = fire;
+        t.pinned = true;
+        t
     }
 
     /// `TridentItem.releaseUsing`: thrown by a player (see [`Throw`]).
@@ -166,6 +199,7 @@ impl Trident {
         players: &[Target],
         pvp: bool,
         thundering: bool,
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
         effects: &mut Vec<Effect>,
@@ -174,7 +208,7 @@ impl Trident {
         let ticks = (self.remainder + 1e-9) as u32;
         self.remainder = (self.remainder - f64::from(ticks)).max(0.0);
         for _ in 0..ticks {
-            if !self.tick(world, mobs, players, pvp, thundering, rng, events, effects) {
+            if !self.tick(world, mobs, players, pvp, thundering, boss, rng, events, effects) {
                 return false;
             }
         }
@@ -188,10 +222,10 @@ impl Trident {
             Owner::Player(id) => players
                 .iter()
                 .find(|t| t.id == id && t.alive && !t.spectator)
-                .map(|t| (t.pos + DVec3::Y * (t.shape.height * 0.9), true, t.shape.half_width * 2.0)),
+                .map(|t| (t.eye(), true, t.shape.half_width * 2.0)),
             Owner::Mob(uid) => mobs.iter().find(|m| m.uid == uid && m.alive()).map(|m| {
                 let s = m.shape();
-                (m.pos + DVec3::Y * (s.height * 0.85), false, s.half_width * 2.0)
+                (m.look_eye(), false, s.half_width * 2.0)
             }),
         }
     }
@@ -204,6 +238,7 @@ impl Trident {
         players: &[Target],
         pvp: bool,
         thundering: bool,
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
         effects: &mut Vec<Effect>,
@@ -245,7 +280,13 @@ impl Trident {
             self.in_ground = true;
         }
         self.shake = self.shake.saturating_sub(1);
+        // v1.0 gap Track 8b: `isInWaterOrRain` puts the fire out.
+        if super::projectile::in_water_or_rain(world, self.pos, HALF, HEIGHT) {
+            self.fire = 0;
+        }
         if self.in_ground && physics {
+            // `applyEffectsFromBlocks` in the ground.
+            self.touch_blocks(world, self.pos, self.pos);
             if self.last_block != here && should_fall(world, self.pos) {
                 self.in_ground = false;
                 self.vel *= DVec3::new(
@@ -254,7 +295,7 @@ impl Trident {
                     f64::from(rng.next_f32() * 0.2),
                 );
                 self.life = 0;
-            } else if (self.pickup != Pickup::Allowed || loyalty == 0) && {
+            } else if (self.pickup != Pickup::Allowed || loyalty == 0) && !self.pinned && {
                 self.life += 1;
                 self.life >= tr::DESPAWN_TICKS
             } {
@@ -268,12 +309,21 @@ impl Trident {
         if in_water {
             self.vel *= tr::WATER_INERTIA;
         }
+        // v1.0 gap Track 8b: the look eases a fifth of the way toward the
+        // motion (`lerpRotation`; a returning trident's yaw looks back
+        // along it, its pitch doesn't).
         if self.vel.length_squared() > 1e-12 {
-            let facing = if physics { self.vel } else { -self.vel };
-            self.dir = facing.normalize().as_vec3();
+            let (mut yaw, pitch) = super::projectile::rotation_of(self.vel);
+            if !physics {
+                yaw = super::projectile::rotation_of(-self.vel).0;
+            }
+            let (y0, p0) = self.rot.unwrap_or((yaw, pitch));
+            let rot = (super::projectile::lerp_rotation(y0, yaw), super::projectile::lerp_rotation(p0, pitch));
+            self.rot = Some(rot);
+            self.dir = super::projectile::pointing(rot);
         }
         if physics {
-            if !self.step_move_and_hit(world, mobs, players, pvp, thundering, rng, events, effects) {
+            if !self.step_move_and_hit(world, mobs, players, pvp, thundering, boss, rng, events, effects) {
                 return false;
             }
         } else {
@@ -285,7 +335,31 @@ impl Trident {
         if physics && !self.in_ground {
             self.vel.y -= tr::GRAVITY;
         }
+        // `Entity.baseTick` (in flight only) burns the fire down.
+        self.fire = self.fire.saturating_sub(1);
         true
+    }
+
+    /// v1.0 gap Track 8b: `applyEffectsFromBlocks` for the box moving
+    /// `from` to `to` (see [`super::projectile::Touched`]), then rain.
+    fn touch_blocks<W: MobWorld + ?Sized>(&mut self, world: &W, from: DVec3, to: DVec3) {
+        super::projectile::touched_blocks(world, from, to, HALF, HEIGHT).apply(&mut self.fire);
+        if super::projectile::in_rain(world, to, HEIGHT) {
+            self.fire = 0;
+        }
+    }
+
+    /// Whether it is on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
+    /// `ProjectileDeflection.REVERSE`'s turn: the yaw by 170 to 190°.
+    fn turn_back(&mut self, rng: &mut Rng) {
+        let (yaw, pitch) = self.rot.unwrap_or_else(|| super::projectile::rotation_of(self.dir.as_dvec3()));
+        let rot = (yaw + super::projectile::reverse_turn(rng), pitch);
+        self.rot = Some(rot);
+        self.dir = super::projectile::pointing(rot);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -296,6 +370,7 @@ impl Trident {
         players: &[Target],
         pvp: bool,
         thundering: bool,
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
         effects: &mut Vec<Effect>,
@@ -305,14 +380,16 @@ impl Trident {
         let reach = block.map_or(1.0, |(t, ..)| t);
         let step = self.vel * reach;
         if !self.dealt_damage
-            && let Some((target, t)) = self.find_hit(from, step, mobs, players, pvp)
+            && let Some((target, t)) = self.find_hit(from, step, mobs, players, pvp, boss)
         {
             self.pos = from + step * t;
+            self.touch_blocks(world, from, self.pos);
             // `Breeze.deflection`: `ProjectileDeflection.REVERSE` before any damage.
             if let Hit::Mob(i) = target
                 && mobs[i].kind == MobKind::Breeze
             {
                 self.vel *= -0.5;
+                self.turn_back(rng);
                 self.deflector = Some(mobs[i].uid);
                 events.push(EntityEvent::Sound {
                     sound: MobSound::Breeze(super::breeze::Cue::Deflect),
@@ -320,10 +397,11 @@ impl Trident {
                 });
                 return true;
             }
-            self.hit_entity(world, target, mobs, thundering, rng, events, effects);
+            self.hit_entity(world, target, mobs, thundering, boss, rng, events, effects);
             return true;
         }
         self.pos = from + step;
+        self.touch_blocks(world, from, self.pos);
         if let Some((_, cell, _)) = block {
             self.hit_block(world, cell, thundering, events, effects);
         }
@@ -332,7 +410,15 @@ impl Trident {
 
     /// The nearest mob or player the move from `from` along `step` crosses
     /// (`AbstractArrow.findHitEntity`, boxes grown by 0.3), and how far along.
-    fn find_hit(&self, from: DVec3, step: DVec3, mobs: &[Mob], players: &[Target], pvp: bool) -> Option<(Hit, f64)> {
+    fn find_hit(
+        &self,
+        from: DVec3,
+        step: DVec3,
+        mobs: &[Mob],
+        players: &[Target],
+        pvp: bool,
+        boss: &super::dragon::Boxes,
+    ) -> Option<(Hit, f64)> {
         let grow = DVec3::splat(PICK_MARGIN);
         let ray = |min: DVec3, max: DVec3| {
             let (min, max) = (min - grow, max + grow);
@@ -356,14 +442,24 @@ impl Trident {
         }
         let player_owned = matches!(self.owner, Some(Owner::Player(_)));
         for p in players {
-            if !p.targetable || !p.alive || self.owner == Some(Owner::Player(p.id)) || (player_owned && !pvp) {
+            // v1.0 gap Track 8d: creative players are hit too, and refuse it.
+            let hittable = p.targetable || p.invulnerable && !p.spectator;
+            if !hittable || !p.alive || self.owner == Some(Owner::Player(p.id)) || (player_owned && !pvp) {
                 continue;
             }
             let (min, max) = p.shape.aabb(p.pos);
             if let Some(t) = ray(min, max)
                 && best.is_none_or(|(_, b)| t < b)
             {
-                best = Some((Hit::Player(p.id, p.pos), t));
+                best = Some((Hit::Player(p.id, p.pos, p.refuses_hit(tr::BASE_DAMAGE, !player_owned)), t));
+            }
+        }
+        // v1.0 gap Track 4c: End crystals and dragon parts.
+        for &(hit, min, max) in &boss.list {
+            if let Some(t) = ray(min, max)
+                && best.is_none_or(|(_, b)| t < b)
+            {
+                best = Some((Hit::Boss(hit), t));
             }
         }
         best
@@ -376,6 +472,7 @@ impl Trident {
         target: Hit,
         mobs: &mut [Mob],
         thundering: bool,
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
         effects: &mut Vec<Effect>,
@@ -392,11 +489,15 @@ impl Trident {
             Hit::Mob(i) => {
                 let mob = &mut mobs[i];
                 let damage = tr::BASE_DAMAGE + crate::weapons::impaling_bonus(enchants, mob.kind);
-                // `EnderMan.hurtServer` dodges every projectile.
-                let hurt = if mob.kind == MobKind::Enderman {
+                // `EnderMan.hurtServer` dodges every projectile, and (v1.0
+                // gap Track 8c) `projectileReceivesSideEffectsOnHit(false)`
+                // is false for it: no hit sound and no bounce, the trident
+                // flies on (having dealt its damage, it hits nothing more).
+                if super::projectile::dodges_projectiles(mob) {
                     mob.teleport_pending = true;
-                    false
-                } else if mob.refuses_hit(damage) {
+                    return;
+                }
+                let hurt = if super::projectile::refuses_arrow(mob, damage) {
                     false
                 } else {
                     let before = mob.health;
@@ -422,12 +523,17 @@ impl Trident {
                     events.push(EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentThunder), pos: mob.pos });
                 }
             }
-            Hit::Player(id, pos) => {
+            // `ThrownTrident.onHitEntity`: a refused hit does nothing but
+            // the bounce and its sound.
+            Hit::Player(_, _, true) => {}
+            Hit::Player(id, pos, false) => {
                 let damage = tr::BASE_DAMAGE;
                 let cause = if owner_player.is_some() {
-                    crate::simulation::damage::Cause::PLAYER_TRIDENT
+                    // v1.0 gap Track 8f: named after its thrower.
+                    crate::simulation::damage::Cause::PLAYER_TRIDENT.by(self.owner)
                 } else {
-                    crate::simulation::damage::Cause::DROWNED_TRIDENT
+                    // v1.0 gap Track 8g: the drowned that threw it.
+                    crate::simulation::damage::Cause::DROWNED_TRIDENT.by(self.owner)
                 };
                 events.push(EntityEvent::PlayerHit {
                     player: id,
@@ -445,10 +551,31 @@ impl Trident {
                     events.push(EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentThunder), pos });
                 }
             }
+            // `ThrownTrident.onHitEntity`: `trident(this, owner)` for 8 (no
+            // Impaling bonus: a dragon isn't `#sensitive_to_impaling`). It
+            // breaks a crystal; a dragon takes it only from a player, and
+            // not perched (it's an `AbstractArrow`) or dying. Whatever
+            // happens, it bounces back below (`projectileReceivesSideEffectsOnHit`).
+            // Channeling never strikes: the End has no thunder.
+            Hit::Boss(hit) => {
+                let blow = super::dragon::Blow::arrow(tr::BASE_DAMAGE, owner_player.is_some());
+                // v1.0 gap Track 8b: a perched dragon's scales set it alight
+                // for a second (`igniteForSeconds(1)`: it's an `AbstractArrow`).
+                if boss.scorches(hit, blow) {
+                    self.fire = self.fire.max(20);
+                }
+                let blow = match self.owner {
+                    Some(Owner::Mob(uid)) => blow.blamed_on(mobs.iter().find(|m| m.uid == uid).map(|m| m.kind)),
+                    _ => blow,
+                };
+                events.push(EntityEvent::DragonStruck { hit, blow, by: owner_player });
+            }
         }
-        // `projectileReceivesSideEffectsOnHit`: the hit sound and a reversed bounce.
+        // `projectileReceivesSideEffectsOnHit`: the hit sound and a reversed
+        // bounce (`deflect(REVERSE, .., (0.02, 0.2, 0.02))`), turned about.
         events.push(EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentHit), pos: self.pos });
         self.vel *= DVec3::new(-0.01, -0.1, -0.01);
+        self.turn_back(rng);
     }
 
     /// `AbstractArrow.onHitBlock` after `BlockState.onProjectileHit`.
@@ -476,6 +603,19 @@ impl Trident {
             let at = cell.as_dvec3() + DVec3::new(0.5, 1.0, 0.5);
             effects.push(Effect::Lightning(at));
             events.push(EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentThunder), pos: at });
+        }
+        // v1.0 gap Track 8b: a burning trident's `onProjectileHit` lights a
+        // candle or campfire, or primes TNT (`isOnFire`).
+        if self.burning() && block.is_some_and(super::projectile::lights) {
+            events.push(EntityEvent::ProjectileBlockHit {
+                cell,
+                pos: self.pos,
+                normal: IVec3::ZERO,
+                arrow: true,
+                burning: true,
+                mob_owned: matches!(self.owner, Some(Owner::Mob(_))),
+                by: self.owner,
+            });
         }
         self.last_block = block;
         let sign = DVec3::new(self.vel.x.signum(), self.vel.y.signum(), self.vel.z.signum());
@@ -541,6 +681,7 @@ impl Trident {
             "returning": self.returning,
             "in_block": self.last_block.map(|b| b.0),
             "dir": self.dir.to_array(),
+            "fire": self.fire,
         })
     }
 
@@ -579,6 +720,7 @@ impl Trident {
         if let Some(d) = vec("dir") {
             t.dir = d.normalize_or(DVec3::X).as_vec3();
         }
+        t.fire = small("fire", u64::from(u16::MAX)) as u16;
         Some(t)
     }
 
@@ -613,7 +755,11 @@ pub struct Throw {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Hit {
     Mob(usize),
-    Player(PlayerId, DVec3),
+    /// A player, and whether their `hurtServer` refuses the trident
+    /// (creative, or the hurt cooldown; v1.0 gap Track 8d).
+    Player(PlayerId, DVec3, bool),
+    /// v1.0 gap Track 4c: an End crystal or a dragon part.
+    Boss(super::dragon::Hit),
 }
 
 /// `Projectile.getMovementToShoot`: the normalized aim with a triangular
@@ -697,6 +843,7 @@ impl super::Entities {
         dt: f64,
         world: &W,
         ctx: &super::Ctx,
+        boss: &super::dragon::Boxes,
         events: &mut Vec<EntityEvent>,
     ) {
         if self.tridents.is_empty() {
@@ -710,7 +857,7 @@ impl super::Entities {
                 return true;
             }
             let was_in_ground = t.in_ground;
-            let keep = t.update(dt, world, mobs, &ctx.players, pvp, thundering, rng, events, &mut effects);
+            let keep = t.update(dt, world, mobs, &ctx.players, pvp, thundering, boss, rng, events, &mut effects);
             // `Projectile.onHit`: `projectile_land` where it stuck.
             if keep && !was_in_ground && t.in_ground {
                 sculk.post(t.pos, crate::world::vibration::GameEvent::ProjectileLand, t.event_source(), None);
@@ -801,6 +948,108 @@ mod tests {
         (0..ticks).flat_map(|_| e.update(0.05, world, &ctx())).collect()
     }
 
+    /// v1.0 gap Track 4c: `ThrownTrident.onHitEntity` on a dragon part: a
+    /// player's trident takes 8 (a quarter plus one on the body), and it
+    /// bounces back whatever happens; perched, the dragon takes nothing.
+    #[test]
+    fn a_trident_strikes_the_dragon_and_bounces_back() {
+        for (sitting, lost) in [(false, 3.0), (true, 0.0)] {
+            let world = Grid::flat(10);
+            let mut e = Entities::new(3);
+            e.wild_dragons.spawn(DVec3::new(10.5, 40.0, 0.5), 0.0);
+            if sitting {
+                e.wild_dragons.dragons[0].dragon.phase = crate::entity::dragon::Phase::SittingScanning;
+            }
+            let at = e.wild_dragons.dragons[0].dragon.pos;
+            let from = DVec3::new(at.x - 8.0, at.y + 1.2, at.z);
+            e.tridents.push(flying(Stack::new(crate::weapons::TRIDENT, 1), from, DVec3::X * 2.5));
+            let events = run(&mut e, &world, 4);
+            let t = &e.tridents[0];
+            assert!(t.dealt_damage && t.vel.x < 0.0 && t.vel.x > -0.1, "bounced: {}", t.vel);
+            assert!(
+                events
+                    .iter()
+                    .any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentHit), .. }))
+            );
+            let health = e.wild_dragons.dragons[0].dragon.health;
+            assert_eq!(crate::entity::dragon::MAX_HEALTH - health, lost, "sitting {sitting}");
+        }
+    }
+
+    /// v1.0 gap Track 8b: a perched dragon's scales set a trident alight
+    /// for a second (`AbstractDragonSittingPhase.onHurt`, it's an
+    /// `AbstractArrow`); a flying dragon doesn't. The bounce turns its yaw
+    /// 170 to 190°.
+    #[test]
+    fn a_perched_dragon_sets_a_trident_alight() {
+        for sitting in [false, true] {
+            let world = Grid::flat(10);
+            let mut e = Entities::new(3);
+            e.wild_dragons.spawn(DVec3::new(10.5, 40.0, 0.5), 0.0);
+            if sitting {
+                e.wild_dragons.dragons[0].dragon.phase = crate::entity::dragon::Phase::SittingScanning;
+            }
+            let at = e.wild_dragons.dragons[0].dragon.pos;
+            let from = DVec3::new(at.x - 8.0, at.y + 1.2, at.z);
+            e.tridents.push(flying(Stack::new(crate::weapons::TRIDENT, 1), from, DVec3::X * 2.5));
+            let mut yaw = None;
+            for _ in 0..4 {
+                run(&mut e, &world, 1);
+                let t = &e.tridents[0];
+                if t.dealt_damage {
+                    break;
+                }
+                yaw = t.rot.map(|r| r.0);
+            }
+            let t = &e.tridents[0];
+            assert!(t.dealt_damage, "hit the dragon");
+            assert_eq!(t.burning(), sitting, "sitting {sitting}");
+            if sitting {
+                assert!((18..=20).contains(&t.fire), "{}", t.fire);
+            }
+            let turned = t.rot.unwrap().0 - yaw.unwrap();
+            assert!((170.0..=190.0).contains(&turned), "turned {turned}");
+        }
+    }
+
+    /// v1.0 gap Track 8b: lava sets a trident alight (15 seconds); a
+    /// burning one hitting a campfire reports it (`CampfireBlock.onProjectileHit`)
+    /// and keeps its fire through a save; water puts it out.
+    #[test]
+    fn lava_lights_a_trident_and_water_puts_it_out() {
+        use crate::world::block::Facing;
+        use crate::world::utilities::{Campfire, campfire};
+        let fire = campfire(Campfire { soul: false, lit: false, signal: false, wet: false, facing: Facing::North });
+        let mut world = Grid::flat(10);
+        world.set(IVec3::new(3, 11, 0), Block::LAVA);
+        world.set(IVec3::new(8, 11, 0), fire);
+        let mut e = Entities::new(3);
+        e.tridents.push(flying(Stack::new(crate::weapons::TRIDENT, 1), DVec3::new(0.5, 11.35, 0.5), DVec3::X * 2.5));
+        let mut events = Vec::new();
+        for _ in 0..6 {
+            events.extend(run(&mut e, &world, 1));
+            if e.tridents[0].in_ground {
+                break;
+            }
+        }
+        let t = &e.tridents[0];
+        assert!(t.in_ground && t.burning() && t.fire > 290, "{} {}", t.in_ground, t.fire);
+        assert!(events.iter().any(|ev| matches!(
+            ev,
+            EntityEvent::ProjectileBlockHit { cell, burning: true, mob_owned: false, .. } if *cell == IVec3::new(8, 11, 0)
+        )));
+        let back = Trident::load(&t.save()).unwrap();
+        assert_eq!(back.fire, t.fire, "saved as Java's `Fire`");
+        // Stuck, the fire stays (no `baseTick` in the ground)...
+        let before = t.fire;
+        run(&mut e, &world, 5);
+        assert_eq!(e.tridents[0].fire, before);
+        // ...until water reaches it.
+        world.set(IVec3::new(7, 11, 0), Block::WATER);
+        run(&mut e, &world, 1);
+        assert!(!e.tridents[0].burning());
+    }
+
     #[test]
     fn a_breeze_turns_a_trident_back_unhurt() {
         let world = Grid::flat(10);
@@ -829,6 +1078,28 @@ mod tests {
             EntityEvent::Sound { sound: MobSound::Breeze(crate::entity::breeze::Cue::Deflect), .. }
         )));
         assert!(e.arrows[0].velocity().x < 0.0, "it flies back");
+    }
+
+    /// v1.0 gap Track 8c: an enderman dodges a trident
+    /// (`projectileReceivesSideEffectsOnHit(false)` is false for it): no hit
+    /// sound and no bounce, it flies on, hitting nothing more.
+    #[test]
+    fn a_trident_flies_on_past_a_dodging_enderman() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Enderman, DVec3::new(4.5, 10.0, 0.5));
+        e.spawn(MobKind::Cow, DVec3::new(7.5, 10.0, 0.5));
+        e.tridents.push(flying(Stack::new(crate::weapons::TRIDENT, 1), DVec3::new(0.5, 10.6, 0.5), DVec3::X * 1.2));
+        let events = run(&mut e, &world, 4);
+        assert!(
+            !events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentHit), .. }))
+        );
+        let t = &e.tridents[0];
+        assert!(t.dealt_damage && t.vel.x > 0.0 && t.pos.x > 5.0, "flew on: {} at {}", t.vel, t.pos);
+        let enderman = &e.mobs[0];
+        assert!(enderman.teleport_pending || enderman.pos.x != 4.5, "it dodged: {}", enderman.pos);
+        assert_eq!(enderman.health, MobKind::Enderman.max_health());
+        assert_eq!(e.mobs[1].health, MobKind::Cow.max_health(), "it hits nothing more");
     }
 
     #[test]
@@ -958,7 +1229,10 @@ mod tests {
         );
         assert!(events.iter().any(|ev| matches!(
             ev,
-            EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::DROWNED_TRIDENT, .. }
+            // v1.0 gap Track 8g: naming the drowned that threw it.
+            EntityEvent::PlayerHit { cause, .. }
+                if cause.text == crate::simulation::damage::Cause::DROWNED_TRIDENT.text
+                    && matches!(cause.by, Some(super::Owner::Mob(_)))
         )));
     }
 }

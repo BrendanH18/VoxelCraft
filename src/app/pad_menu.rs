@@ -5,7 +5,11 @@
 //!
 //! The D-pad or left stick moves the cursor. A clicks a slot like a left
 //! click (take, place, swap or merge, using the inventory cursor), X like a
-//! right click (half a stack, or one item), and Y like a shift-click. LB/RB
+//! right click (half a stack, or one item), and Y like a shift-click.
+//! v1.0 final track F1: with a stack held, holding A (or X) and moving the
+//! cursor drags it across slots (shared evenly, or one each); a second A
+//! within 250 ms gathers matching items and a second Y moves every
+//! matching stack, as Java's double clicks do. LB/RB
 //! switch between inventory, crafting and (in creative) the palette; B closes.
 //! Slot clicks run the same screen transactions as the mouse
 //! (`screen::Screen`) on the controller player's own session.
@@ -314,7 +318,6 @@ impl Menu {
     }
 
     /// The slot under the cursor, if any.
-    #[cfg(test)]
     pub fn slot(&self, lists: Lists) -> Option<Slot> {
         match *self {
             Menu::Items { tab, col, row } if rows(tab, lists) > 0 => {
@@ -632,6 +635,14 @@ impl Game {
                 return true;
             }
         };
+        if !right && self.pad_double_click(seat, name, tab.container(), slot, quick) {
+            self.audio.ui_click();
+            return true;
+        }
+        // v1.0 final track F1: with a stack held, A or X starts a drag.
+        if !quick && self.pad_begin_drag(seat, name, tab.container(), slot, right) {
+            return true;
+        }
         self.pad_click(seat, name, tab.container(), slot, quick, right);
         self.audio.ui_click();
         true
@@ -639,6 +650,47 @@ impl Game {
 
     /// Closing a screen returns the stack on the cursor to the inventory,
     /// throwing whatever doesn't fit.
+    /// v1.0 gap track 6b: the stack in `slot` of controller player
+    /// `name`'s screen on `tab`, where a bundle can be picked from: their
+    /// inventory, the open chest, vehicle or ender chest, or the palette.
+    pub(super) fn pad_slot_stack(&self, name: &str, tab: Tab, slot: Slot) -> Option<Stack> {
+        let bot = self.agents.players.get(name)?;
+        match slot {
+            Slot::Ref(SlotRef::Inventory(i)) => bot.agent.session.inventory.slots.get(i).copied().flatten(),
+            Slot::Ref(SlotRef::Chest(i)) => match tab {
+                Tab::Vehicle(id) => self.mobs.entities.vehicle_slots(id).and_then(|s| s.get(i).copied().flatten()),
+                Tab::Chest(pos) => self.world.chest_slot(pos, i),
+                Tab::EnderChest(_) => bot.agent.session.ender.slots.get(i).copied().flatten(),
+                _ => None,
+            },
+            Slot::Palette(i) => match tab {
+                Tab::Palette(t) => palette(t, &self.hotbars).get(i).copied().flatten(),
+                _ => None,
+            },
+            // v1.0 gap track 6c: the workstations' input slots, as the
+            // controller screen draws them, so a bundle there can be picked.
+            Slot::Ref(SlotRef::FurnaceInput | SlotRef::FurnaceFuel) => {
+                let Tab::Furnace(pos) = tab else { return None };
+                let furnace = self.world.furnace(pos)?;
+                if slot == Slot::Ref(SlotRef::FurnaceInput) { furnace.input } else { furnace.fuel }
+            }
+            Slot::Ref(SlotRef::BrewIngredient | SlotRef::BrewFuel | SlotRef::BrewBottle(_)) => {
+                let Tab::Brewing(pos) = tab else { return None };
+                let brewing = self.world.brewing_stand(pos)?;
+                match slot {
+                    Slot::Ref(SlotRef::BrewBottle(i)) => brewing.bottles[i],
+                    Slot::Ref(SlotRef::BrewIngredient) => brewing.ingredient,
+                    _ => brewing.fuel,
+                }
+            }
+            Slot::Ref(SlotRef::EnchantItem | SlotRef::AnvilLeft | SlotRef::SmithTemplate) => self.pad_work(name)[0],
+            Slot::Ref(SlotRef::EnchantLapis | SlotRef::AnvilRight | SlotRef::SmithBase) => self.pad_work(name)[1],
+            Slot::Ref(SlotRef::SmithAddition) => self.pad_work(name)[2],
+            Slot::Ref(s) if super::workstations::is_workstation_slot(s) => self.pad_workstation_slot(name, s),
+            _ => None,
+        }
+    }
+
     pub(super) fn close_pad_menu(&mut self, name: &str) {
         let work = self.take_pad_work(name);
         let Some(bot) = self.agents.players.get_mut(name) else { return };
@@ -989,6 +1041,14 @@ impl Game {
                         None
                     }
                 };
+                // v1.0 gap Track 3b: a mount's empty saddle and body slots
+                // show the item they take, as on the mount screen.
+                if let (None, Tab::Vehicle(id), Slot::Ref(SlotRef::Chest(i @ (0 | 1)))) =
+                    (stack, tab, slot(tab, c, r, lists))
+                    && let Some(layer) = super::hud::mount_slot_sprite(self.mobs.entities.mount_screen(id), i)
+                {
+                    ui.icon_shape(x, y, 16.0, layer, [0.0, 0.0, 1.0, 1.0], style::srgba(0xE0E0E0, 0.5));
+                }
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true, dial);
                 }
@@ -1063,8 +1123,18 @@ impl Game {
             self.pad_trade_details(ui, id, i, px, py + ph + 18.0);
         }
         if let Some((stack, x, y)) = hovered {
+            // v1.0 gap track 6b: a bundle's contents tooltip, with this
+            // player's pick (the right stick), as the desktop shows it; Java
+            // shows it even while a stack is held.
+            if let Some(stack) = stack.filter(|s| voxelcraft::content::bundle::is_bundle(s.item)) {
+                let selected = self.pad_bundle_pick(name);
+                let colour = if stack.enchants.is_empty() { WHITE } else { [0.33, 1.0, 1.0, 1.0] };
+                self.bundle_tooltip_at(ui, stack, selected, colour, (x + 18.0, y + 6.0), dial);
+            }
             if let Some(held) = inv.cursor {
                 draw_stack(ui, x + 6.0, y + 6.0, held, true, dial);
+            } else if stack.is_some_and(|s| voxelcraft::content::bundle::is_bundle(s.item)) {
+                // Its tooltip above names it.
             } else if let Some((e, level)) = clue {
                 let text = format!("{} . . . ?", e.describe(level));
                 let tx = (x + 9.0 - Ui::text_width(&text) / 2.0).clamp(0.0, (sw - Ui::text_width(&text)).max(0.0));

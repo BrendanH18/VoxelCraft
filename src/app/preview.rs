@@ -134,6 +134,132 @@ pub(super) fn player(ui: &mut Ui, bounds: (f32, f32, f32, f32), size: f32, offse
     }
 }
 
+/// `entity.wgsl`'s `hash2`: the per-texel brightness noise of mob boxes.
+fn hash2(x: f32, y: f32) -> f32 {
+    let fract = |v: f32| v - v.floor();
+    let (qx, qy) = (fract(x * 123.34), fract(y * 456.21));
+    let d = qx * (qx + 45.32) + qy * (qy + 45.32);
+    fract((qx + d) * (qy + d))
+}
+
+/// sRGB to linear and back, as the entity shader's `pow(c, 2.2)`.
+fn linear(c: f32) -> f32 {
+    c.max(0.0).powf(2.2)
+}
+fn gamma(c: f32) -> f32 {
+    c.max(0.0).powf(1.0 / 2.2).min(1.0)
+}
+
+/// v1.0 gap Track 3b: `extractEntityInInventoryFollowsMouse` for a mob
+/// (the mount screens' `size` 17 and `offsetY` 0.25): the mob's model as
+/// the world draws it (`entity::model::build`, its boxes and equipment),
+/// turned to face the viewer, then by the pointer as the player is.
+/// v1.0 gap Track 2c: drawn textured as the player preview is, one quad per
+/// model pixel: the box colour with the entity shader's per-texel noise
+/// (`hash2` of the texel, scaled by the vertex's noise strength) or its
+/// material pattern (material 6: the pattern's grey, neutral at linear
+/// 0.5), lit by face. The world's sky and block light aren't applied (the
+/// screen lights it evenly, as Java's GUI lighting does).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn mob(
+    ui: &mut Ui,
+    m: &crate::entity::Mob,
+    bounds: (f32, f32, f32, f32),
+    size: f32,
+    offset_y: f32,
+    mouse: (f32, f32),
+) {
+    use crate::entity::model::{EntityMesh, build};
+    let (yaw, _, _, tilt) = angles(bounds, mouse);
+    let (x0, y0, x1, y1) = bounds;
+    let height = m.shape().height as f32;
+    let centre_x = (x0 + x1) / 2.0;
+    let feet_y = (y0 + y1) / 2.0 + (height / 2.0 + offset_y) * size;
+    // Vertices come relative to the mob's feet, in blocks.
+    let mut mesh = EntityMesh::flat();
+    let forward = glam::Vec3::new(m.yaw.cos(), 0.0, m.yaw.sin());
+    // v1.0 gap Track 7b: the mob animates on its own clock (`tickCount`).
+    build(std::slice::from_ref(m), m.pos, forward, 64.0, 1.0, &mut mesh);
+    // Its front toward the viewer (+z), then the pointer's turn and tilt
+    // about its middle.
+    let face = glam::Quat::from_rotation_arc(forward, Vec3::Z);
+    let middle = Vec3::Y * (height / 2.0);
+    let turn_y = |p: Vec3, a: f32| Vec3::new(p.x * a.cos() - p.z * a.sin(), p.y, p.x * a.sin() + p.z * a.cos());
+    let turn_x = |p: Vec3, a: f32| Vec3::new(p.x, p.y * a.cos() + p.z * a.sin(), -p.y * a.sin() + p.z * a.cos());
+    let place = |p: Vec3| turn_x(turn_y(face * p, yaw) - middle, tilt) + middle;
+    let mut tris: Vec<(f32, usize)> = Vec::with_capacity(mesh.len() / 3);
+    let chunks = mesh.as_chunks::<3>().0;
+    for (i, t) in chunks.iter().enumerate() {
+        // Every triangle, far to near: the boxes are convex, so the nearer
+        // faces cover the far ones.
+        let z = t.iter().map(|v| place(Vec3::from(v.pos)).z).sum::<f32>() / 3.0;
+        tris.push((z, i));
+    }
+    tris.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let screen = |p: Vec3| [centre_x + p.x * size, feet_y - p.y * size];
+    for (_, i) in tris {
+        let t = &chunks[i];
+        let shade = f32::from(t[0].light[1]) / 255.0;
+        let [r, g, b, noise] = t[0].color;
+        let base = [r, g, b].map(|c| linear(f32::from(c) / 255.0));
+        let strength = f32::from(noise) / 255.0;
+        let pattern = (t[0].torch[1] == crate::entity::model::PATTERN_MATERIAL)
+            .then(|| u16::from_le_bytes([t[0].torch[2], t[0].torch[3]]));
+        let colour_at = |tx: f32, ty: f32| -> [f32; 4] {
+            let lit = if let Some(layer) = pattern {
+                let px = crate::render::textures::mob_pattern_pixel(
+                    layer,
+                    tx.rem_euclid(16.0) as usize,
+                    ty.rem_euclid(16.0) as usize,
+                );
+                let grey = linear(f32::from(px[0]) / 255.0) * 2.0;
+                base.map(|c| c * grey)
+            } else {
+                let n = hash2(tx + 0.5, ty + 0.5) - 0.5;
+                base.map(|c| c * (1.0 + n * strength))
+            };
+            let [r, g, b] = lit.map(|c| gamma(c) * shade);
+            [r, g, b, 1.0]
+        };
+        // The affine map from the face's texel coordinates to the model.
+        let p = t.map(|v| Vec3::from(v.pos));
+        let uv = t.map(|v| glam::Vec2::from(v.uv));
+        let (e1, e2, f1, f2) = (p[1] - p[0], p[2] - p[0], uv[1] - uv[0], uv[2] - uv[0]);
+        let det = f1.x * f2.y - f1.y * f2.x;
+        if det.abs() < 1e-6 {
+            // No texel grid on this face: draw it whole in its colour.
+            let c = p.map(|q| screen(place(q)));
+            ui.quad([c[0], c[1], c[2], c[2]], [[0.0; 2]; 4], SOLID, colour_at(uv[0].x.floor(), uv[0].y.floor()));
+            continue;
+        }
+        let du = (e1 * f2.y - e2 * f1.y) / det;
+        let dv = (e2 * f1.x - e1 * f2.x) / det;
+        let at = |u: f32, v: f32| screen(place(p[0] + du * (u - uv[0].x) + dv * (v - uv[0].y)));
+        let lo = uv[0].min(uv[1]).min(uv[2]).floor();
+        let hi = uv[0].max(uv[1]).max(uv[2]).ceil();
+        // Barycentric test on each texel's centre, so the two triangles of
+        // a face share its texels without drawing one twice.
+        let inside = |q: glam::Vec2| {
+            let d = q - uv[0];
+            let s = (d.x * f2.y - d.y * f2.x) / det;
+            let r = (f1.x * d.y - f1.y * d.x) / det;
+            s >= -1e-4 && r >= -1e-4 && s + r <= 1.0 + 1e-4
+        };
+        let mut ty = lo.y;
+        while ty < hi.y {
+            let mut tx = lo.x;
+            while tx < hi.x {
+                if inside(glam::Vec2::new(tx + 0.5, ty + 0.5)) {
+                    let quad = [at(tx, ty), at(tx + 1.0, ty), at(tx + 1.0, ty + 1.0), at(tx, ty + 1.0)];
+                    ui.quad(quad, [[0.0; 2]; 4], SOLID, colour_at(tx, ty));
+                }
+                tx += 1.0;
+            }
+            ty += 1.0;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,6 +292,33 @@ mod tests {
         let per = start.elapsed().as_secs_f64() / f64::from(runs) * 1e6;
         println!("preview: {} vertices, {per:.1} us per draw", ui.verts.len());
         assert!(ui.verts.len() < 12_000);
+    }
+
+    /// v1.0 gap Track 2c: the mount preview is drawn a model pixel at a
+    /// time (many more quads than the model has triangles), with the face
+    /// noise varying the colour across a face, inside the screen's box.
+    #[test]
+    fn the_mount_preview_is_textured_per_model_pixel() {
+        use crate::entity::{Mob, MobKind};
+        let m = Mob::new(MobKind::Horse, glam::DVec3::new(0.5, 64.0, 0.5), 0.0);
+        let mut mesh = crate::entity::model::EntityMesh::flat();
+        let forward = glam::Vec3::new(m.yaw.cos(), 0.0, m.yaw.sin());
+        crate::entity::model::build(std::slice::from_ref(&m), m.pos, forward, 64.0, 1.0, &mut mesh);
+        let triangles = mesh.len() / 3;
+        let mut ui = Ui::with_scale(400.0, 300.0, 1.0);
+        mob(&mut ui, &m, (26.0, 18.0, 78.0, 70.0), 17.0, 0.25, (52.0, 44.0));
+        let quads = ui.verts.len() / 6;
+        assert!(quads > triangles * 2, "{quads} quads for {triangles} triangles");
+        let colours: std::collections::HashSet<[u32; 3]> = ui
+            .verts
+            .iter()
+            .map(|v| v.color[..3].iter().map(|c| c.to_bits()).collect::<Vec<_>>().try_into().unwrap())
+            .collect();
+        assert!(colours.len() > 40, "textured, not flat: {} colours", colours.len());
+        for v in &ui.verts {
+            let (x, y) = ((v.pos[0] + 1.0) / 2.0 * 400.0, (1.0 - v.pos[1]) / 2.0 * 300.0);
+            assert!((0.0..=110.0).contains(&x) && (0.0..=100.0).contains(&y), "{x} {y}");
+        }
     }
 
     #[test]

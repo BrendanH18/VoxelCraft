@@ -52,12 +52,12 @@ impl OptionsHost for Host {
     fn difficulty(&self) -> Option<WorldDifficulty> {
         self.world
     }
-    fn cycle_difficulty(&mut self) {
+    fn set_difficulty(&mut self, level: Difficulty) {
         if let Some(d) = &mut self.world
             && !d.hardcore
             && !d.locked
         {
-            d.level = d.level.next();
+            d.level = level;
         }
     }
     fn lock_difficulty(&mut self) {
@@ -167,13 +167,16 @@ fn every_options_screen_fits_and_every_widget_is_reachable() {
     check(|| Controls, "Controls");
     check(|| MouseSettings, "Mouse Settings");
     check(|| Accessibility, "Accessibility Settings");
+    check(|| chat::ChatSettings, "Chat Settings");
+    check(WorldOptions::default, "World Options");
     check(KeyBinds::default, "Key Binds");
     check(|| credits::CreditsAndAttribution, "Credits and Attribution");
 }
 
-fn slider_value<S: Screen<Host>>(screen: &S, host: &Host, id: S::Id) -> Option<f32> {
+/// A slider's position and its number of steps.
+fn slider_steps<S: Screen<Host>>(screen: &S, host: &Host, id: S::Id) -> Option<(f32, u32)> {
     screen.widgets(host, (640.0, 360.0)).into_iter().find_map(|w| match w.kind {
-        Kind::Slider { value, .. } if w.id == id => Some(value),
+        Kind::Slider { value, steps, .. } if w.id == id => Some((value, steps)),
         _ => None,
     })
 }
@@ -201,8 +204,10 @@ fn sliders<S: Screen<Host>>(mut screen: S) {
     for id in ids {
         for t in [0.0, 1.0, 0.5] {
             screen.slide(&mut host, id, t);
-            let v = slider_value(&screen, &host, id).unwrap();
-            assert!((v - t).abs() < 0.03, "{id:?} at {t} reads {v}");
+            let (v, steps) = slider_steps(&screen, &host, id).unwrap();
+            // A slider of few steps lands on its nearest step.
+            let tolerance = (0.5 / steps as f32).max(0.03);
+            assert!((v - t).abs() <= tolerance + 1e-6, "{id:?} at {t} reads {v}");
             assert_eq!(host.settings.clamped(), host.settings, "{id:?} gives valid settings");
         }
     }
@@ -216,6 +221,7 @@ fn sliders_cover_their_whole_range_both_ways() {
     sliders(MusicAndSounds);
     sliders(MouseSettings);
     sliders(Accessibility);
+    sliders(chat::ChatSettings);
     let mut host = Host::default();
     VideoSettings.slide(&mut host, video::Id::RenderDistance, 0.2);
     assert_eq!(host.settings.render_distance, 8);
@@ -263,7 +269,9 @@ fn entity_shadows_toggles_like_java() {
     let ids: Vec<_> = video.widgets(&host, (640.0, 360.0)).iter().map(|w| w.id).collect();
     let at = |id| ids.iter().position(|&i| i == id).unwrap();
     assert_eq!(at(video::Id::EntityShadows), at(video::Id::MipmapLevels) + 1);
-    assert_eq!(at(video::Id::MenuBlur), at(video::Id::EntityShadows) + 1);
+    // v1.0 final F6: Entity Distance sits between them, as in Java.
+    assert_eq!(at(video::Id::EntityDistance), at(video::Id::EntityShadows) + 1);
+    assert_eq!(at(video::Id::MenuBlur), at(video::Id::EntityDistance) + 1);
 }
 
 /// v0.18 Track 3: Mipmap Levels is Java's slider: 0 to 4 in whole steps,
@@ -373,6 +381,7 @@ fn music_and_sounds_follows_javas_layout() {
             "Friendly Mobs: 100%",
             "Players: 100%",
             "Ambient/Environment: 100%",
+            "Narrator/Voice: 100%",
             "UI: 100%",
         ]
     );
@@ -392,6 +401,7 @@ fn music_and_sounds_follows_javas_layout() {
     for source in SoundSource::ALL {
         quiet.settings.set_sound_volume(source, 0.0);
     }
+    quiet.settings.voice_volume = 0.0;
     for w in MusicAndSounds.widgets(&quiet, size) {
         if let Kind::Slider { label, .. } = w.kind {
             assert!(label.ends_with(": OFF"), "{label}");
@@ -426,9 +436,12 @@ fn every_sound_slider_is_reachable_by_keyboard_and_controller() {
         stack.open(MusicAndSounds);
         let (shape, _) = stack.peek(&host, size);
         let sliders: Vec<usize> = (0..shape.slots.len()).filter(|&i| shape.slots[i].focusable).collect();
-        // Ten sliders, Closed Captions (v0.18 Track 9) and Done.
-        assert_eq!(sliders.len(), SoundSource::ALL.len() + 2, "{size:?}");
+        // Ten sliders, Narrator/Voice (v1.0 final F6), Closed Captions
+        // (v0.18 Track 9) and Done.
+        assert_eq!(sliders.len(), SoundSource::ALL.len() + 3, "{size:?}");
         for (n, source) in SoundSource::ALL.into_iter().enumerate() {
+            // Narrator/Voice sits before UI, the last category.
+            let n = if source == SoundSource::Ui { n + 1 } else { n };
             // Tab to slider `n`, lower it with the arrow key, raise it with the D-pad.
             let mut tabs = Host::default();
             let mut keys: Stack<Host> = Stack::default();
@@ -523,49 +536,173 @@ fn toggles_apply_at_once_and_fullscreen_reaches_the_window() {
     assert_eq!(host.settings.scroll_sensitivity, 10.0);
 }
 
+/// v1.0 final F6: Difficulty and its lock left Options for World Options,
+/// as in Java 26.3, where changes wait for Apply Changes and the lock asks
+/// first.
 #[test]
-fn difficulty_shows_only_in_a_world_and_locks_like_java() {
-    let find = |host: &Host, id: Id| Options.widgets(host, (640.0, 360.0)).into_iter().find(|w| w.id == id);
-    assert!(find(&Host::default(), Id::Difficulty).is_none(), "the title screen has no difficulty");
-    assert!(find(&Host::default(), Id::Lock).is_none());
-    let mut host = Host { world: world(Difficulty::Easy, false, false), ..Host::default() };
-    let button = find(&host, Id::Difficulty).unwrap();
-    let lock = find(&host, Id::Lock).unwrap();
+fn difficulty_moved_to_world_options_and_locks_like_java() {
+    let size = (640.0, 360.0);
+    let in_world = Host { world: world(Difficulty::Easy, false, false), ..Host::default() };
+    let labels: Vec<_> = Options.widgets(&in_world, size).into_iter().map(|w| format!("{:?}", w.kind)).collect();
+    assert!(labels.iter().all(|l| !l.contains("Difficulty")), "Options has no difficulty: {labels:?}");
+    let find =
+        |screen: &WorldOptions, host: &Host, id: world::Id| screen.widgets(host, size).into_iter().find(|w| w.id == id);
+    assert!(find(&WorldOptions::new(&Host::default()), &Host::default(), world::Id::Difficulty).is_none());
+    let mut host = in_world;
+    let mut screen = WorldOptions::new(&host);
+    let button = find(&screen, &host, world::Id::Difficulty).unwrap();
+    let lock = find(&screen, &host, world::Id::Lock).unwrap();
     assert!(button.enabled && lock.enabled);
     assert_eq!(button.rect[0] + button.rect[2], lock.rect[0], "the lock sits at the button's end");
     assert_eq!(button.rect[2] + lock.rect[2], 150.0);
-    Options.activate(&mut host, Id::Difficulty);
+    assert!(!find(&screen, &host, world::Id::Apply).unwrap().enabled, "nothing to apply yet");
+    screen.activate(&mut host, world::Id::Difficulty);
+    assert_eq!(host.world.unwrap().level, Difficulty::Easy, "waits for Apply Changes");
+    assert_eq!(label(&screen, &host, world::Id::Difficulty), "Difficulty: Normal");
+    assert!(find(&screen, &host, world::Id::Apply).unwrap().enabled);
+    assert!(matches!(screen.activate(&mut host, world::Id::Apply), Step::Pop));
+    assert_eq!(host.world.unwrap().level, Difficulty::Normal, "applied");
+    // Cancel drops a change.
+    let mut screen = WorldOptions::new(&host);
+    screen.activate(&mut host, world::Id::Difficulty);
+    assert!(matches!(screen.activate(&mut host, world::Id::Cancel), Step::Pop));
     assert_eq!(host.world.unwrap().level, Difficulty::Normal);
 
-    // The lock asks first; No leaves it unlocked, Yes locks it for good.
-    let size = (640.0, 360.0);
+    // The lock asks on Apply; No goes back to World Options, Yes locks it.
     let mut stack: Stack<Host> = Stack::default();
-    stack.open(Options);
-    let lock_at = |stack: &Stack<Host>, host: &Host| {
+    stack.open(WorldOptions::new(&host));
+    let centre = |stack: &Stack<Host>, host: &Host, id: world::Id| {
         let (shape, _) = stack.peek(host, size);
-        let i = Options.widgets(host, size).iter().position(|w| w.id == Id::Lock).unwrap();
+        let i = WorldOptions::new(host).widgets(host, size).iter().position(|w| w.id == id).unwrap();
         let [x, y, w, h] = shape.slots[i].rect;
         (x + w / 2.0, y + h / 2.0)
     };
-    let at = lock_at(&stack, &host);
-    stack.mouse_moved(&mut host, at, size);
-    stack.mouse_button(&mut host, MouseButton::Left, true, size);
+    let click = |stack: &mut Stack<Host>, host: &mut Host, at| {
+        stack.mouse_moved(host, at, size);
+        stack.mouse_button(host, MouseButton::Left, true, size);
+    };
+    let (lock_at, apply_at) = (centre(&stack, &host, world::Id::Lock), centre(&stack, &host, world::Id::Apply));
+    click(&mut stack, &mut host, lock_at);
+    click(&mut stack, &mut host, apply_at);
     stack.key(&mut host, &Key::new(KeyCode::Escape), size);
-    assert!(!host.world.unwrap().locked, "cancelled");
-    stack.mouse_button(&mut host, MouseButton::Left, true, size);
+    assert!(!host.world.unwrap().locked, "No keeps it unlocked");
+    assert!(stack.is_open(), "back on World Options");
+    click(&mut stack, &mut host, apply_at);
     stack.nav(&mut host, Nav::Down, size);
     stack.nav(&mut host, Nav::Activate, size);
     assert!(host.world.unwrap().locked, "Yes locks the difficulty");
-    let button = find(&host, Id::Difficulty).unwrap();
+    assert!(!stack.is_open(), "and returns to the pause menu");
+    let screen = WorldOptions::new(&host);
+    let button = find(&screen, &host, world::Id::Difficulty).unwrap();
     assert!(!button.enabled && button.tooltip.as_deref() == Some("Difficulty is locked."));
-    assert!(!find(&host, Id::Lock).unwrap().enabled);
-    Options.activate(&mut host, Id::Difficulty);
-    assert_eq!(host.world.unwrap().level, Difficulty::Normal, "locked difficulty can't change");
+    assert!(!find(&screen, &host, world::Id::Lock).unwrap().enabled);
 
     let host = Host { world: world(Difficulty::Hard, true, false), ..Host::default() };
-    let hardcore = find(&host, Id::Difficulty).unwrap();
+    let hardcore = find(&WorldOptions::new(&host), &host, world::Id::Difficulty).unwrap();
     assert!(!hardcore.enabled);
     assert_eq!(hardcore.tooltip.as_deref(), Some("Cannot change the difficulty in a hardcore world."));
+}
+
+/// v1.0 final F6: Java 26.3's chat, video, sound and accessibility options
+/// with their labels, ranges, defaults and `options.txt` keys.
+#[test]
+fn final_f6_options_use_javas_labels_ranges_and_keys() {
+    let mut host = Host::default();
+    let c = chat::ChatSettings;
+    assert_eq!(label(&c, &host, chat::Id::Visibility), "Chat: Shown");
+    assert_eq!(label(&c, &host, chat::Id::Colors), "Colors: ON");
+    assert_eq!(label(&c, &host, chat::Id::Opacity), "Chat Text Opacity: 100%");
+    assert_eq!(label(&c, &host, chat::Id::TextBackgroundOpacity), "Text Background Opacity: 50%");
+    assert_eq!(label(&c, &host, chat::Id::Scale), "Chat Text Size: 100%");
+    assert_eq!(label(&c, &host, chat::Id::LineSpacing), "Line Spacing: 0%");
+    assert_eq!(label(&c, &host, chat::Id::Delay), "Chat Delay: None");
+    assert_eq!(label(&c, &host, chat::Id::Width), "Width: 320px");
+    assert_eq!(label(&c, &host, chat::Id::HeightFocused), "Focused Height: 180px");
+    assert_eq!(label(&c, &host, chat::Id::HeightUnfocused), "Unfocused Height: 90px");
+    let mut c = chat::ChatSettings;
+    for (want, _) in [("Commands Only", 1), ("Hidden", 2), ("Shown", 0)] {
+        c.activate(&mut host, chat::Id::Visibility);
+        assert_eq!(label(&c, &host, chat::Id::Visibility), format!("Chat: {want}"));
+    }
+    c.slide(&mut host, chat::Id::Opacity, 0.0);
+    assert_eq!(label(&c, &host, chat::Id::Opacity), "Chat Text Opacity: 10%");
+    c.slide(&mut host, chat::Id::Scale, 0.0);
+    assert_eq!(label(&c, &host, chat::Id::Scale), "Chat Text Size: OFF");
+    c.slide(&mut host, chat::Id::Delay, 0.25);
+    assert_eq!(label(&c, &host, chat::Id::Delay), "Chat Delay: 1.5 second(s)");
+    c.slide(&mut host, chat::Id::Width, 0.0);
+    assert_eq!(label(&c, &host, chat::Id::Width), "Width: 40px");
+    c.slide(&mut host, chat::Id::HeightUnfocused, 0.0);
+    assert_eq!(label(&c, &host, chat::Id::HeightUnfocused), "Unfocused Height: 20px");
+
+    let mut v = VideoSettings;
+    let mut host = Host::default();
+    assert_eq!(label(&v, &host, video::Id::EntityDistance), "Entity Distance: 100%");
+    assert_eq!(label(&v, &host, video::Id::WeatherRadius), "Weather Effect Radius: 10 Blocks");
+    v.slide(&mut host, video::Id::EntityDistance, 0.0);
+    assert_eq!(
+        (host.settings.entity_distance, label(&v, &host, video::Id::EntityDistance).as_str()),
+        (0.5, "Entity Distance: 50%")
+    );
+    v.slide(&mut host, video::Id::EntityDistance, 1.0);
+    assert_eq!(host.settings.entity_distance, 5.0);
+    v.slide(&mut host, video::Id::WeatherRadius, 0.0);
+    assert_eq!(label(&v, &host, video::Id::WeatherRadius), "Weather Effect Radius: 3 Blocks");
+    // Java's Quality order ends Entity Shadows, Entity Distance, Menu
+    // Background Blur, Cloud Distance ... Weather Effect Radius.
+    let ids: Vec<_> = v.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert!(at(video::Id::EntityShadows) + 1 == at(video::Id::EntityDistance));
+    assert!(at(video::Id::EntityDistance) + 1 == at(video::Id::MenuBlur));
+    assert!(at(video::Id::CloudDistance) + 1 == at(video::Id::WeatherRadius));
+
+    let mut a = Accessibility;
+    let mut host = Host::default();
+    assert_eq!(label(&a, &host, accessibility::Id::DarknessPulsing), "Darkness Pulsing: 100%");
+    a.slide(&mut host, accessibility::Id::DarknessPulsing, 0.5);
+    assert_eq!(host.settings.darkness_effect_scale, 0.25, "the slider moves the square root");
+    a.slide(&mut host, accessibility::Id::DarknessPulsing, 0.0);
+    assert_eq!(label(&a, &host, accessibility::Id::DarknessPulsing), "Darkness Pulsing: OFF");
+    a.slide(&mut host, accessibility::Id::ChatDelay, 1.0);
+    assert_eq!(host.settings.chat.delay, 6.0);
+    let ids: Vec<_> = a.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert!(at(accessibility::Id::TextBackground) + 1 == at(accessibility::Id::ChatOpacity));
+    assert!(at(accessibility::Id::FovEffects) + 1 == at(accessibility::Id::DarknessPulsing));
+
+    // Saved under Java's keys; a file without them gets Java's defaults.
+    let mut s = Settings {
+        entity_distance: 2.25,
+        weather_radius: 5,
+        darkness_effect_scale: 0.36,
+        voice_volume: 0.4,
+        ..Settings::default()
+    };
+    s.chat.visibility = crate::app::settings::ChatVisibility::System;
+    s.chat.colors = false;
+    s.chat.delay = 2.5;
+    s.chat.height_unfocused = 0.25;
+    let text = s.serialize();
+    for line in [
+        "entityDistanceScaling=2.25",
+        "weatherRadius=5",
+        "darknessEffectScale=0.36",
+        "soundCategory_voice=0.40",
+        "chatVisibility=1",
+        "chatColors=false",
+        "chatDelay=2.5",
+        "chatHeightUnfocused=0.25",
+    ] {
+        assert!(text.lines().any(|l| l == line), "{line} in\n{text}");
+    }
+    assert_eq!(Settings::parse(&text), s);
+    let old = Settings::parse("render_distance=4\n");
+    assert_eq!(old.chat, crate::app::settings::ChatOptions::default());
+    assert_eq!((old.entity_distance, old.weather_radius, old.darkness_effect_scale), (1.0, 10, 1.0));
+    // A Java options.txt's sound keys read too.
+    let java = Settings::parse("soundCategory_hostile:0.25\nsoundCategory_hostile=0.25\nchatVisibility=2\n");
+    assert_eq!(java.hostile_volume, 0.25);
+    assert_eq!(java.chat.visibility, crate::app::settings::ChatVisibility::Hidden);
 }
 
 /// A Key Binds screen in a stack, and the rect centre of one of its widgets.

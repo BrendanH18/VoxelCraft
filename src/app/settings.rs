@@ -65,6 +65,9 @@ pub struct Settings {
     pub discrete_scroll: bool,
     /// v0.18 Track 9: Java's Closed Captions (`showSubtitles`, off).
     pub show_subtitles: bool,
+    /// v1.0 gap track 6b: Java's `advancedItemTooltips` (F3+H, off): item
+    /// tooltips add the durability, the item's id and its component count.
+    pub advanced_tooltips: bool,
     /// Text Background Opacity (`textBackgroundOpacity`, 0..1, 0.5): the
     /// text backing where Text Background is Everywhere.
     pub text_background_opacity: f32,
@@ -99,7 +102,135 @@ pub struct Settings {
     pub auto_jump: bool,
     /// Attack Indicator (`attackIndicator`, Crosshair).
     pub attack_indicator: AttackIndicator,
+    /// v1.0 final F6: Entity Distance (`entityDistanceScaling`, 0.5 to 5 in
+    /// quarters, 1): multiplies `Entity.viewScale`, how far entities draw.
+    pub entity_distance: f64,
+    /// Weather Effect Radius (`weatherRadius`, 3 to 10 blocks, 10).
+    pub weather_radius: u32,
+    /// Darkness Pulsing (`darknessEffectScale`, 0..1, 1): scales Darkness's
+    /// dimming and pulse in the lightmap (`LightmapRenderStateExtractor`).
+    pub darkness_effect_scale: f32,
+    /// Narrator/Voice (`soundCategory_voice`, 1): Java's Voice category,
+    /// which only the narrator plays in.
+    pub voice_volume: f32,
+    /// Chat Settings (`ChatOptionsScreen`), each under Java's key and default.
+    pub chat: ChatOptions,
     pub keys: super::keys::Bindings,
+}
+
+/// Java's `ChatVisiblity`, saved as its id (0, 1, 2; `LEGACY_CODEC`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ChatVisibility {
+    #[default]
+    Full,
+    System,
+    Hidden,
+}
+
+impl ChatVisibility {
+    pub const ALL: [Self; 3] = [Self::Full, Self::System, Self::Hidden];
+
+    pub fn id(self) -> i32 {
+        self as i32
+    }
+
+    pub fn from_id(id: i32) -> Self {
+        Self::ALL[id.rem_euclid(3) as usize]
+    }
+
+    pub fn next(self) -> Self {
+        Self::from_id(self.id() + 1)
+    }
+
+    /// `options.chat.visibility.full`, `.system`, `.hidden`.
+    pub fn caption(self) -> &'static str {
+        match self {
+            Self::Full => "Shown",
+            Self::System => "Commands Only",
+            Self::Hidden => "Hidden",
+        }
+    }
+}
+
+/// Java 26.3's chat options (`Options.chat*`), with `ChatComponent`'s sizes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ChatOptions {
+    /// Chat (`chatVisibility`, Shown).
+    pub visibility: ChatVisibility,
+    /// Colors (`chatColors`, on).
+    pub colors: bool,
+    /// Chat Text Opacity (`chatOpacity`, 1): text alpha `0.1 + 0.9 * v`.
+    pub opacity: f32,
+    /// Chat Text Size (`chatScale`, 1; OFF at 0).
+    pub scale: f32,
+    /// Line Spacing (`chatLineSpacing`, 0).
+    pub line_spacing: f32,
+    /// Chat Delay (`chatDelay`, 0 to 6 seconds in tenths, 0).
+    pub delay: f32,
+    /// Width (`chatWidth`, 1: 320 pixels).
+    pub width: f32,
+    /// Focused Height (`chatHeightFocused`, 1: 180 pixels).
+    pub height_focused: f32,
+    /// Unfocused Height (`chatHeightUnfocused`, 90 pixels).
+    pub height_unfocused: f32,
+}
+
+impl Default for ChatOptions {
+    fn default() -> Self {
+        Self {
+            visibility: ChatVisibility::Full,
+            colors: true,
+            opacity: 1.0,
+            scale: 1.0,
+            line_spacing: 0.0,
+            delay: 0.0,
+            width: 1.0,
+            height_focused: 1.0,
+            height_unfocused: CHAT_HEIGHT_UNFOCUSED_DEFAULT,
+        }
+    }
+}
+
+/// `ChatComponent.defaultUnfocusedPct`: 70 / 160.
+pub const CHAT_HEIGHT_UNFOCUSED_DEFAULT: f32 = 70.0 / 160.0;
+
+impl ChatOptions {
+    /// `ChatComponent.getWidth`: 40 to 320 pixels.
+    pub fn width_px(pct: f32) -> i32 {
+        (f64::from(pct) * 280.0 + 40.0).floor() as i32
+    }
+
+    /// `ChatComponent.getHeight`: 20 to 180 pixels.
+    pub fn height_px(pct: f32) -> i32 {
+        (f64::from(pct) * 160.0 + 20.0).floor() as i32
+    }
+
+    /// `ChatComponent.getLineHeight`.
+    pub fn line_height(&self) -> i32 {
+        (9.0 * (f64::from(self.line_spacing) + 1.0)) as i32
+    }
+
+    /// `ChatComponent.getLinesPerPage` for the focused or unfocused chat.
+    pub fn lines_per_page(&self, focused: bool) -> usize {
+        let h = Self::height_px(if focused { self.height_focused } else { self.height_unfocused });
+        (h / self.line_height().max(1)).max(0) as usize
+    }
+
+    fn clamped(mut self) -> Self {
+        for v in [
+            &mut self.opacity,
+            &mut self.scale,
+            &mut self.line_spacing,
+            &mut self.width,
+            &mut self.height_focused,
+            &mut self.height_unfocused,
+        ] {
+            *v = v.clamp(0.0, 1.0);
+        }
+        // `IntRange(0, 60).xmap(v / 10)`: tenths of a second.
+        self.delay = (self.delay.clamp(0.0, 6.0) * 10.0).round() / 10.0;
+        self
+    }
 }
 
 /// Java's `AttackIndicatorStatus`, saved as its id (0, 1, 2) like Java's
@@ -150,6 +281,10 @@ pub const MENU_BLUR_DEFAULT: u32 = 5;
 pub const SCROLL_STEPS: (i32, i32) = (-200, 100);
 /// Mipmap Levels' range (Java 26.3; `tests/fixtures/java/26.3/mipmap_levels.json`).
 pub const MIPMAP_LEVELS: (u32, u32) = (0, 4);
+/// Entity Distance's range (`IntRange(2, 20).xmap(v / 4.0)`).
+pub const ENTITY_DISTANCE: (f64, f64) = (0.5, 5.0);
+/// Weather Effect Radius's range and default in blocks.
+pub const WEATHER_RADIUS: (u32, u32) = (3, 10);
 
 impl Default for Settings {
     fn default() -> Self {
@@ -189,6 +324,7 @@ impl Default for Settings {
             scroll_sensitivity: 1.0,
             discrete_scroll: false,
             show_subtitles: false,
+            advanced_tooltips: false,
             text_background_opacity: 0.5,
             background_for_chat_only: true,
             mipmap_levels: MIPMAP_LEVELS.1,
@@ -202,6 +338,11 @@ impl Default for Settings {
             toggle_use: false,
             auto_jump: false,
             attack_indicator: AttackIndicator::Crosshair,
+            entity_distance: 1.0,
+            weather_radius: WEATHER_RADIUS.1,
+            darkness_effect_scale: 1.0,
+            voice_volume: 1.0,
+            chat: ChatOptions::default(),
             keys: Default::default(),
         }
     }
@@ -326,6 +467,7 @@ impl Settings {
             "mouseWheelSensitivity" => self.scroll_sensitivity = num().unwrap_or(self.scroll_sensitivity),
             "discrete_mouse_scroll" => flag(&mut self.discrete_scroll),
             "showSubtitles" => flag(&mut self.show_subtitles),
+            "advancedItemTooltips" => flag(&mut self.advanced_tooltips),
             "textBackgroundOpacity" => {
                 self.text_background_opacity = num().map_or(self.text_background_opacity, |v| v as f32)
             }
@@ -347,6 +489,37 @@ impl Settings {
                 if let Ok(id) = value.parse::<i32>() {
                     self.attack_indicator = AttackIndicator::from_id(id);
                 }
+            }
+            // v1.0 final F6.
+            "entityDistanceScaling" => self.entity_distance = num().unwrap_or(self.entity_distance),
+            "weatherRadius" => self.weather_radius = value.parse().unwrap_or(self.weather_radius),
+            "darknessEffectScale" => {
+                self.darkness_effect_scale = num().map_or(self.darkness_effect_scale, |v| v as f32)
+            }
+            "soundCategory_voice" => self.voice_volume = num().map_or(self.voice_volume, |v| v as f32),
+            // Java's keys for the other categories, as a Java file has them.
+            key if let Some(source) = key
+                .strip_prefix("soundCategory_")
+                .and_then(|name| SoundSource::ALL.into_iter().find(|s| s.java_name() == name)) =>
+            {
+                if let Some(v) = num() {
+                    self.set_sound_volume(source, v as f32);
+                }
+            }
+            "chatVisibility" => {
+                if let Ok(id) = value.parse::<i32>() {
+                    self.chat.visibility = ChatVisibility::from_id(id);
+                }
+            }
+            "chatColors" => flag(&mut self.chat.colors),
+            "chatOpacity" => self.chat.opacity = num().map_or(self.chat.opacity, |v| v as f32),
+            "chatScale" => self.chat.scale = num().map_or(self.chat.scale, |v| v as f32),
+            "chatLineSpacing" => self.chat.line_spacing = num().map_or(self.chat.line_spacing, |v| v as f32),
+            "chatDelay" => self.chat.delay = num().map_or(self.chat.delay, |v| v as f32),
+            "chatWidth" => self.chat.width = num().map_or(self.chat.width, |v| v as f32),
+            "chatHeightFocused" => self.chat.height_focused = num().map_or(self.chat.height_focused, |v| v as f32),
+            "chatHeightUnfocused" => {
+                self.chat.height_unfocused = num().map_or(self.chat.height_unfocused, |v| v as f32)
             }
             _ => return self.keys.parse_line(key, value),
         }
@@ -383,6 +556,24 @@ impl Settings {
             self.auto_jump,
             self.attack_indicator.id(),
             self.view_bobbing,
+        ));
+        out.push_str(&format!("advancedItemTooltips={}\n", self.advanced_tooltips));
+        let c = &self.chat;
+        out.push_str(&format!(
+            "entityDistanceScaling={}\nweatherRadius={}\ndarknessEffectScale={}\nsoundCategory_voice={:.2}\nchatVisibility={}\nchatColors={}\nchatOpacity={}\nchatScale={}\nchatLineSpacing={}\nchatDelay={}\nchatWidth={}\nchatHeightFocused={}\nchatHeightUnfocused={}\n",
+            self.entity_distance,
+            self.weather_radius,
+            self.darkness_effect_scale,
+            self.voice_volume,
+            c.visibility.id(),
+            c.colors,
+            c.opacity,
+            c.scale,
+            c.line_spacing,
+            c.delay,
+            c.width,
+            c.height_focused,
+            c.height_unfocused,
         ));
         self.keys.serialize(out);
     }
@@ -443,6 +634,13 @@ impl Settings {
         self.scroll_sensitivity = self.scroll_sensitivity.clamp(scroll_sensitivity(lo), scroll_sensitivity(hi));
         let (lo, hi) = voxelcraft::atmosphere::CLOUD_RANGE;
         self.cloud_range = self.cloud_range.clamp(lo, hi);
+        // Entity Distance moves in quarters.
+        let (lo, hi) = ENTITY_DISTANCE;
+        self.entity_distance = (self.entity_distance.clamp(lo, hi) * 4.0).round() / 4.0;
+        self.weather_radius = self.weather_radius.clamp(WEATHER_RADIUS.0, WEATHER_RADIUS.1);
+        self.darkness_effect_scale = self.darkness_effect_scale.clamp(0.0, 1.0);
+        self.voice_volume = self.voice_volume.clamp(0.0, 1.0);
+        self.chat = self.chat.clamped();
         self
     }
 

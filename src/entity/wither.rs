@@ -346,16 +346,12 @@ impl Entities {
     /// attacked (`canAttack`: alive, a targetable player or a non-undead mob).
     fn foe_at(&self, ctx: &Ctx, foe: Foe) -> Option<(DVec3, f64)> {
         match foe {
-            Foe::Player(id) => ctx
-                .players
-                .iter()
-                .find(|t| t.id == id && t.alive && t.targetable)
-                .map(|t| (t.pos, t.shape.height * 0.9)),
-            Foe::Mob(uid) => self
-                .mobs
-                .iter()
-                .find(|m| m.uid == uid && m.alive() && !friend(m.kind))
-                .map(|m| (m.pos, m.shape().height * 0.85)),
+            Foe::Player(id) => {
+                ctx.players.iter().find(|t| t.id == id && t.alive && t.targetable).map(|t| (t.pos, t.eye_height()))
+            }
+            Foe::Mob(uid) => {
+                self.mobs.iter().find(|m| m.uid == uid && m.alive() && !friend(m.kind)).map(|m| (m.pos, m.eye_height()))
+            }
         }
     }
 
@@ -382,7 +378,7 @@ impl Entities {
                 let r = t.detection_range(range);
                 let d2 = t.pos.distance_squared(w.pos);
                 if d2 <= r * r {
-                    out.push((t.pos.distance_squared(from), Foe::Player(t.id), t.pos, t.shape.height * 0.9));
+                    out.push((t.pos.distance_squared(from), Foe::Player(t.id), t.pos, t.eye_height()));
                 }
             }
         }
@@ -391,7 +387,7 @@ impl Entities {
             if j != me && m.alive() && !friend(m.kind) && inside(m.pos, m.shape().height) {
                 let d2 = m.pos.distance_squared(w.pos);
                 if d2 <= range * range {
-                    out.push((m.pos.distance_squared(from), Foe::Mob(m.uid), m.pos, m.shape().height * 0.85));
+                    out.push((m.pos.distance_squared(from), Foe::Mob(m.uid), m.pos, m.eye_height()));
                 }
             }
         });
@@ -456,7 +452,12 @@ impl Entities {
         if s.invul > 0 {
             let left = s.invul - 1;
             if left <= 0 {
-                events.push(EntityEvent::WitherBlast { center: eye, power: SPAWN_POWER, dangerous: false });
+                events.push(EntityEvent::WitherBlast {
+                    center: eye,
+                    power: SPAWN_POWER,
+                    dangerous: false,
+                    owner: Some(w.uid),
+                });
                 events.push(EntityEvent::Sound { sound: MobSound::Wither(Cue::Spawn), pos: w.pos });
             }
             s.invul = left;
@@ -509,6 +510,17 @@ impl Entities {
             }
         }
         self.wither_navigate(i, world, path_to);
+        // v1.0 gap Track 2c: `RangedAttackGoal.tick`'s `setLookAt(target,
+        // 30, 30)` for the main head; `WitherDoNothingGoal` holds LOOK while
+        // it charges up, so its idle looks wait.
+        let ranged = self.mobs[i].wither.as_ref().is_some_and(|s| s.ranged);
+        let charging = self.mobs[i].wither.as_ref().is_some_and(|s| s.invul > 0);
+        if let Some((p, eye_h)) = main_at.filter(|_| ranged) {
+            let look = super::mob::head::ATTACK_LOOK;
+            self.mobs[i].set_look_at(p + DVec3::Y * eye_h, look, look);
+        } else if charging {
+            self.mobs[i].hold_look();
+        }
         // The side heads.
         for h in 1..3usize {
             let s = self.mobs[i].wither.as_mut().unwrap();
@@ -749,6 +761,7 @@ impl Entities {
         &mut self,
         world: &W,
         ctx: &Ctx,
+        boss: &super::dragon::Boxes,
         events: &mut Vec<EntityEvent>,
     ) {
         if self.wither_skulls.is_empty() {
@@ -775,14 +788,19 @@ impl Entities {
             if owner_dead {
                 return false;
             }
-            match k.tick(world, ctx, &self.mobs) {
+            match k.tick(world, ctx, &self.mobs, boss) {
                 None => true,
                 Some(hit) => {
                     let source = super::sculk_events::Sculk::projectile_source(None, k.owner);
                     let heading = k.pos - k.previous_pos;
                     self.sculk.land(world, k.pos, heading, source);
                     self.wither_skull_hit(k, hit, difficulty, events);
-                    events.push(EntityEvent::WitherBlast { center: k.pos, power: SKULL_POWER, dangerous: k.dangerous });
+                    events.push(EntityEvent::WitherBlast {
+                        center: k.pos,
+                        power: SKULL_POWER,
+                        dangerous: k.dangerous,
+                        owner: k.owner,
+                    });
                     false
                 }
             }
@@ -802,6 +820,19 @@ impl Entities {
         let owner = k.owner.and_then(|u| self.mobs.iter().position(|m| m.uid == u));
         match hit {
             Hit::Block => {}
+            // `witherSkull(this, wither)` for 8 (magic 5 with no owner): it
+            // breaks a crystal, and lands on a dragon without hurting it (a
+            // Wither isn't a player); a part isn't living, so no Wither
+            // effect. The skull's blast follows, which does hurt it.
+            Hit::Boss(struck) => {
+                let damage = if owner.is_some() { SKULL_DAMAGE } else { SKULL_MAGIC_DAMAGE };
+                if !struck.is_dragon() {
+                    // v1.0 gap Track 8b: the crystal's blast names the Wither.
+                    let wither = owner.map(|_| super::MobKind::Wither);
+                    let blow = super::dragon::Blow::projectile(damage, false).blamed_on(wither);
+                    events.push(EntityEvent::DragonStruck { hit: struck, blow, by: None });
+                }
+            }
             Hit::Player(id) => {
                 let damage = if owner.is_some() { SKULL_DAMAGE } else { SKULL_MAGIC_DAMAGE };
                 events.push(EntityEvent::ArrowEffectsStart { player: id });
@@ -812,6 +843,10 @@ impl Entities {
                     java: None,
                     cause: if owner.is_some() { SKULL_CAUSE } else { Cause::MAGIC },
                 });
+                // v1.0 gap Track 2g: the Wither is the player's `lastHurtByMob`.
+                if let Some(attacker) = k.owner.filter(|_| owner.is_some()) {
+                    events.push(EntityEvent::OwnerHurt { player: id, attacker });
+                }
                 if wither_secs > 0 {
                     events.push(EntityEvent::PlayerEffect {
                         player: id,
@@ -863,9 +898,9 @@ impl Entities {
         self.blast_carts(world, center, power);
         self.blast_decor(center, power);
         if let Some(fight) = &mut self.fight {
-            fight.explode(center, power);
+            fight.explode(world, center, power);
         }
-        self.wild_dragons.explode(center, power);
+        self.wild_dragons.explode(world, center, power);
         self.crystals.explode(center, power);
         let mut killed = Vec::new();
         for m in &mut self.mobs {
@@ -877,7 +912,7 @@ impl Entities {
             let Some((damage, knockback)) = super::explosion_damage(power, m.pos.distance(center), exposure) else {
                 continue;
             };
-            let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let eye = m.look_eye();
             let push = (eye - center).normalize_or_zero() * knockback;
             m.wither_credit = KILL_CREDIT_SECS;
             if m.blast(damage, push, &mut self.rng) {
@@ -1112,6 +1147,8 @@ pub enum Hit {
     Block,
     Player(PlayerId),
     Mob(usize),
+    /// v1.0 gap Track 4c: an End crystal or a dragon part.
+    Boss(super::dragon::Hit),
 }
 
 /// A flying wither skull (`WitherSkull`): black, or blue and `dangerous`.
@@ -1160,7 +1197,13 @@ impl Skull {
     /// `AbstractHurtingProjectile.tick`: speed up along the motion, then
     /// move, stopping at the first block, player or mob in the way (its
     /// owner and the Wither's friends excluded, as `canHitEntity`).
-    pub fn tick<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, mobs: &[Mob]) -> Option<Hit> {
+    pub fn tick<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        ctx: &Ctx,
+        mobs: &[Mob],
+        boss: &super::dragon::Boxes,
+    ) -> Option<Hit> {
         self.previous_pos = self.pos;
         self.age += 1;
         let in_water = world.block(self.pos.floor().as_ivec3()).is_some_and(Block::holds_water);
@@ -1193,6 +1236,9 @@ impl Skull {
                 }
             }) {
                 return Some(Hit::Mob(j));
+            }
+            if let Some(hit) = boss.hit_at(next, true) {
+                return Some(Hit::Boss(hit));
             }
         }
         None

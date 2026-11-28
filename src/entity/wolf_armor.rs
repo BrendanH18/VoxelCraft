@@ -17,6 +17,13 @@ pub struct State {
     pub(super) pending_fall: f32,
 }
 impl State {
+    /// Blocks fallen since the wolf last landed.
+    pub(super) fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
+    pub(super) fn set_fall_distance(&mut self, distance: f64) {
+        self.fall_distance = distance;
+    }
     pub(super) fn load(&mut self, text: Option<&str>) {
         self.armor = text
             .and_then(|s| stack_from_str(s).flatten())
@@ -102,8 +109,21 @@ impl Mob {
         }
         if landed {
             let distance = std::mem::take(&mut s.fall_distance);
-            if below != Some(crate::world::stone_blocks::SLIME_BLOCK) {
-                s.pending_fall += (distance - 3.0 - f64::from(self.effects.jump_boost())).ceil().max(0.0) as f32;
+            // v1.0 gap Track 1: `Block.fallOn` and `calculateFallDamage` as
+            // for every other mob (hay, slime, a dripstone tip).
+            if distance > 0.0
+                && let Some(landing) = super::mob::hazards::landing(below)
+            {
+                let damage = super::mob::hazards::fall_damage(
+                    MobKind::Wolf,
+                    distance + landing.extra,
+                    landing.modifier,
+                    self.effects.jump_boost(),
+                );
+                if damage > 0.0 {
+                    s.pending_fall += damage;
+                    self.pending_fall_cause = landing.cause;
+                }
             }
         }
     }

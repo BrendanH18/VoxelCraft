@@ -79,13 +79,27 @@ impl Entities {
             let Some(a) = m.animal.as_mut() else { continue };
             if m.kind == MobKind::Goat {
                 a.ram_cooldown = (a.ram_cooldown - dt).max(0.0);
-                a.jump_cooldown -= dt;
-                if a.jump_cooldown <= 0.0 {
-                    a.jump_cooldown = self.rng.range(30.0, 60.0);
-                    if m.on_ground && a.love == 0.0 {
-                        m.vel.y = 18.0;
-                    }
+                // v1.0 gap Track 2g: `CountDownCooldownTicks` on
+                // `LONG_JUMP_COOLDOWN_TICKS`, then the `LONG_JUMP` activity
+                // (`LongJumpToRandomPos`, `LongJumpMidJump`) while it isn't
+                // tempted, breeding, walking or ramming.
+                a.jump_cooldown = (a.jump_cooldown - dt).max(0.0);
+                let allowed = a.love == 0.0
+                    && a.ramming == 0.0
+                    && m.goals.running.is_none()
+                    && m.ai != crate::entity::mob::Ai::Panic;
+                let screaming = a.screaming;
+                let cue = match m.goat_long_jump(w, &mut self.rng, allowed) {
+                    super::long_jump::Jumped::Launched if screaming => Some(super::long_jump::Cue::ScreamingLongJump),
+                    super::long_jump::Jumped::Launched => Some(super::long_jump::Cue::LongJump),
+                    super::long_jump::Jumped::Landed => Some(super::long_jump::Cue::Step),
+                    super::long_jump::Jumped::None => None,
+                };
+                if let Some(cue) = cue {
+                    events.push(EntityEvent::Sound { sound: super::super::MobSound::Goat(cue), pos: m.pos });
                 }
+                let baby = m.is_baby();
+                let Some(a) = m.animal.as_mut() else { continue };
                 if a.ramming > 0.0 {
                     a.ramming = (a.ramming - dt).max(0.0);
                     a.ram_prepare = (a.ram_prepare - dt).max(0.0);
@@ -95,13 +109,26 @@ impl Entities {
                         let dir = ((goal - m.pos) * DVec3::new(1.0, 0.0, 1.0)).normalize_or(DVec3::X);
                         let ahead = (m.pos + dir * 0.8 + DVec3::Y * 0.5).floor().as_ivec3();
                         if w.block(ahead).is_some_and(Block::is_solid) {
-                            if a.horns > 0 && w.block(ahead).is_some_and(horn_breaks_on) {
+                            // `RamTarget.hasRammedHornBreakingBlock`: the block
+                            // ahead or the one above it; `Goat.dropHorn`: only
+                            // adults, at the body with (±0.2, 0.3..0.7, ±0.2)
+                            // a tick.
+                            let snaps = w.block(ahead).is_some_and(horn_breaks_on)
+                                || w.block(ahead + glam::IVec3::Y).is_some_and(horn_breaks_on);
+                            if a.horns > 0 && snaps && !baby {
                                 a.horns -= 1;
                                 let item = Item(Item::GOAT_HORN.0 + a.horn_kind as u16);
+                                let r =
+                                    |rng: &mut super::super::Rng, lo: f32, hi: f32| f64::from(rng.range(lo, hi)) * 20.0;
+                                let vel = DVec3::new(
+                                    r(&mut self.rng, -0.2, 0.2),
+                                    r(&mut self.rng, 0.3, 0.7),
+                                    r(&mut self.rng, -0.2, 0.2),
+                                );
                                 self.items.push(super::super::item::ItemEntity::new(
                                     Stack::new(item, 1),
-                                    m.pos + DVec3::Y,
-                                    dir * -1.5,
+                                    m.pos,
+                                    vel,
                                     0.5,
                                     &mut self.rng,
                                 ));
@@ -115,7 +142,9 @@ impl Entities {
                                 player: t.id,
                                 damage: 2.0,
                                 knockback: (dir * 18.0 + DVec3::Y * 4.0).as_vec3(),
-                                cause: crate::simulation::damage::Cause::GOAT_RAM,
+                                // v1.0 final F8: `noAggroMobAttack(goat)`.
+                                cause: crate::simulation::damage::Cause::GOAT_RAM
+                                    .by(Some(crate::entity::trident::Owner::Mob(m.uid))),
                             });
                             a.ramming = 0.0;
                         }
@@ -153,9 +182,19 @@ impl Entities {
 /// Seconds of `EatBlockGoal`'s 2-second animation left when the grass goes.
 const EAT_AT: f32 = 0.2;
 
+/// `BlockTags.SNAPS_GOAT_HORN` (26.3): `#overworld_natural_logs` (the ten
+/// overworld woods' logs, any axis), stone, packed ice and iron, coal,
+/// copper and emerald ore (v1.0 final Track F4 added coal ore and left
+/// out stripped logs and nether stems).
 fn horn_breaks_on(b: Block) -> bool {
+    let base = b.base();
     matches!(
-        b.base(),
-        Block::STONE | Block::IRON_ORE | Block::COPPER_ORE | Block::EMERALD_ORE | crate::world::gadgets::PACKED_ICE
-    ) || b.is_log()
+        base,
+        Block::STONE
+            | Block::IRON_ORE
+            | Block::COAL_ORE
+            | Block::COPPER_ORE
+            | Block::EMERALD_ORE
+            | crate::world::gadgets::PACKED_ICE
+    ) || crate::world::block::Wood::ALL.iter().any(|w| w.log().base() == base)
 }

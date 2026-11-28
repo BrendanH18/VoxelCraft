@@ -160,6 +160,8 @@ fn bane_of_arthropods_covers_exactly_the_java_tag_with_its_damage_and_slowness()
         assert!(e.mobs[i].effects.get(Effect::Slowness).is_none(), "no slowness without the enchantment");
         e.mobs[i].health = 1000.0;
         e.mobs[i].hurt = 0.0;
+        // v1.0 gap Track 8d: a fresh hit, past the first's hurt cooldown.
+        e.mobs[i].damage_cooldown = 0;
         e.mobs[i].effects = Default::default();
         e.melee(i, DVec3::X, Some(bane5), 0.0, false, None);
         let enchanted = 1000.0 - e.mobs[i].health;

@@ -85,7 +85,9 @@ uses the engine's collision physics; acknowledged input is removed, remaining
 inputs replay from the authoritative position/velocity. Remote player/mob
 positions and arrows interpolate between snapshots.
 
-Protocol **6** requires an exact protocol and game-version match. Each frame starts with a
+Protocol **7** requires an exact protocol and game-version match (7 since
+2026-11-27: a click carries the clicked bundle's selected stack, Java's
+`ServerboundSelectBundleItemPacket`, as one more byte). Each frame starts with a
 little-endian `u32` payload length, followed by a packet byte. Maximum payload:
 256 KiB. Hello includes a `u16` protocol version, game version and profile;
 Welcome supplies seed, dimension and player ID. Input contains a sequence,
@@ -127,6 +129,9 @@ binary framing:
   snowballs, eggs and llama spit, fishing bobbers, eyes of ender, fireballs,
   dragon breath, XP orbs, primed TNT, falling blocks and the Ender Dragon fight
   (pose, health for the boss bar, crystals and beams, fireballs);
+- the raid bar (`raid_bar`: the title code and progress) while the player is
+  in a raid, as Java's `ServerBossEvent` shows it to every raid player
+  (v1.0 final F6; a snapshot without one hides it);
 - sounds (dense bank keys) and particle requests near the player, and every
   player's block-breaking progress within 32 blocks;
 - the text of signs and the contents of shelves and chiseled bookshelves

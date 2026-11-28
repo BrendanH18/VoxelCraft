@@ -84,16 +84,21 @@ fn wolf_armor_absorbs_the_whole_breaking_hit_before_resistance_and_wakes_the_wol
     assert!(!e.mobs[0].animal.as_ref().unwrap().sitting);
     assert_eq!(e.mobs[0].wolf_armor.as_ref().unwrap().armor.unwrap().damage, 8);
     e.mobs[0].effects.add(Effect::Resistance, 3, 200);
+    // v1.0 gap Track 8d: each a later hit, past the last one's hurt cooldown.
+    e.mobs[0].damage_cooldown = 0;
     e.mobs[0].damage(10.0, None, &mut e.rng);
     assert_eq!(e.mobs[0].wolf_armor.as_ref().unwrap().armor.unwrap().damage, 18);
     assert_eq!(e.mobs[0].health, 40.0);
     e.mobs[0].effects = Default::default();
+    e.mobs[0].damage_cooldown = 0;
     e.mobs[0].damage_bypassing_wolf_armor(2.0, None, &mut e.rng);
     assert_eq!(e.mobs[0].health, 38.0);
     assert_eq!(e.mobs[0].wolf_armor.as_ref().unwrap().armor.unwrap().damage, 18);
+    e.mobs[0].damage_cooldown = 0;
     e.mobs[0].damage(1000.0, Some(DVec3::X), &mut e.rng);
     assert_eq!(e.mobs[0].health, 38.0);
     assert!(e.mobs[0].wolf_armor.as_ref().unwrap().armor.is_none());
+    e.mobs[0].damage_cooldown = 0;
     e.mobs[0].damage(1.0, None, &mut e.rng);
     assert_eq!(e.mobs[0].health, 37.0);
 }
@@ -109,6 +114,7 @@ fn wolf_armor_uses_full_melee_damage_in_26_3_and_magic_status_bypasses_it() {
         attacker: e.mobs[1].uid,
         damage: 5.0,
         knockback: DVec3::ZERO,
+        melee: true,
     }];
     e.resolve_mob_hits(&mut events);
     assert_eq!(e.mobs[0].wolf_armor.as_ref().unwrap().armor.unwrap().damage, 5);

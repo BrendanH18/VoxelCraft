@@ -66,8 +66,10 @@ pub enum Blow {
     /// A player's melee hit or projectile. A creative player's hit gets
     /// through the ritual crystals' invulnerability (`isCreativePlayer`).
     Player { id: PlayerId, creative: bool },
-    /// Anything else that isn't a blast: a mob's arrow, a projectile with
-    /// no owner.
+    /// v1.0 gap Track 8b: a mob's projectile or blow: the blast names the
+    /// mob (`explosion(crystal, source.getEntity())`).
+    Mob(super::MobKind),
+    /// Anything else that isn't a blast: a projectile with no owner.
     Other,
     /// A blast (`#is_explosion`): the crystal goes without a blast of its own.
     Explosion,
@@ -78,6 +80,73 @@ impl Blow {
         match self {
             Blow::Player { id, .. } => Some(id),
             _ => None,
+        }
+    }
+}
+
+/// v1.0 gap Track 8b: a crystal's blast that a mob set off is
+/// `explosion(crystal, mob)`, `PLAYER_EXPLOSION` (`explosion.player`: "was
+/// blown up by" the mob) for the mobs whose projectiles can break one.
+/// Any other mob's blow keeps the general "a mob": the blast's rules are
+/// read from its text (`ExplosionSource::of_cause`), and a crystal's blast
+/// is a block's whoever broke it.
+pub fn blame(kind: super::MobKind) -> crate::simulation::damage::Cause {
+    use super::MobKind as K;
+    let text = match kind {
+        K::Llama
+        | K::TraderLlama
+        | K::Skeleton
+        | K::Stray
+        | K::Bogged
+        | K::Parched
+        | K::Pillager
+        | K::Piglin
+        | K::Illusioner
+        | K::Drowned
+        | K::SnowGolem
+        | K::Breeze
+        | K::Shulker
+        | K::Wither => blown_up_by(kind),
+        _ => "was blown up by a mob",
+    };
+    crate::simulation::damage::Cause::new(crate::simulation::damage::DamageType::PlayerExplosion, text)
+}
+
+/// `death.attack.explosion.player` for a blast `kind` is behind: "was
+/// blown up by" the mob, named as VoxelCraft's other death messages name
+/// mobs ("a skeleton", "the Wither"). v1.0 gap Track 8e: any mob, as
+/// primed TNT can name whatever lit it; each text is made once.
+pub fn blown_up_by(kind: super::MobKind) -> &'static str {
+    use super::MobKind as K;
+    match kind {
+        K::Llama => "was blown up by a llama",
+        K::TraderLlama => "was blown up by a trader llama",
+        K::Skeleton => "was blown up by a skeleton",
+        K::Stray => "was blown up by a stray",
+        K::Bogged => "was blown up by a bogged",
+        K::Parched => "was blown up by a parched",
+        K::Pillager => "was blown up by a pillager",
+        K::Piglin => "was blown up by a piglin",
+        K::Illusioner => "was blown up by an illusioner",
+        K::Drowned => "was blown up by a drowned",
+        K::SnowGolem => "was blown up by a snow golem",
+        K::Breeze => "was blown up by a breeze",
+        K::Shulker => "was blown up by a shulker",
+        K::Creeper => "was blown up by a creeper",
+        K::Ghast => "was blown up by a ghast",
+        K::Blaze => "was blown up by a blaze",
+        K::Wither => "was blown up by the Wither",
+        _ => {
+            static TEXTS: std::sync::Mutex<Vec<(super::MobKind, &'static str)>> = std::sync::Mutex::new(Vec::new());
+            let mut texts = TEXTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(&(_, t)) = texts.iter().find(|(k, _)| *k == kind) {
+                return t;
+            }
+            let name = kind.name();
+            let article = if name.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+            let text: &'static str = Box::leak(format!("was blown up by {article} {name}").into_boxed_str());
+            texts.push((kind, text));
+            text
         }
     }
 }
@@ -231,11 +300,22 @@ impl Crystals {
             let Some(i) = self.list.iter().position(|c| c.id == id) else { continue };
             let c = self.list.remove(i);
             if blow != Blow::Explosion {
-                // At its feet, credited to the player who hit it.
+                // At its feet, named after the player (v1.0 gap Track 8c)
+                // or mob behind the blow (`explosion(crystal,
+                // source.getEntity())`, a `player_explosion`), or the
+                // crystal's own with nobody behind it.
+                let cause = match blow {
+                    Blow::Mob(kind) => blame(kind),
+                    // v1.0 gap Track 8f: the message names the player
+                    // (`source.getEntity()`), though TNT it chains has no
+                    // owner (the crystal is the blast's source entity).
+                    Blow::Player { id, .. } => crate::simulation::damage::Cause::PLAYER_EXPLOSION.naming(id),
+                    _ => crate::simulation::damage::Cause::END_CRYSTAL,
+                };
                 events.push(EntityEvent::Explosion {
                     center: c.pos,
                     power: POWER,
-                    cause: crate::simulation::damage::Cause::END_CRYSTAL,
+                    cause,
                     credit_player: blow.player().is_some(),
                 });
             }

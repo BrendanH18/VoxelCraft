@@ -1,7 +1,8 @@
 //! Procedural Java-like equine proportions, coats, markings and equipment.
-use super::{Cuboid, Mob, MobKind, Parts, cube, part};
-use glam::Quat;
-const COLORS: [[u8; 3]; 9] = [
+use super::{Cuboid, Mob, MobKind, Parts, age_ticks, cube, motion, part, walk_cos};
+use glam::{Quat, Vec3};
+use std::f32::consts::{FRAC_PI_4, PI};
+pub(super) const COLORS: [[u8; 3]; 9] = [
     [236, 232, 218],
     [208, 177, 126],
     [159, 104, 57],
@@ -12,20 +13,25 @@ const COLORS: [[u8; 3]; 9] = [
     [222, 218, 200],
     [94, 124, 68],
 ];
-const fn bodies() -> [[Cuboid; 3]; 9] {
-    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 3]; 9];
+const fn bodies() -> [[Cuboid; 2]; 9] {
+    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 2]; 9];
     let mut i = 0;
     while i < 9 {
         out[i] = [
             cube([-5., 11., -10.], [5., 21., 9.], COLORS[i], 22),
-            cube([-1.5, 14., -16.], [1.5, 21., -9.], [48, 38, 28], 20),
             cube([-1., 20., -9.], [1., 22., 10.], [44, 36, 26], 20),
         ];
         i += 1;
     }
     out
 }
-const BODIES: [[Cuboid; 3]; 9] = bodies();
+const BODIES: [[Cuboid; 2]; 9] = bodies();
+/// v1.0 gap Track 7b: the tail on its own joint at the top of the rump
+/// (the same box, in the same place at rest).
+const TAIL_AT: [f32; 3] = [0., 21., -9.];
+const TAIL: &[Cuboid] = &[cube([-1.5, -7., -7.], [1.5, 0., 0.], [48, 38, 28], 20)];
+const SKELETON_TAIL_AT: [f32; 3] = [0., 20., -9.];
+const SKELETON_TAIL: &[Cuboid] = &[cube([-1., -6., -7.], [1., 0., 0.], [222, 218, 200], 12)];
 const fn heads() -> [[Cuboid; 7]; 9] {
     let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 7]; 9];
     let mut i = 0;
@@ -104,7 +110,11 @@ const fn armors() -> [[Cuboid; 3]; 6] {
     out
 }
 const ARMOR: [[Cuboid; 3]; 6] = armors();
-pub(super) fn pose(m: &Mob) -> Parts {
+/// `AbstractEquineModel`'s body pivot (Java's (0, 11, 5)), which rearing
+/// turns the body about.
+const REAR_PIVOT: Vec3 = Vec3::new(0., 13., -5.);
+
+pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
     let s = m.mount.as_ref().unwrap();
     let color = match m.kind {
         MobKind::SkeletonHorse => 7,
@@ -112,33 +122,94 @@ pub(super) fn pose(m: &Mob) -> Parts {
         MobKind::Horse => s.variant as usize,
         _ => 5,
     };
-    let stride = m.limb_phase.sin() * m.limb_amp * 0.8;
+    // v1.0 gap Track 7c: `AbstractEquineModel.setupAnim`, each part placed
+    // as Java places it (Track 7b turned the whole front of the horse
+    // about the body's pivot instead). The front legs swing 0.8 and the
+    // hind legs 0.5 of `cos(pos * 0.6662 + pi) * speed` (a fifth as fast in
+    // water), each on Java's side; above speed 0.2 the head nods.
+    let (pos, speed) = (m.limb_phase, m.limb_amp);
+    let water = if m.in_water { 0.2 } else { 1.0 };
+    let leg = (water * pos * motion::WALK_FREQ + PI).cos();
+    let leg_x = leg * 0.8 * speed;
+    let nod = if speed > 0.2 { (pos * 0.8).cos() * 0.15 * speed } else { 0.0 };
     let head_y = match m.kind {
         MobKind::Donkey => 13.,
         MobKind::Mule => 14.,
         _ => 15.,
     };
-    let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-0.35 - m.head_pitch);
-    let mut p = Parts::new();
-    p.push(part(
+    let age = age_ticks(time);
+    // Rearing (`standAnim`, Track 3b's), grazing (`eatAnim`) and chewing
+    // (`mouthAnim`, Track 2c's `mounts::State`).
+    let stand = s.stand_anim(alpha);
+    let eat = s.eat_anim(alpha);
+    let feed = s.mouth_anim_o + (s.mouth_anim - s.mouth_anim_o) * alpha;
+    let walk = 1.0 - stand;
+    let rest = 1.0 - stand.max(eat);
+    // `headParts.xRot`: 30 degrees down with the look at rest, 15 down
+    // rearing, 125 down grazing, shaking a little as it chews; this game's
+    // head boxes sit 20 degrees up at rest, so Java's angle less its rest
+    // angle turns them. The yaw stays within 20 degrees and fades while it
+    // grazes.
+    let head_x = -m.head_pitch + nod;
+    let java_x = stand * (PI / 12.0 + head_x)
+        + eat * (2.181_661_6 + age.sin() * 0.05)
+        + rest * (PI / 6.0 + head_x + feed * age.sin() * 0.05);
+    let yaw = m.head_yaw.clamp(-20f32.to_radians(), 20f32.to_radians()) * (stand + rest);
+    let head = Quat::from_rotation_y(-yaw) * Quat::from_rotation_x(-0.35 + java_x - PI / 6.0);
+    // `animateHeadPartsPlacement`: 7 down grazing, 8 up and 8 back rearing.
+    let lift = eat * 7.0 - (1.0 - eat) * 8.0 * stand;
+    let head_at = [0., head_y - lift, 6. - 8.0 * stand];
+    let mut body = Parts::new();
+    body.push(part(
         if m.kind == MobKind::SkeletonHorse { SKELETON_BODY } else { &BODIES[color] },
         [0.; 3],
         Quat::IDENTITY,
     ));
-    for (x, z, phase) in [(-3.5, 7., stride), (3.5, 7., -stride), (-3.5, -8., -stride), (3.5, -8., stride)] {
-        p.push(part(&LEGS[color], [x, 12., z], Quat::from_rotation_x(phase)));
-    }
-    p.push(part(&HEADS[color], [0., head_y, 6.], head));
-    if matches!(m.kind, MobKind::Donkey | MobKind::Mule) {
-        p.push(part(EARS, [0., head_y, 6.], head));
-    }
+    // `tail.xRot` gains `0.75 * speed` and the tail sits lower and further
+    // back with the walk; while `tailCounter` runs (8 ticks, one tick in
+    // 200) it swishes `cos(ageInTicks * 0.7)` (Java's `yRot` on this
+    // model's sides). It hangs from the body.
+    let swish = if m.anim.tail_counter > 0 { -(age * 0.7).cos() } else { 0.0 };
+    let (tail, tail_at) =
+        if m.kind == MobKind::SkeletonHorse { (SKELETON_TAIL, SKELETON_TAIL_AT) } else { (TAIL, TAIL_AT) };
+    body.push(part(
+        tail,
+        [tail_at[0], tail_at[1] - speed, tail_at[2] - 2.0 * speed],
+        Quat::from_rotation_y(swish) * Quat::from_rotation_x(0.75 * speed),
+    ));
     if s.marking > 0 && m.kind == MobKind::Horse {
-        p.push(part(&MARKINGS[s.marking as usize - 1], [0.; 3], Quat::IDENTITY));
+        body.push(part(&MARKINGS[s.marking as usize - 1], [0.; 3], Quat::IDENTITY));
     }
     if s.chest {
-        p.push(part(CHESTS, [0.; 3], Quat::IDENTITY));
+        body.push(part(CHESTS, [0.; 3], Quat::IDENTITY));
     }
-    equipment(m, &mut p);
+    equipment(m, &mut body);
+    // `body.xRot`: up 45 degrees rearing, about Java's body pivot.
+    if stand > 0.0 {
+        body.turn_about(REAR_PIVOT, Quat::from_rotation_x(-FRAC_PI_4 * stand));
+    }
+    let mut p = Parts::new();
+    p.push(body[0]);
+    // The front legs rise 12 pixels and come back 4 as it rears, pawing on
+    // `cos(ageInTicks * 0.6 + pi)` from 60 degrees forward; the hind legs
+    // plant at 15 degrees. Java's right legs are on -X.
+    let paw = (age * 0.6 + PI).cos();
+    let front = [0., 12. + 12.0 * stand, 7. - 4.0 * stand];
+    let right_front = (-PI / 3.0 - paw) * stand - leg_x * walk;
+    let left_front = (-PI / 3.0 + paw) * stand + leg_x * walk;
+    p.push(part(&LEGS[color], [-3.5, front[1], front[2]], Quat::from_rotation_x(right_front)));
+    p.push(part(&LEGS[color], [3.5, front[1], front[2]], Quat::from_rotation_x(left_front)));
+    p.push(part(&HEADS[color], head_at, head));
+    for part in body.iter().skip(1) {
+        p.push(*part);
+    }
+    if matches!(m.kind, MobKind::Donkey | MobKind::Mule) {
+        p.push(part(EARS, head_at, head));
+    }
+    let stand_angle = PI / 12.0 * stand;
+    let hind = leg * 0.5 * speed * walk;
+    p.push(part(&LEGS[color], [-3.5, 12., -8.], Quat::from_rotation_x(stand_angle + hind)));
+    p.push(part(&LEGS[color], [3.5, 12., -8.], Quat::from_rotation_x(stand_angle - hind)));
     p
 }
 pub(super) fn equipment(m: &Mob, p: &mut Parts) {
@@ -192,13 +263,15 @@ const LLAMA_CHESTS: &[Cuboid] = &[
 pub(super) fn llama(m: &Mob) -> Parts {
     use super::trader_model::{LLAMA_HEAD, LLAMA_LEG};
     let s = m.mount.as_ref();
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.9;
+    // `LlamaModel`: the quadruped's `cos(pos * 0.6662) * 1.4 * speed`.
+    let swing = walk_cos(m) * motion::LEG_SWING;
     let rx = Quat::from_rotation_x;
     let head = Quat::from_rotation_y(-m.head_yaw) * rx(-m.head_pitch);
     let mut p = Parts::new();
     p.push(part(LLAMA_BODY, [0.; 3], Quat::IDENTITY));
     p.push(part(LLAMA_HEAD, [0., 20. * LY, 5.], head));
-    for (x, z, phase) in [(-3., 5., swing), (3., 5., -swing), (-3., -5., -swing), (3., -5., swing)] {
+    // v1.0 gap Track 7c: the right hind leg (-X) on the walk's cosine.
+    for (x, z, phase) in [(-3., 5., -swing), (3., 5., swing), (-3., -5., swing), (3., -5., -swing)] {
         p.push(part(LLAMA_LEG, [x, 14. * LY, z], rx(phase)));
     }
     if s.is_some_and(|s| s.slots[1].is_some()) {
@@ -211,14 +284,22 @@ pub(super) fn llama(m: &Mob) -> Parts {
 }
 
 const SAND: [u8; 3] = [219, 169, 95];
-const CAMEL_BODY: &[Cuboid] = &[
-    cube([-7.5, 20., -13.], [7.5, 30., 13.], SAND, 18),
-    cube([-4.5, 30., -6.], [4.5, 35., 4.], [205, 152, 80], 18),
-    cube([-1., 22., -14.], [1., 28., -13.], [160, 115, 60], 10),
-];
+/// v1.0 gap Track 3b: the camel's parts follow Java's `AdultCamelModel`
+/// hierarchy so its keyframes can move them: the body pivots where Java's
+/// does (20 pixels up, 9.5 back) and carries the head, the tail and the
+/// saddle; the legs pivot 23 pixels up, as Java's. The boxes are where they
+/// were (the look Track 7 approved), given from those pivots.
+const CAMEL_BODY_PIVOT: Vec3 = Vec3::new(0.0, 20.0, -9.5);
+const CAMEL_BODY: &[Cuboid] =
+    &[cube([-7.5, 0., -3.5], [7.5, 10., 22.5], SAND, 18), cube([-4.5, 10., 3.5], [4.5, 15., 13.5], [205, 152, 80], 18)];
+/// The tail, from its root on the body's back.
+const CAMEL_TAIL: &[Cuboid] = &[cube([-1., -6., -0.5], [1., 0., 0.5], [160, 115, 60], 10)];
+const CAMEL_TAIL_ROOT: Vec3 = Vec3::new(0.0, 8.0, -4.0);
+/// The head's pivot on the body (23 pixels up, 12 forward, at rest).
+const CAMEL_HEAD_ROOT: Vec3 = Vec3::new(0.0, 3.0, 21.5);
 const CAMEL_LEG: &[Cuboid] = &[
-    cube([-1.5, -20., -1.5], [1.5, 0., 1.5], SAND, 16),
-    cube([-1.8, -21., -1.8], [1.8, -18., 1.8], [130, 95, 55], 10),
+    cube([-1.5, -22., -1.5], [1.5, -2., 1.5], SAND, 16),
+    cube([-1.8, -23., -1.8], [1.8, -20., 1.8], [130, 95, 55], 10),
 ];
 const CAMEL_HEAD: &[Cuboid] = &[
     cube([-3., -2., -2.], [3., 13., 4.], SAND, 16),
@@ -233,30 +314,87 @@ const CAMEL_HEAD: &[Cuboid] = &[
     cube([-3.55, 13.2, 5.5], [3.55, 13.8, 7.6], [176, 126, 66], 0),
 ];
 const CAMEL_SADDLE: &[Cuboid] = &[
-    cube([-5., 35., -7.], [5., 36.2, 5.], [132, 72, 36], 16),
-    cube([-7.7, 24., -2.], [-7.5, 35., 1.], [160, 146, 130], 8),
-    cube([7.5, 24., -2.], [7.7, 35., 1.], [160, 146, 130], 8),
+    cube([-5., 15., 2.5], [5., 16.2, 14.5], [132, 72, 36], 16),
+    cube([-7.7, 4., 7.5], [-7.5, 15., 10.5], [160, 146, 130], 8),
+    cube([7.5, 4., 7.5], [7.7, 15., 10.5], [160, 146, 130], 8),
 ];
+
+/// A Java part rotation in degrees (`xRot`, `yRot`, `zRot`, applied
+/// `rotationZYX`) in the model's axes (+Y up, +Z forward): x keeps its
+/// sense, y and z turn the other way.
+fn java_rot([x, y, z]: [f32; 3]) -> Quat {
+    Quat::from_rotation_z(-z.to_radians())
+        * Quat::from_rotation_y(-y.to_radians())
+        * Quat::from_rotation_x(x.to_radians())
+}
+
+/// A keyframe position (`posVec`, pixels, y up) in the model's axes.
+fn java_pos([x, y, z]: [f32; 3]) -> Vec3 {
+    Vec3::new(x, y, -z)
+}
+
 pub(super) fn camel(m: &Mob) -> Parts {
+    use super::camel_anim::{self as anim, Bone};
     let s = m.mount.as_ref();
-    let sitting = s.is_some_and(|s| s.sit_ticks > 0);
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.7;
-    let rx = Quat::from_rotation_x;
-    let head = Quat::from_rotation_y(-m.head_yaw) * rx(-m.head_pitch);
-    // Sitting: the body rests on folded legs.
-    let drop = if sitting { -15. } else { 0. };
-    let mut p = Parts::new();
-    p.push(part(CAMEL_BODY, [0., drop, 0.], Quat::IDENTITY));
-    p.push(part(CAMEL_HEAD, [0., 23. + drop, 12.], head));
-    for (x, z, phase) in [(-4.5, 9., swing), (4.5, 9., -swing), (-4.5, -9., -swing), (4.5, -9., swing)] {
-        if sitting {
-            p.push(part(CAMEL_LEG, [x, 2., z + 9.], rx(std::f32::consts::FRAC_PI_2)));
+    // v1.0 gap Track 3b: `Camel.setupAnimationStates` and `CamelModel`:
+    // sitting down plays `CAMEL_SIT` for its 40 ticks, then holds
+    // `CAMEL_SIT_POSE`; standing up plays `CAMEL_STANDUP` for its 52; a
+    // dash loops `CAMEL_DASH` while `DASH` is on.
+    let mut off = anim::Offsets::default();
+    let mut walking = true;
+    if let Some(s) = s {
+        let t = s.pose_time as f32;
+        if s.camel_sitting {
+            walking = false;
+            if s.pose_time < crate::entity::mounts::camel::SITDOWN_TICKS {
+                anim::SIT.apply(t, &mut off);
+            } else {
+                anim::SIT_POSE.apply(t, &mut off);
+            }
         } else {
-            p.push(part(CAMEL_LEG, [x, 21., z], rx(phase)));
+            if s.dashing {
+                // `updateWalkAnimation`: no walk while the dash plays.
+                walking = false;
+                anim::DASH.apply(f32::from(s.dash_ticks), &mut off);
+            }
+            if s.in_pose_transition() {
+                anim::STAND_UP.apply(t, &mut off);
+            }
         }
     }
+    // `CamelModel` plays a keyframe walk; these legs keep its loop and
+    // strength (v1.0 gap Track 7).
+    let (phase, scale) = motion::keyframe_phase(m.limb_phase, m.limb_amp, motion::CAMEL_WALK);
+    let swing = if walking { phase.sin() * 0.7 * scale } else { 0.0 };
+    // `applyHeadRotation`: yaw within 30 degrees, pitch -25 to 45 (Java's
+    // down is positive), tipped down after a dash by 45 × cooldown / 55.
+    let mut pitch = (-m.head_pitch.to_degrees()).clamp(-25.0, 45.0);
+    if let Some(cooldown) = s.map(|s| s.dash_cooldown).filter(|&c| c > 0) {
+        pitch = (pitch + 45.0 * f32::from(cooldown) / 55.0).clamp(-25.0, 70.0);
+    }
+    let yaw = m.head_yaw.to_degrees().clamp(-30.0, 30.0);
+    let head_anim = off.rot(Bone::Head);
+    let body_rot = java_rot(off.rot(Bone::Body));
+    let body_pivot = CAMEL_BODY_PIVOT + java_pos(off.pos(Bone::Body));
+    let on_body = |at: Vec3| (body_pivot + body_rot * at).to_array();
+    let head = body_rot * java_rot([pitch + head_anim[0], yaw + head_anim[1], head_anim[2]]);
+    let mut p = Parts::new();
+    p.push(part(CAMEL_BODY, body_pivot.to_array(), body_rot));
+    p.push(part(CAMEL_HEAD, on_body(CAMEL_HEAD_ROOT), head));
+    p.push(part(CAMEL_TAIL, on_body(CAMEL_TAIL_ROOT), body_rot * java_rot(off.rot(Bone::Tail))));
+    for (bone, x, z, phase) in [
+        (Bone::RightFrontLeg, -4.5, 9., swing),
+        (Bone::LeftFrontLeg, 4.5, 9., -swing),
+        (Bone::RightHindLeg, -4.5, -9., -swing),
+        (Bone::LeftHindLeg, 4.5, -9., swing),
+    ] {
+        let [rx, ry, rz] = off.rot(bone);
+        let pivot = Vec3::new(x, 23., z) + java_pos(off.pos(bone));
+        let rot = java_rot([rx + phase.to_degrees(), ry, rz]);
+        p.push(part(CAMEL_LEG, pivot.to_array(), rot));
+    }
     if s.is_some_and(|s| s.saddled()) {
-        p.push(part(CAMEL_SADDLE, [0., drop, 0.], Quat::IDENTITY));
+        p.push(part(CAMEL_SADDLE, body_pivot.to_array(), body_rot));
     }
     p
 }
@@ -293,7 +431,6 @@ const SKELETON_BODY: &[Cuboid] = &[
     cube([-4., 12., 2.], [-3., 20., 3.], [222, 218, 200], 12),
     cube([3., 12., 2.], [4., 20., 3.], [222, 218, 200], 12),
     cube([-4., 12., 7.], [4., 14., 8.], [222, 218, 200], 12),
-    cube([-1., 14., -16.], [1., 20., -9.], [222, 218, 200], 12),
 ];
 
 #[cfg(test)]
@@ -319,7 +456,7 @@ mod tests {
             mob.mount = Some(
                 crate::entity::mounts::State::load(MobKind::Horse, &mob.mount.as_ref().unwrap().save()).unwrap().into(),
             );
-            let parts = pose(&mob);
+            let parts = pose(&mob, 0.0, 1.0);
             assert!(parts.iter().any(|p| p.boxes.iter().any(|c| c.color == LEATHER_HORSE)));
             for source in ARMOR[0] {
                 let mut emitted = source;

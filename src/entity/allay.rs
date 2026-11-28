@@ -221,7 +221,7 @@ impl Entities {
                                 && !p.spectator
                                 && p.pos.distance_squared(m.pos) < 64. * 64.
                         })
-                        .map(|p| p.pos + DVec3::Y * (p.shape.height * 0.9))
+                        .map(|p| p.eye())
                 });
                 if s.sensor == 0 {
                     s.sensor = 20;
@@ -430,7 +430,10 @@ pub(super) fn travel<W: MobWorld + ?Sized>(m: &mut Mob, dt: f64, world: &W, wish
     dm += input.normalize_or_zero() * input.length().min(1.) * if water || lava { 0.02 } else { speed };
     let delta = dm * (dt / 0.05);
     let shape = m.shape();
-    let hit = physics::move_box(world, &mut m.pos, &mut dm, delta, shape);
+    let hit = {
+        let context = Some(m.collision_context());
+        physics::move_box_context(world, &mut m.pos, &mut dm, delta, shape, context)
+    };
     m.on_ground = hit.on_ground;
     m.blocked = hit.horizontal;
     m.in_water = water;

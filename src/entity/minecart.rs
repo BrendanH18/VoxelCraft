@@ -257,11 +257,24 @@ pub struct Minecart {
     pub(crate) leash_wait: u16,
     /// `LeashData.angularMomentum`; never saved.
     pub(crate) leash_spin: f64,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 impl Minecart {
+    /// v1.0 final F9: `CollisionContext.of(cart)`, Java 26.3's
+    /// `EntityCollisionContext` for minecarts and boats alike (its
+    /// `MinecartCollisionContext` serves only the experimental minecart
+    /// movement): scaffolding holds a cart only from above and powder snow
+    /// only once it has fallen more than 2.5 blocks.
+    pub fn collision_context(&self) -> physics::CollisionContext {
+        physics::CollisionContext::entity(self.pos.y, self.fall_distance, false)
+    }
+
     pub fn new(id: u32, kind: CartKind, pos: DVec3) -> Self {
         Self {
+            portal_cooldown: 0,
             id,
             kind,
             pos,
@@ -596,7 +609,8 @@ impl Minecart {
         );
         let mut velocity = self.vel * 20.0;
         let speed = self.vel.x.hypot(self.vel.z);
-        let hit = physics::move_box(world, &mut self.pos, &mut velocity, delta, SHAPE);
+        let context = Some(self.collision_context());
+        let hit = physics::move_box_context(world, &mut self.pos, &mut velocity, delta, SHAPE, context);
         if self.kind == CartKind::Tnt && hit.horizontal && speed >= 0.1 {
             self.blast_now(speed);
         }
@@ -744,7 +758,8 @@ impl Minecart {
         let mut vel = self.vel * 20.0;
         let from_y = self.pos.y;
         let speed = self.vel.x.hypot(self.vel.z);
-        let hit = physics::move_box(world, &mut self.pos, &mut vel, self.vel, SHAPE);
+        let context = Some(self.collision_context());
+        let hit = physics::move_box_context(world, &mut self.pos, &mut vel, self.vel, SHAPE, context);
         self.fall_distance += (from_y - self.pos.y).max(0.0);
         if self.kind == CartKind::Tnt && (hit.horizontal && speed >= 0.1 || hit.on_ground && self.fall_distance >= 3.0)
         {
@@ -1050,6 +1065,30 @@ impl super::Entities {
         let block = world.get_block(cell).filter(|b| b.is_rail())?;
         let height = if block.rail_shape()?.is_ascending() { 0.5 } else { 0.0 };
         Some(self.spawn_cart(kind, cell.as_dvec3() + DVec3::new(0.5, 0.0625 + height, 0.5)))
+    }
+
+    /// v1.0 final F5: spawns each generation 7 mineshaft chest minecart
+    /// once, when its rail cell ticks (`MineShaftCorridor.createChest`
+    /// adds a `MinecartChest` at the cell's centre with the
+    /// `abandoned_mineshaft` table). The cell joins the saved
+    /// `villager_births` receipts, so a cart broken or ridden away never
+    /// respawns when its unedited chunk generates again. The contents are
+    /// rolled at spawn rather than when the cart is first opened.
+    pub(super) fn populate_mineshaft_carts<W: super::MobWorld + ?Sized>(&mut self, world: &W) {
+        let mut due = Vec::new();
+        world.mineshaft_carts(&mut |p, seed| {
+            if !self.villager_births.contains(&p) && world.entity_ticking(p) {
+                due.push((p, seed));
+            }
+        });
+        for (p, seed) in due {
+            self.villager_births.insert(p);
+            let id = self.spawn_cart(CartKind::Chest, p.as_dvec3() + DVec3::new(0.5, 0.0625, 0.5));
+            let chest = crate::world::mineshaft::loot(seed);
+            if let Some(cart) = self.cart_mut(id) {
+                cart.slots = chest.slots;
+            }
+        }
     }
 
     pub fn spawn_cart(&mut self, kind: CartKind, pos: DVec3) -> u32 {
@@ -1815,6 +1854,59 @@ mod tests {
     use crate::world::terrain::Generator;
     use std::sync::Arc;
 
+    /// Rails holding generation 7 mineshaft chest minecarts.
+    struct Shaft(Vec<(IVec3, u64)>);
+
+    impl BlockSource for Shaft {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            Some(if p.y < 0 { Block::PLANKS } else { Block::AIR })
+        }
+    }
+
+    impl super::super::MobWorld for Shaft {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, _: i32, _: i32) -> Option<i32> {
+            Some(-1)
+        }
+        fn exposed(&self, _: IVec3) -> bool {
+            false
+        }
+        fn mineshaft_carts(&self, visit: &mut dyn FnMut(IVec3, u64)) {
+            for &(p, seed) in &self.0 {
+                visit(p, seed)
+            }
+        }
+    }
+
+    /// `MineShaftCorridor.createChest`: one chest minecart per cell, at
+    /// its centre, filled from `abandoned_mineshaft`, saved with the level
+    /// and never spawned twice, even after a reload.
+    #[test]
+    fn mineshaft_chest_minecarts_spawn_once_with_their_loot_and_stay_saved() {
+        let w = Shaft(vec![(IVec3::new(3, 0, 5), 11), (IVec3::new(9, 0, 5), 12)]);
+        let mut e = super::super::Entities::new(7);
+        e.populate_mineshaft_carts(&w);
+        assert_eq!(e.minecarts.len(), 2);
+        let cart = &e.minecarts[0];
+        assert_eq!(cart.kind, CartKind::Chest);
+        assert_eq!((cart.pos.x, cart.pos.z), (3.5, 5.5));
+        assert_eq!(cart.slots, crate::world::mineshaft::loot(11).slots);
+        assert!(cart.slots.iter().any(Option::is_some), "the abandoned_mineshaft table always rolls something");
+        e.populate_mineshaft_carts(&w);
+        assert_eq!(e.minecarts.len(), 2, "a cart's cell spawns it once");
+        let saved = e.minecarts_to_string();
+        let mut reloaded = super::super::Entities::new(7);
+        reloaded.load_minecarts(&saved);
+        assert_eq!(reloaded.minecarts.len(), 2);
+        assert_eq!(reloaded.minecarts[0].slots, e.minecarts[0].slots);
+        reloaded.load_villagers(&e.villagers_to_string());
+        reloaded.minecarts.clear();
+        reloaded.populate_mineshaft_carts(&w);
+        assert!(reloaded.minecarts.is_empty(), "a reloaded world respawned its mineshaft carts");
+    }
+
     fn world() -> World {
         let mut w = World::new_headless(Arc::new(Generator::new(3)), Default::default(), 2);
         w.insert_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
@@ -1864,6 +1956,36 @@ mod tests {
         // sit on the cart's feet.
         assert_eq!(c.mob_seat(0, &Mob::new(MobKind::Villager, at, 0.0)).y, 140.0);
         assert_eq!(c.mob_seat(0, &Mob::new(MobKind::WanderingTrader, at, 0.0)).y, 140.0);
+    }
+
+    /// v1.0 final F9: carts and boats collide through Java's
+    /// `EntityCollisionContext`: neither walks on powder snow, so a short
+    /// drop sinks them to the stone under it, and a long one rests on the
+    /// 0.9 falling shape for the tick it lands.
+    #[test]
+    fn carts_and_boats_sink_through_powder_snow_unless_they_fall_far() {
+        let base = IVec3::new(8, 140, 8);
+        for kind in [CartKind::Rideable, CartKind::Boat { wood: 0, chest: false }] {
+            let mut w = world();
+            w.set_block(base - IVec3::Y, Block::STONE);
+            w.set_block(base, crate::world::scaffolding::POWDER_SNOW);
+            let drop = |w: &mut World, from: f64| {
+                let mut e = super::super::Entities::new(1);
+                e.minecarts.push(Minecart::new(7, kind, base.as_dvec3() + DVec3::new(0.5, from, 0.5)));
+                let mut ys = Vec::new();
+                for _ in 0..60 {
+                    e.tick_minecarts(w, &[]);
+                    ys.push(e.minecarts[0].pos.y - base.y as f64);
+                }
+                ys
+            };
+            let short = drop(&mut w, 1.2);
+            assert!(short.last().unwrap().abs() < 1e-4, "{kind:?} sinks to the stone: {short:?}");
+            let long = drop(&mut w, 6.0);
+            let rested = long.iter().any(|&y| (y - f64::from(0.9_f32)).abs() < 1e-4);
+            assert!(rested, "{kind:?} rests on the falling shape: {long:?}");
+            assert!(long.last().unwrap().abs() < 1e-4, "{kind:?} then sinks: {long:?}");
+        }
     }
 
     #[test]

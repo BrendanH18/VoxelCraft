@@ -293,6 +293,14 @@ impl Screen<Game> for BookView {
         Step::Stay
     }
 
+    /// v1.0 gap Track 8c: a lectern's book is `LecternScreen`, which
+    /// isn't a pause screen, so a Nether portal closes it and (Track 8d)
+    /// an unshared world goes on behind it; a book in hand
+    /// (`BookViewScreen`) pauses and stays.
+    fn pauses(&self) -> bool {
+        self.lectern.is_none()
+    }
+
     fn back(&mut self, _: &mut Game) -> Step<Game> {
         Step::Close
     }

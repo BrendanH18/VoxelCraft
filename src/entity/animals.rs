@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use super::{Ctx, Entities, EntityEvent, Mob, MobKind, MobWorld, PlayerId, Rng};
 use crate::{color::DyeColor, inventory::Stack, item::Item, particles};
 mod lifecycle;
+pub mod long_jump;
 
 pub const BABY_AGE: i32 = -24000;
 pub const BREEDING_COOLDOWN: i32 = 6000;
@@ -47,6 +48,14 @@ pub struct State {
     pub ram_cooldown: f32,
     pub stationary: f32,
     pub jump_cooldown: f32,
+    /// v1.0 gap Track 2f: the goat's `Pose.LONG_JUMPING` (not saved:
+    /// Java's `Pose` is written only as entity data the client reads).
+    pub long_jumping: bool,
+    /// v1.0 gap Track 2g: a running `LongJumpToRandomPos` and the ticks
+    /// left of `LongJumpMidJump` (never saved, as Java's running behaviours
+    /// aren't; `jump_cooldown` is `LONG_JUMP_COOLDOWN_TICKS`, saved).
+    pub(crate) long_jump: Option<Box<long_jump::LongJump>>,
+    pub(crate) mid_jump_left: i32,
     pub horns: u8,
     pub horn_kind: u8,
     pub screaming: bool,
@@ -88,6 +97,9 @@ impl State {
             ram_cooldown: 30.0,
             stationary: 0.0,
             jump_cooldown: 30.0,
+            long_jumping: false,
+            long_jump: None,
+            mid_jump_left: 0,
             horns: 2,
             horn_kind: 0,
             screaming: false,
@@ -170,6 +182,11 @@ impl MobKind {
         self == other || matches!((self, other), (Self::Horse, Self::Donkey) | (Self::Donkey, Self::Horse))
     }
 }
+/// `AgeableMob.getSpeedUpSecondsWhenFeeding`: `(int)(ticks / 20 * 0.1F)`.
+pub(crate) fn speed_up_seconds(ticks_left: i32) -> i32 {
+    ((ticks_left / 20) as f32 * 0.1) as i32
+}
+
 impl Mob {
     pub fn ready_to_breed(&self) -> bool {
         self.alive()
@@ -186,16 +203,61 @@ impl Mob {
     }
     /// Feeding a baby removes 10% of its remaining growth time, rounded to
     /// whole seconds as Java's ageUp does. Never starts love mode.
+    /// v1.0 gap Track 2c: `Animal.mobInteract` ages it up *forced*
+    /// (`ageUp(getSpeedUpSecondsWhenFeeding(-age), true)`), so the time
+    /// it skipped is kept as [`Mob::forced_age`], carried into adulthood
+    /// as its starting age, with the 40 ticks of particles.
     pub fn feed_growth(&mut self) {
         if self.kind == MobKind::Turtle {
             self.grow = (self.grow + ((1200.0 - self.grow) * 0.1).floor()).min(1200.0);
             self.age = -((1200.0 - self.grow) * 20.0) as i32;
         } else if self.age < 0 {
-            self.age = (self.age + ((-self.age / 20) as f32 * 0.1) as i32 * 20).min(0);
-            self.baby = self.age < 0;
+            // `getSpeedUpSecondsWhenFeeding`: `(int)(ticks / 20 * 0.1F)`.
+            self.age_up(((-self.age / 20) as f32 * 0.1) as i32, true);
         }
     }
+    /// v1.0 gap Track 3b: `AgeableMob.ageUp(seconds, forced)`: older by
+    /// `seconds`, at most to adulthood; forced growth adds to
+    /// [`Mob::forced_age`] and starts 40 ticks of particles; coming of age
+    /// this way, the adult takes the forced age as its age (counting down).
+    pub fn age_up(&mut self, seconds: i32, forced: bool) {
+        let old = self.age;
+        let age = (old + seconds * 20).min(0);
+        self.age = age;
+        if forced {
+            self.forced_age += age - old;
+            if self.forced_age_timer == 0 {
+                self.forced_age_timer = 40;
+            }
+        }
+        if self.age == 0 {
+            self.age = self.forced_age;
+        }
+        self.baby = self.age < 0;
+    }
     pub(super) fn advance_animal_age(&mut self, dt: f32) {
+        // v1.0 gap Track 3b: `AgeableMob.aiStep` for a dolphin (no animal
+        // state): the forced-growth particle every fourth tick, then a
+        // baby a tick older a tick (unless age-locked) and a forced adult
+        // a tick younger, down to 0.
+        if self.kind == MobKind::Dolphin && self.alive() && (self.age != 0 || self.forced_age_timer > 0) {
+            self.grow += dt * 20.0;
+            let ticks = self.grow.floor() as i32;
+            self.grow -= ticks as f32;
+            for _ in 0..ticks {
+                if self.forced_age_timer > 0 {
+                    if self.forced_age_timer.is_multiple_of(4) {
+                        self.forced_sparkles = self.forced_sparkles.saturating_add(1);
+                    }
+                    self.forced_age_timer -= 1;
+                }
+            }
+            if !(self.age_locked && self.baby) {
+                self.age = if self.age < 0 { (self.age + ticks).min(0) } else { (self.age - ticks).max(0) };
+            }
+            self.baby = self.age < 0;
+            return;
+        }
         // `AgeableMob.canAgeUp`: an age-locked baby stays one.
         if !self.alive() || self.kind == MobKind::Turtle && self.baby || self.age_locked && self.baby {
             return;
@@ -207,6 +269,16 @@ impl Mob {
             a.growth += dt * 20.0;
             let ticks = a.growth.floor() as i32;
             a.growth -= ticks as f32;
+            // v1.0 gap Track 2c: `AgeableMob.aiStep`'s forced-growth
+            // particle every fourth tick of its 40.
+            for _ in 0..ticks {
+                if self.forced_age_timer > 0 {
+                    if self.forced_age_timer.is_multiple_of(4) {
+                        self.forced_sparkles = self.forced_sparkles.saturating_add(1);
+                    }
+                    self.forced_age_timer -= 1;
+                }
+            }
             self.age = if self.age < 0 { (self.age + ticks).min(0) } else { (self.age - ticks).max(0) };
             self.baby = self.age < 0;
         }
@@ -224,7 +296,7 @@ impl Entities {
         let m = self.mobs.get_mut(index)?;
         if !m.alive()
             || !m.baby
-            || (m.animal.is_none() && m.kind != MobKind::SulfurCube)
+            || (m.animal.is_none() && !matches!(m.kind, MobKind::SulfurCube | MobKind::Dolphin))
             || matches!(m.kind, MobKind::ZombieHorse | MobKind::SkeletonHorse | MobKind::Villager)
         {
             return None;
@@ -415,7 +487,8 @@ impl Entities {
         if !m.kind.breeding_food(food) {
             return None;
         }
-        if m.baby || m.age < 0 {
+        let baby = m.baby || m.age < 0;
+        if baby {
             m.feed_growth();
         } else {
             let a = m.animal.as_mut()?;
@@ -433,7 +506,11 @@ impl Entities {
         if super::mounts::camel_like(m.kind) {
             self.post_mob_event(index, crate::world::vibration::GameEvent::Eat);
         }
-        self.animal_hearts(index);
+        // v1.0 gap Track 2c: hearts only for love (`setInLove`); a fed
+        // baby shows the forced growth's particles instead.
+        if !baby {
+            self.animal_hearts(index);
+        }
         Some(true)
     }
     pub(super) fn animal_hearts(&mut self, index: usize) {
@@ -517,6 +594,18 @@ impl Entities {
             if !m.alive() || !world.entity_ticking(m.pos.floor().as_ivec3()) {
                 continue;
             }
+            // v1.0 gap Track 2c: forced growth's `HAPPY_VILLAGER` particles
+            // (`getRandomX(1)`, `getRandomY() + 0.5`), as the dolphin's.
+            let sparkles = std::mem::take(&mut m.forced_sparkles);
+            let (pos, shape) = (m.pos, m.shape());
+            for _ in 0..sparkles {
+                let mut b =
+                    particles::Burst::new(particles::Kind::Effect, pos + DVec3::Y * (shape.height * 0.5 + 0.5), 1);
+                b.color = Some([0.35, 0.85, 0.3, 1.0]);
+                b.spread = DVec3::new(shape.half_width * 2.0, shape.height, shape.half_width * 2.0);
+                self.particles.push(particles::Request::Burst(b));
+            }
+            let m = &mut self.mobs[i];
             let Some(a) = m.animal.as_mut() else { continue };
             a.love = (a.love - dt).max(0.0);
             a.hearts -= dt;
@@ -724,6 +813,8 @@ pub(super) fn on_spawn(m: &mut Mob, rng: &mut Rng) {
     if m.kind == MobKind::Goat {
         a.screaming = rng.chance(0.02);
         a.ram_cooldown = rng.range(30.0, 300.0);
+        // v1.0 gap Track 2g: `GoatAi.initMemories`' long-jump cooldown.
+        a.jump_cooldown = long_jump::cooldown_seconds(rng);
         a.horn_kind = rng.next_int(4) as u8 + if a.screaming { 4 } else { 0 };
     }
 }
@@ -783,7 +874,11 @@ impl Mob {
                         player: id,
                         damage: 4.0,
                         knockback: (flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 3.0).as_vec3(),
-                        cause: crate::simulation::damage::Cause::mob("was slain by a wolf"),
+                        // v1.0 final F8: a tamed wolf's owner takes the kill
+                        // credit (`resolvePlayerResponsibleForDamage`).
+                        cause: crate::simulation::damage::Cause::mob("was slain by a wolf")
+                            .by(Some(super::trident::Owner::Mob(self.uid)))
+                            .credited(self.animal.as_ref().and_then(|a| a.owner)),
                     });
                 }
                 return Some((self.pursue(w, t.pos, 3.0, true, true, rng), 3.0));
@@ -808,9 +903,16 @@ impl Mob {
                     attacker: self.uid,
                     damage: 4.0,
                     knockback: flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 2.0,
+                    melee: true,
                 });
             }
             return Some((self.pursue(w, goal, 3.0, true, true, rng), 3.0));
+        }
+        // v1.0 gap Track 2g: a goat readying or flying a long jump stands
+        // (the jump carries it).
+        if self.kind == MobKind::Goat && self.goat_jump_busy() {
+            self.stop_goal(w);
+            return Some((None, 0.0));
         }
         if self.kind == MobKind::Goat && a.ramming > 0.0 {
             let goal = a.ram_goal?;
@@ -914,28 +1016,66 @@ impl Entities {
                     t.pos.distance_squared(m.pos) < 64.0 && t.held_item.is_some_and(|i| i == Item::BONE || wolf_food(i))
                 });
             if m.kind == MobKind::Fox {
-                a.sleeping = ctx.daylight > 0.5
-                    && a.love == 0.0
-                    && !m.in_water
-                    && !ctx
-                        .players
-                        .iter()
-                        .any(|t| t.pos.distance_squared(m.pos) < 64.0 && !a.trusted.contains(&Some(t.id)));
+                // v1.0 gap Track 2e: `SleepGoal` (`mob::fox`) puts it to sleep.
                 a.mouth_time += dt;
+                // v1.0 gap Track 2f: `canHoldItem`: an empty mouth, or food
+                // over something that isn't once it has held that a tick;
+                // what it held is spat out (`spitOutItem`, `FOX_SPIT`).
+                let food = |s: &Stack| s.item.food().is_some();
+                let held = a.mouth;
+                let holds =
+                    |s: &Stack| held.is_none() || a.mouth_time > 0.0 && food(s) && !held.is_some_and(|h| food(&h));
+                let at = m.pos + DVec3::Y * (m.kind.shape().height * 0.8);
                 if self.villager_griefing
-                    && a.mouth.is_none()
-                    && let Some(j) =
-                        self.items.iter().position(|it| it.pickup_delay <= 0.0 && it.pos.distance_squared(m.pos) < 2.25)
+                    && let Some(j) = self.items.iter().position(|it| {
+                        it.pickup_delay <= 0.0 && it.pos.distance_squared(m.pos) < 2.25 && holds(&it.stack)
+                    })
                 {
                     let s = self.items[j].stack;
+                    if let Some(old) = held {
+                        // At its look direction, a block up, 40 ticks before
+                        // it can be picked up.
+                        let ahead = crate::entity::mob::spear::view_vector(0.0, m.yaw.to_degrees() - 90.0);
+                        let spot = m.pos + DVec3::new(ahead.x, 1.0, ahead.z);
+                        // `ItemEntity`'s own toss: up to 0.1 a tick across, 0.2 up.
+                        let mut toss = || f64::from(self.rng.range(-0.1, 0.1)) * 20.0;
+                        let vel = DVec3::new(toss(), 4.0, toss());
+                        self.items.push(super::item::ItemEntity::new(old, spot, vel, 2.0, &mut self.rng));
+                        events.push(EntityEvent::Sound { sound: super::MobSound::Fox(super::fox::Cue::Spit), pos: at });
+                    }
                     a.mouth = Some(Stack { count: 1, ..s });
                     a.mouth_time = 0.0;
                     m.persistent = true;
                     self.items[j].stack.count -= 1;
                 }
-                if a.mouth_time >= 30.0 && a.mouth.is_some_and(|s| s.item.food().is_some()) {
+                // `canEat`: food, no target, on the ground and awake; past 28
+                // seconds it chews (`FOX_EAT`, one tick in ten), past 30 it
+                // eats.
+                let fox_target = m.fox.as_ref().is_some_and(|s| s.target.is_some());
+                let on_ground = m.on_ground;
+                let can_eat = a.mouth.is_some_and(|s| food(&s)) && !fox_target && on_ground && !a.sleeping;
+                if can_eat && a.mouth_time >= 30.0 {
                     a.mouth = None;
                     a.mouth_time = 0.0;
+                } else if can_eat && a.mouth_time > 28.0 && self.rng.chance(0.1) {
+                    events.push(EntityEvent::Sound { sound: super::MobSound::Fox(super::fox::Cue::Eat), pos: at });
+                    // v1.0 gap Track 2g: entity event 45: eight particles of
+                    // the mouth item, half a block ahead at its feet, up to
+                    // 0.05 aside and 0.15 to 0.25 up a tick (the client's
+                    // random; the fox doesn't pitch while eating).
+                    if let Some(item) = a.mouth.map(|s| s.item) {
+                        let yaw = (m.yaw.to_degrees() - 90.0).to_radians() as f64;
+                        let look = crate::entity::mob::spear::view_vector(0.0, m.yaw.to_degrees() - 90.0);
+                        let from = m.pos + DVec3::new(look.x / 2.0, 0.0, look.z / 2.0);
+                        let mut local = super::Rng::new(u64::from(m.uid) ^ u64::from(a.mouth_time.to_bits()) << 17);
+                        for _ in 0..8 {
+                            let dx = (f64::from(local.next_f32()) - 0.5) * 0.1;
+                            let dy = f64::from(local.next_f32()) * 0.1 + 0.1;
+                            // `Vec3.yRot(-yRot)` of (dx, dy, 0).
+                            let vel = DVec3::new(dx * (-yaw).cos(), dy + 0.05, -dx * (-yaw).sin());
+                            events.push(EntityEvent::ItemParticle { pos: from, vel, item });
+                        }
+                    }
                 }
             }
             if m.kind == MobKind::Parrot {
@@ -1639,5 +1779,63 @@ mod tests {
                 assert_eq!((i64::from(ours.1), i64::from(ours.2)), count, "{kind:?} {id}");
             }
         }
+    }
+
+    /// v1.0 gap Track 2c: `Animal.mobInteract` feeds a baby with
+    /// `ageUp(getSpeedUpSecondsWhenFeeding(-age), true)`: the skipped time
+    /// is kept as `forcedAge` (and saved), with the 40 ticks of particles,
+    /// for every animal fed its food, not only calves.
+    #[test]
+    fn fed_babies_keep_their_forced_age() {
+        let mut e = Entities::new(3);
+        for (i, (kind, food)) in
+            [(MobKind::Cow, Item::WHEAT), (MobKind::Pig, Item::CARROT), (MobKind::Chicken, Item::WHEAT_SEEDS)]
+                .into_iter()
+                .enumerate()
+        {
+            e.spawn(kind, DVec3::new(i as f64 * 4.0 + 0.5, 64.0, 0.5));
+            let j = e.mobs.len() - 1;
+            e.mobs[j].baby = true;
+            e.mobs[j].age = -24000;
+            assert_eq!(e.feed_for_love(j, Some(food), PlayerId::HOST), Some(true), "{kind:?}");
+            let m = &e.mobs[j];
+            assert_eq!((m.age, m.forced_age, m.forced_age_timer), (-21600, 2400, 40), "{kind:?}");
+            assert_eq!(super::super::nether::save_mob(m)["forced_age"], 2400);
+            let m = &mut e.mobs[j];
+            for _ in 0..40 {
+                m.advance_animal_age(0.05);
+            }
+            assert_eq!(m.forced_sparkles, 10, "{kind:?}");
+        }
+    }
+
+    /// v1.0 gap Track 3b: `AgeableMob.ageUp(seconds, forced)` and
+    /// `forcedAge`: a fed calf keeps the time it was forced through (and
+    /// saves it); coming of age through `ageUp` makes that its age; 40
+    /// ticks of particles, one every fourth.
+    #[test]
+    fn forced_growth_is_kept_saved_and_given_back_on_coming_of_age() {
+        let mut m = Mob::new(MobKind::Dolphin, DVec3::ZERO, 0.0);
+        m.baby = true;
+        m.age = -24000;
+        m.age_up(speed_up_seconds(24000), true);
+        assert_eq!((m.age, m.forced_age, m.forced_age_timer), (-21600, 2400, 40));
+        // A feeding is a tenth of the time left, so it never reaches 0
+        // itself; a bigger, unforced `ageUp` does, and gives the forced age.
+        let saved = super::super::nether::save_mob(&m);
+        assert_eq!(saved["forced_age"], 2400);
+        let loaded = super::super::nether::load_mob(&saved).unwrap();
+        assert_eq!((loaded.forced_age, loaded.age), (2400, -21600));
+        m.age_up(1200, false);
+        assert_eq!(m.age, 2400);
+        assert!(!m.baby);
+        for _ in 0..40 {
+            m.advance_animal_age(0.05);
+        }
+        assert_eq!(m.forced_sparkles, 10);
+        assert_eq!(m.age, 2360, "an adult's positive age counts down");
+        // Unforced, untouched mobs still save as before.
+        let plain = Mob::new(MobKind::Dolphin, DVec3::ZERO, 0.0);
+        assert!(super::super::nether::save_mob(&plain).get("forced_age").is_none());
     }
 }

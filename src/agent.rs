@@ -15,7 +15,7 @@ use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 use command::CartographyAction;
 
-pub const HELP: &str = "observe [0..2] | catalog [query] (catalog tabs lists the creative tabs; catalog tab:<id> [query] one tab in Java's order) | hotbar save|load 1..9 (creative: the saved hotbars, as C/X + a number key) | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | recipe id [max] (the recipe book's click on an unlocked recipe: fills the 2x2 grid, or an aimed crafting table's 3x3, from the inventory, one set or every set with max, and takes the results) | recipes [all|craftable] [query] (the unlocked recipes the book shows, craftable and new marked) | chest take/put slot (an aimed ender chest holds your own items) | crafter toggle 0..8 (turn an empty slot of an aimed crafter off or on; observe shows its slots, result and power) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] (catalog tabs lists the creative tabs; catalog tab:<id> [query] one tab in Java's order) | hotbar save|load 1..9 (creative: the saved hotbars, as C/X + a number key) | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | recipe id [max] (the recipe book's click on an unlocked recipe: fills the 2x2 grid, or an aimed crafting table's 3x3, from the inventory, one set or every set with max, and takes the results) | recipes [all|craftable] [query] (the unlocked recipes the book shows, craftable and new marked) | chest take/put slot (an aimed ender chest holds your own items) | bundle slot [stack] (take a stack out of the bundle in inventory slot 0..35, the front one or tooltip cell 0..11 as the wheel picks it) | crafter toggle 0..8 (turn an empty slot of an aimed crafter off or on; observe shows its slots, result and power) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | slot click N [right] | slot drag even|one|clone N... | slot collect N | slot swap N 1..9|offhand | slot throw N [all] | slot toss [one] (Java's inventory clicks on your own inventory screen, by Java slot: 0..35 hotbar first, 36..39 armour from the boots up, 40 off-hand; drag shares the held stack out, collect gathers matching items as a double click does) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -25,6 +25,9 @@ pub enum Event {
     Bucket(crate::survival_items::bucket::Effect),
     Chew,
     HoneyDrink,
+    /// v1.0 gap Track 2h: `LivingEntity.spawnItemParticles` while eating
+    /// `Item` (5 a chew, 16 on finishing; drinks have none).
+    EatParticles(Item, u32),
     /// Drew, loaded, fired or shot a bow or crossbow.
     Shot(crate::session::ranged::Shot),
     /// Absorbed an experience orb; with the level-up chime volume when it
@@ -34,6 +37,12 @@ pub enum Event {
     EyeThrown(DVec3),
     /// Put an eye in the End portal frame here; whether that opened the portal.
     FrameFilled(IVec3, bool),
+    /// v1.0 gap track 6: threw a stack out of the bundle in use.
+    BundleThrown(crate::session::bundles::Emptied),
+    /// v1.0 final Track F4: a brush stroke (its sounds).
+    Brushed(crate::session::Stroke),
+    /// v1.0 final Track F4: blew a goat horn of this instrument from here.
+    Horn(u8, DVec3),
 }
 
 /// Unheard events kept per agent (a host without audio never drains them).
@@ -306,6 +315,9 @@ impl Agent {
             Command::Eat => {
                 let duration = if self.session.start_brushing(self.selected, world) {
                     200
+                } else if self.session.start_bundle_use(self.selected, entities) {
+                    // v1.0 gap track 6: holding use empties a bundle.
+                    crate::session::bundles::USE_TICKS
                 } else {
                     self.session.consumption_duration_either(self.selected)?
                 };
@@ -324,7 +336,10 @@ impl Agent {
                     return Err("action cooling down".into());
                 }
                 self.session.cancel_brushing();
-                let Some(shot) = self.session.start_draw(self.selected, world, entities) else {
+                // v1.0 final track F1: or the off-hand's, when the main hand passes.
+                let shot = self.session.start_draw(self.selected, world, entities);
+                let shot = shot.or_else(|| self.session.start_offhand_draw(self.selected, world, entities));
+                let Some(shot) = shot else {
                     return Err("hold a bow or crossbow with an arrow, away from a block that takes use".into());
                 };
                 self.emit(Event::Shot(shot));
@@ -482,6 +497,9 @@ impl Agent {
                     }
                     _ => {}
                 }
+                if let Used::HornPlayed { instrument, from } = done.used {
+                    self.emit(Event::Horn(instrument, from));
+                }
                 if !matches!(done.used, Used::PearlThrown { .. } | Used::PotionThrown { .. } | Used::Bucket(_)) {
                     self.cooldown = 0.22;
                 }
@@ -515,6 +533,8 @@ impl Agent {
                 }
             }
             Command::Craft(item) => self.craft(item, world, entities)?,
+            Command::Bundle(slot, pick) => self.bundle_take(slot, pick, entities)?,
+            Command::Slot(action) => self.slot_action(action, entities)?,
             Command::Recipe(id, max) => self.craft_recipe(id, max, world, entities)?,
             Command::Furnace(take, slot) => self.furnace_transfer(take, slot, world, entities)?,
             Command::Chest(take, slot) => {
@@ -1222,6 +1242,7 @@ impl Agent {
             (hurts.drown, Cause::DROWN),
             (hurts.lava, Cause::LAVA),
             (hurts.stalactite, Cause::FALLING_STALACTITE),
+            (hurts.stalagmite, Cause::STALAGMITE),
             (hurts.kinetic, Cause::FLY_INTO_WALL),
             (hurts.fire, Cause::IN_FIRE),
             (hurts.hot_floor, Cause::HOT_FLOOR),
@@ -1260,8 +1281,17 @@ impl Agent {
         }
         self.draw(world, entities);
         self.session.tick_blocking_unless_ticked(self.selected, self.eating && self.remaining > 0);
-        if self.session.brushing() && self.eating && self.remaining > 0 {
-            self.session.tick_brushing(self.selected, true, world);
+        self.session.tick_tooting(self.selected, self.eating && self.remaining > 0);
+        if self.session.bundle_in_use() {
+            let using = self.eating && self.remaining > 0;
+            if let Some(out) = self.session.tick_bundle_use(self.selected, using, entities) {
+                self.swings += 1;
+                self.emit(Event::BundleThrown(out));
+            }
+        } else if self.session.brushing() && self.eating && self.remaining > 0 {
+            if let Some(stroke) = self.session.tick_brushing(self.selected, true, world) {
+                self.emit(Event::Brushed(stroke));
+            }
         } else {
             self.chew(world, entities);
         }
@@ -1343,7 +1373,6 @@ impl Agent {
             self.bite = 0;
             return;
         }
-        let before = self.session.consumption_elapsed();
         let result = self.session.tick_consumption_either(self.selected, true, entities);
         let Ok(step) = result else {
             self.bite = 0;
@@ -1353,14 +1382,18 @@ impl Agent {
             return;
         };
         self.bite = (f64::from(step.progress) * EAT_TICKS as f64) as u32;
-        if ((before / TICK_SECONDS).round() as u32).is_multiple_of(5) {
-            self.emit(if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::HONEY_BOTTLE) {
-                Event::HoneyDrink
-            } else {
-                Event::Chew
-            });
+        // v1.0 gap Track 2h: Java's rhythm (`shouldEmitParticlesAndSounds`).
+        if step.effects {
+            let held = self.session.consumable_in_hands(self.selected);
+            self.emit(if held == Some(Item::HONEY_BOTTLE) { Event::HoneyDrink } else { Event::Chew });
+            if let Some(item) = held.filter(|i| !i.is_drink()) {
+                self.emit(Event::EatParticles(item, 5));
+            }
         }
         if let Some(consumed) = step.completed {
+            if !consumed.item.is_drink() {
+                self.emit(Event::EatParticles(consumed.item, 16));
+            }
             if consumed.item == crate::content::chorus::CHORUS_FRUIT {
                 self.session.chorus_teleport(world, entities);
             }
@@ -1476,12 +1509,31 @@ impl Agent {
 
     /// Damage through protection enchantments (armor points aside).
     fn damage(&mut self, amount: f32, cause: impl Into<Cause>) -> f32 {
-        let cause = cause.into();
+        self.damage_through(amount, cause.into(), false).1
+    }
+
+    /// [`Agent::damage`], through armor points too when `armored`: the hurt
+    /// cooldown sees `amount` before armor and enchantments, as Java's
+    /// `hurtServer` does (v1.0 gap Track 8d). Returns what armor wears by
+    /// and the damage taken.
+    fn damage_through(&mut self, amount: f32, cause: Cause, armored: bool) -> (f32, f32) {
         if self.immunity.blocks(cause) {
-            return 0.0;
+            return (0.0, 0.0);
         }
-        let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
-        let taken = self.session.vitals.damage(amount, cause, self.creative || self.session.mode.invulnerable());
+        let invulnerable = self.creative || self.session.mode.invulnerable();
+        let inv = &self.session.inventory;
+        let (points, toughness) = (inv.armor_points(), inv.armor_toughness());
+        let mut worn = false;
+        let (landed, taken) = self.session.vitals.hurt(amount, cause, invulnerable, |a| {
+            let a = if armored {
+                let (reduced, w) = simulation::damage::after_armor(a, cause, points, toughness);
+                worn = w;
+                reduced
+            } else {
+                a
+            };
+            crate::enchant::protect(a, &inv.armor, cause)
+        });
         if taken > 0.0 && self.session.vitals.is_dead() {
             self.session.totem_saves(self.selected);
         }
@@ -1489,7 +1541,7 @@ impl Agent {
         if taken > 0.0 && self.session.vitals.last_hit_fresh() {
             self.session.player.animation.hurt_direction = 0.0;
         }
-        taken
+        (if worn { landed } else { 0.0 }, taken)
     }
 
     /// Damage from a mob, arrow, explosion or the world, through armor
@@ -1501,15 +1553,7 @@ impl Agent {
         if knockback.with_y(0.0).length_squared() > 0.0 && self.shielded(amount, -knockback) {
             return 0.0;
         }
-        let (reduced, wear) = self.armor_absorb(amount, cause);
-        self.hurt_after_armor(reduced, wear, cause, knockback, None, entities)
-    }
-
-    /// `getDamageAfterArmorAbsorb`: the damage left and the armor wear.
-    fn armor_absorb(&self, amount: f32, cause: Cause) -> (f32, f32) {
-        let inv = &self.session.inventory;
-        let (reduced, worn) = simulation::damage::after_armor(amount, cause, inv.armor_points(), inv.armor_toughness());
-        (reduced, if worn { amount } else { 0.0 })
+        self.hurt_through(amount, cause, true, knockback, None, entities)
     }
 
     /// A raised shield facing `toward` (horizontally, from this agent to the
@@ -1539,14 +1583,19 @@ impl Agent {
         {
             return 0.0;
         }
-        let (reduced, wear) = self.armor_absorb(amount, cause);
-        self.hurt_after_armor(reduced, wear, cause, DVec3::ZERO, Some(hit), entities)
+        self.hurt_through(amount, cause, true, DVec3::ZERO, Some(hit), entities)
     }
 
     /// Magic damage from something consumed (a harming potion): no armor or
     /// knockback, with protection and death/drop rules.
     pub fn hurt_magic(&mut self, amount: f32, entities: &mut Entities) -> f32 {
-        self.hurt_after_armor(amount, 0.0, Cause::MAGIC, DVec3::ZERO, None, entities)
+        self.hurt_magic_by(amount, Cause::MAGIC, entities)
+    }
+
+    /// v1.0 gap Track 8g: [`Agent::hurt_magic`] from `cause` (a thrown
+    /// potion's `indirectMagic`).
+    pub fn hurt_magic_by(&mut self, amount: f32, cause: Cause, entities: &mut Entities) -> f32 {
+        self.hurt_through(amount, cause, false, DVec3::ZERO, None, entities)
     }
 
     /// Mounted falls bypass armor points, retaining protection and death/drop rules.
@@ -1564,32 +1613,45 @@ impl Agent {
         if self.shielded(damage, from - self.session.player.pos) {
             return 0.0;
         }
-        self.hurt_after_armor(damage, 0.0, Cause::SONIC_BOOM, push * crate::knockback::TICK_RATE, None, entities)
+        self.hurt_through(damage, Cause::SONIC_BOOM, false, push * crate::knockback::TICK_RATE, None, entities)
     }
 
-    pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {
-        let inv = &self.session.inventory;
-        let reduced = simulation::survival::armor_reduce(physical, inv.armor_points(), inv.armor_toughness());
-        self.hurt_after_armor(reduced + magic, physical, Cause::GUARDIAN_BEAM, DVec3::ZERO, None, entities)
-    }
-
-    fn hurt_after_armor(
+    /// v1.0 gap Track 8d: `GuardianAttackGoal.tick`'s two hits,
+    /// `indirectMagic` then the attack through armor, which the hurt
+    /// cooldown lets in only by its excess.
+    /// v1.0 final F8: `by` the guardian, whom both hits name.
+    pub fn hurt_beam(
         &mut self,
-        reduced: f32,
-        wear: f32,
+        physical: f32,
+        magic: f32,
+        by: Option<crate::entity::trident::Owner>,
+        entities: &mut Entities,
+    ) -> f32 {
+        let first = self.hurt_through(magic, Cause::GUARDIAN_MAGIC.by(by), false, DVec3::ZERO, None, entities);
+        first + self.hurt_through(physical, Cause::GUARDIAN_BEAM.by(by), true, DVec3::ZERO, None, entities)
+    }
+
+    fn hurt_through(
+        &mut self,
+        amount: f32,
         cause: Cause,
+        armored: bool,
         knockback: DVec3,
         java: Option<&crate::knockback::Hit>,
         entities: &mut Entities,
     ) -> f32 {
-        let taken = self.damage(reduced, cause);
+        if self.session.vitals.is_dead() {
+            return 0.0;
+        }
+        let (wear, taken) = self.damage_through(amount, cause, armored);
         if taken <= 0.0 {
             return 0.0;
         }
         if let Some(hit) = java {
             let mut jitter = || f64::from(entities.roll_range(0.0, 1.0));
             self.session.knocked_back(hit, &mut jitter);
-        } else {
+        } else if self.session.vitals.last_hit_fresh() {
+            // Only a full hit takes `hurtServer`'s push (v1.0 gap Track 8d).
             self.session.player.hurt_from(knockback);
             self.session.player.vel +=
                 simulation::survival::knockback_taken(knockback, self.session.inventory.knockback_resistance());
@@ -1692,6 +1754,136 @@ impl Agent {
             json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers,"crafter":crafter})
         });
         json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"absorption":self.session.vitals.effects.absorption(),"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"gliding":self.session.player.fall_flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks,"recipe_book":self.recipe_book_state()})
+    }
+}
+
+impl Agent {
+    /// v1.0 gap track 6b: `bundle <slot> [stack]`, the agent's
+    /// `BundleMouseActions` pick and right click: the picked stack (a cell
+    /// of the contents tooltip, `shown_count` of them; the front stack
+    /// without a pick) comes out of the bundle onto the cursor, and from
+    /// there into the inventory (what doesn't fit is dropped).
+    /// v1.0 final track F1: Java's container clicks on the agent's own
+    /// inventory screen (`InventoryMenu` without its crafting grid).
+    fn slot_action(&mut self, action: command::SlotAction, entities: &mut Entities) -> Result<(), String> {
+        use crate::inventory::clicks::{self, Cells, InventoryCells};
+        use command::SlotAction as A;
+        let creative = self.session.mode.is_creative();
+        let index = |s: usize| InventoryCells::index(s).ok_or_else(|| "no such slot".to_string());
+        let mut cursor = self.session.inventory.cursor.take();
+        let inv = &mut self.session.inventory;
+        let result = match action {
+            A::Click(s, right) => {
+                index(s)?;
+                inv.cursor = cursor.take();
+                match s {
+                    36..=39 => {
+                        use crate::item::ArmorPiece as P;
+                        let piece = [P::Boots, P::Leggings, P::Chestplate, P::Helmet][s - 36];
+                        inv.click_armor(piece, right, creative);
+                    }
+                    crate::inventory::OFFHAND => inv.click_offhand(right),
+                    s => inv.click(s, right),
+                }
+                cursor = inv.cursor.take();
+                Ok(())
+            }
+            A::Drag(kind, slots) => {
+                if cursor.is_none() {
+                    Err("no stack held".to_string())
+                } else if !kind.allowed(creative) {
+                    Err("only creative drags fill slots".to_string())
+                } else {
+                    let mut unique: Vec<usize> = Vec::new();
+                    for s in slots {
+                        let i = index(s)?;
+                        if !unique.contains(&i) {
+                            unique.push(i);
+                        }
+                    }
+                    let mut cells = InventoryCells { inventory: inv, creative };
+                    if let [only] = unique[..] {
+                        let mut cell = cells.get(only);
+                        if cells.may_place(only, cursor.as_ref().unwrap()) {
+                            crate::inventory::click_slot(&mut cell, &mut cursor, kind != clicks::Drag::Even);
+                            cells.set(only, cell);
+                        }
+                    } else {
+                        clicks::finish_drag(&mut cells, &unique, kind, &mut cursor);
+                    }
+                    Ok(())
+                }
+            }
+            A::Collect(s) => {
+                let i = index(s)?;
+                clicks::pickup_all(&mut InventoryCells { inventory: inv, creative }, i, false, &mut cursor);
+                Ok(())
+            }
+            A::Swap(s, key) => {
+                let (i, src) = (index(s)?, index(key.unwrap_or(crate::inventory::OFFHAND))?);
+                if cursor.is_some() {
+                    Err("the cursor holds a stack".to_string())
+                } else {
+                    if let Some(left) = clicks::swap(&mut InventoryCells { inventory: inv, creative }, i, src) {
+                        let n = inv.add_stack(left);
+                        if n > 0 {
+                            crate::session::storage::toss(&self.session, entities, Stack { count: n, ..left });
+                        }
+                    }
+                    Ok(())
+                }
+            }
+            A::Throw(s, all) => {
+                let i = index(s)?;
+                if cursor.is_some() {
+                    Err("the cursor holds a stack".to_string())
+                } else {
+                    let mut cells = InventoryCells { inventory: inv, creative };
+                    let thrown = match cells.get(i) {
+                        Some(st) if cells.may_pickup(i) => cells.take(i, if all { st.count } else { 1 }),
+                        _ => None,
+                    };
+                    if let Some(t) = thrown {
+                        crate::session::storage::toss(&self.session, entities, t);
+                    }
+                    Ok(())
+                }
+            }
+            A::Toss(one) => {
+                inv.cursor = cursor.take();
+                let tossed = crate::session::storage::toss_cursor(&mut self.session, entities, one);
+                cursor = self.session.inventory.cursor.take();
+                if tossed { Ok(()) } else { Err("no stack held".to_string()) }
+            }
+        };
+        self.session.inventory.cursor = cursor;
+        result
+    }
+
+    fn bundle_take(&mut self, slot: usize, pick: Option<usize>, entities: &mut Entities) -> Result<(), String> {
+        use crate::content::bundle;
+        let inv = &mut self.session.inventory;
+        let mut cell = inv.get(slot).filter(|s| bundle::is_bundle(s.item));
+        let Some(stack) = cell else { return Err("no bundle in that slot".into()) };
+        let shown = bundle::shown_count(stack.bundle_contents().len());
+        if stack.bundle_contents().is_empty() {
+            return Err("the bundle is empty".into());
+        }
+        if pick.is_some_and(|p| p >= shown) {
+            return Err(format!("the bundle shows {shown} stacks"));
+        }
+        let mut cursor = None;
+        let ((), _) = bundle::clicking(pick, || {
+            bundle::click(&mut cell, &mut cursor, true);
+        });
+        inv.slots[slot] = cell;
+        if let Some(out) = cursor {
+            let left = inv.add_stack(out);
+            if left > 0 {
+                crate::session::storage::toss(&self.session, entities, crate::inventory::Stack { count: left, ..out });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -1970,7 +2162,8 @@ mod tests {
         bare.vitals.reset_fall();
         bare.hurt(30.0, "was blown up by a creeper", DVec3::ZERO, &mut entities);
         assert!(bare.vitals.is_dead() && !bare.targetable());
-        assert_eq!(bare.vitals.death.as_deref(), Some("was blown up by a creeper"));
+        // v1.0 gap Track 8g: in Java's words (`entity.minecraft.creeper`).
+        assert_eq!(bare.vitals.death.as_deref(), Some("was blown up by Creeper"));
         assert!(bare.inventory.get(0).is_none());
         assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 2);
     }
@@ -2590,6 +2783,62 @@ mod tests {
     }
 
     #[test]
+    fn slot_commands_drag_collect_swap_and_throw_on_the_own_inventory() {
+        use crate::inventory::clicks::Drag;
+        assert!(matches!(
+            Command::parse("slot drag even 9 10 11"),
+            Ok(Command::Slot(command::SlotAction::Drag(Drag::Even, ref s))) if *s == [9, 10, 11]
+        ));
+        assert!(Command::parse("slot drag sideways 9").is_err());
+        assert!(Command::parse("slot swap 41 1").is_err());
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let stone = Item::DIAMOND;
+        a.session.inventory.slots[0] = Some(Stack::new(stone, 9));
+        a.execute(Command::parse("slot click 0").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        a.execute(Command::parse("slot drag even 9 10 11").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.session.inventory.slots[9..12], [Some(Stack::new(stone, 3)); 3]);
+        assert_eq!(a.session.inventory.cursor, None);
+        a.execute(Command::parse("slot click 9").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        a.execute(Command::parse("slot collect 9").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.session.inventory.cursor, Some(Stack::new(stone, 9)));
+        a.execute(Command::parse("slot click 4").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        a.execute(Command::parse("slot swap 4 offhand").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.session.inventory.offhand, Some(Stack::new(stone, 9)));
+        a.execute(Command::parse("slot throw 40").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.session.inventory.offhand, Some(Stack::new(stone, 8)));
+    }
+
+    #[test]
+    fn the_bundle_command_takes_the_picked_stack_out() {
+        use crate::content::bundle;
+        use crate::inventory::components::Payload;
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let held = vec![Stack::new(Item::DIAMOND, 3), Stack::new(Item::STICK, 5), Stack::new(Item::APPLE, 2)];
+        a.inventory.slots[4] = Some(Stack::new(bundle::BUNDLE, 1).with_payload(Payload::Bundle(held.clone())));
+        assert!(matches!(Command::parse("bundle 4 1"), Ok(Command::Bundle(4, Some(1)))));
+        assert!(matches!(Command::parse("bundle 4"), Ok(Command::Bundle(4, None))));
+        assert!(Command::parse("bundle 36").is_err() && Command::parse("bundle 4 12").is_err());
+        // The picked cell (1, the stack after the front) comes out first...
+        a.execute(Command::Bundle(4, Some(1)), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.inventory.get(4).unwrap().bundle_contents(), [held[0], held[2]]);
+        assert_eq!(a.inventory.slots[0], Some(held[1]));
+        // ...then with no pick, the front one.
+        a.execute(Command::Bundle(4, None), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.inventory.get(4).unwrap().bundle_contents(), [held[2]]);
+        assert_eq!(a.inventory.slots[1], Some(held[0]));
+        // A pick past what the tooltip shows, an empty bundle or no bundle
+        // is refused.
+        assert!(a.execute(Command::Bundle(4, Some(1)), &mut world, &mut entities, &[]).is_err());
+        a.execute(Command::Bundle(4, None), &mut world, &mut entities, &[]).unwrap();
+        assert!(a.execute(Command::Bundle(4, None), &mut world, &mut entities, &[]).is_err());
+        assert!(a.execute(Command::Bundle(0, None), &mut world, &mut entities, &[]).is_err());
+    }
+
+    #[test]
     fn the_sign_command_writes_one_side_of_a_sign_in_reach() {
         let mut world = world();
         let mut entities = Entities::new(1);
@@ -2735,5 +2984,70 @@ mod village_agent_tests {
         w.set_block(IVec3::new(2, 151, 1), Block::STONE);
         assert!(a.execute(Command::parse("trade").unwrap(), &mut w, &mut e, &[]).is_err());
         assert!(Command::parse("trade 11").is_err());
+    }
+
+    /// v1.0 gap Track 7f: `Villager.mobInteract`'s `setUnhappy`: a villager
+    /// with no offers refuses with its head shake, a child shakes its head
+    /// at any use, a wandering trader never does, and `Villager.tick`
+    /// counts the 40 ticks down.
+    #[test]
+    fn refused_trades_and_pestered_children_shake_their_heads() {
+        use crate::entity::villager::UNHAPPY_TICKS;
+        let mut saved = rustc_hash::FxHashMap::default();
+        saved.insert(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+        let mut w = World::new_headless(Arc::new(Generator::new(1)), saved, 2);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        for _ in 0..10000 {
+            w.update(a.player.pos);
+            if w.is_loaded(IVec3::new(1, 150, 1)) {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        a.player.yaw = 0.0;
+        a.player.pitch = 0.0;
+        let (eye, dir) = (a.player.eye(), a.player.forward().as_dvec3());
+        let mut e = Entities::new(42);
+        e.spawn(MobKind::Villager, DVec3::new(3.5, 150.0, 1.5));
+        let unhappy = |e: &Entities| e.mobs[0].villager.as_ref().unwrap().unhappy;
+        // A jobless adult has no offers: it refuses.
+        let id = e.target_merchant(&w, eye, dir, 4.5).expect("the villager in view");
+        assert!(!e.pester_child(&w, eye, dir, 4.5));
+        e.refuse_trade(id);
+        assert_eq!(unhappy(&e), UNHAPPY_TICKS);
+        // `Villager.tick` counts it down to the end of the shake.
+        let ctx = crate::entity::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+        };
+        let mut rng = crate::entity::Rng::new(1);
+        for _ in 0..UNHAPPY_TICKS {
+            e.mobs[0].update(0.05, &w, &ctx, &mut rng, &mut Vec::new());
+        }
+        assert_eq!(unhappy(&e), 0);
+        // A child: no trading screen, a head shake; not while asleep.
+        e.mobs[0].age = -24000;
+        e.mobs[0].baby = true;
+        // Looking down at the child's middle, where it stands now.
+        e.mobs[0].pos = DVec3::new(3.5, 150.0, 1.5);
+        let dir = (DVec3::new(3.5, 150.4, 1.5) - eye).normalize();
+        assert!(e.target_merchant(&w, eye, dir, 4.5).is_none());
+        assert!(e.pester_child(&w, eye, dir, 4.5));
+        assert_eq!(unhappy(&e), UNHAPPY_TICKS);
+        e.mobs[0].villager.as_mut().unwrap().unhappy = 0;
+        e.mobs[0].villager.as_mut().unwrap().sleeping = true;
+        assert!(!e.pester_child(&w, eye, dir, 4.5));
+        assert_eq!(unhappy(&e), 0);
+        // A wandering trader with nothing to sell never shakes its head.
+        let mut e = Entities::new(43);
+        e.spawn(MobKind::WanderingTrader, DVec3::new(3.5, 150.0, 1.5));
+        if let Some(id) = e.target_merchant(&w, eye, dir, 4.5) {
+            e.refuse_trade(id);
+        }
+        assert!(e.mobs.iter().all(|m| m.villager.as_ref().is_none_or(|v| v.unhappy == 0)));
     }
 }

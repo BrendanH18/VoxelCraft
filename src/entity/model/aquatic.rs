@@ -46,6 +46,9 @@ const PUFFER: &[Cuboid] = &[
     cube([-0.4, 6.0, -2.6], [0.6, 6.05, -1.6], [150, 110, 46], 0),
 ];
 const SPIKE: &[Cuboid] = &[cube([-0.5, -0.5, 0.0], [0.5, 0.5, 3.0], [236, 190, 86], 0)];
+/// v1.0 gap Track 7c: the pufferfish's blue pectoral fins (`*_blue_fin`).
+const PUFFER_FIN_R: &[Cuboid] = &[cube([-2.0, -0.15, -1.0], [0.0, 0.15, 1.0], [70, 144, 190], 6)];
+const PUFFER_FIN_L: &[Cuboid] = &[cube([0.0, -0.15, -1.0], [2.0, 0.15, 1.0], [70, 144, 190], 6)];
 const SQUID: &[Cuboid] = &[
     cube([-4.0, 5.0, -4.0], [4.0, 13.0, 4.0], [49, 71, 80], 22),
     cube([-3.0, 6.0, 4.0], [-1.0, 8.0, 4.1], [232, 232, 232], 0),
@@ -103,16 +106,66 @@ const AXO_TAIL: &[Cuboid] = &[cube([-0.5, 0.0, -6.0], [0.5, 4.0, 0.0], [217, 130
 const GUARDIAN: &[Cuboid] = &[
     cube([-6.0, 0.0, -6.0], [6.0, 13.6, 6.0], [105, 138, 129], 35),
     cube([-4.0, 3.0, 6.0], [4.0, 9.0, 6.2], [214, 212, 177], 12),
-    cube([-1.5, 4.0, 6.2], [1.5, 7.0, 6.4], [164, 60, 48], 0),
-    cube([-0.6, 4.5, 6.4], [0.6, 6.5, 6.5], [26, 27, 24], 0),
     // v0.18 Track 6: plate seams round the body and a lid over the eye.
     cube([-6.05, 10.0, -6.05], [6.05, 10.5, 6.05], [70, 96, 90], 0),
     cube([-6.05, 2.0, -6.05], [6.05, 2.5, 6.05], [70, 96, 90], 0),
     cube([-4.0, 9.0, 6.0], [4.0, 9.6, 6.25], [214, 150, 80], 0),
 ];
-const GUARD_TAIL: &[Cuboid] = &[
-    cube([-1.5, -1.5, -8.0], [1.5, 1.5, 0.0], [95, 126, 113], 25),
-    cube([-0.5, -4.0, -9.0], [0.5, 4.0, -7.0], [215, 161, 64], 16),
+/// v1.0 gap Track 7c: the iris and pupil on their own part, which
+/// [`track_eye`] slides toward what the guardian watches.
+pub(super) static GUARD_EYE: &[Cuboid] = &[
+    cube([-1.5, 4.0, 6.2], [1.5, 7.0, 6.4], [164, 60, 48], 0),
+    cube([-0.6, 4.5, 6.4], [0.6, 6.5, 6.5], [26, 27, 24], 0),
+];
+/// v1.0 gap Track 7c: `GuardianModel`'s three tail joints (4, 3 and 2
+/// pixels thick; 8, 7 and 6 long, the last with its fin) hanging from the
+/// body's centre, given from Java's pivots; the first starts a pixel
+/// inside the body's back, which is 2 pixels shallower than Java's.
+const GUARD_TAIL_COLOUR: Rgb = [95, 126, 113];
+static GUARD_TAIL: &[rig::Bone] = &[
+    rig::bone(&[rig::jbox([-2.0, 14.0, 5.0], [4.0, 4.0, 8.0], GUARD_TAIL_COLOUR, 25)], rig::ROOT, [0.0; 3], [0.0; 3]),
+    rig::bone(&[rig::jbox([0.0, 14.0, 0.0], [3.0, 3.0, 7.0], GUARD_TAIL_COLOUR, 25)], 0, [-1.5, 0.5, 12.0], [0.0; 3]),
+    rig::bone(
+        &[
+            rig::jbox([0.0, 14.0, 0.0], [2.0, 2.0, 6.0], GUARD_TAIL_COLOUR, 25),
+            rig::jbox([1.0, 10.5, 3.0], [1.0, 9.0, 9.0], [215, 161, 64], 16),
+        ],
+        1,
+        [0.5, 0.5, 6.0],
+        [0.0; 3],
+    ),
+];
+/// v1.0 gap Track 7c: `GuardianModel`'s twelve spikes, one on each edge of
+/// the body, as Java's `SPIKE_X/Y/Z` (pixels from the centre, here scaled
+/// to this game's body) and `SPIKE_X/Y/Z_ROT` (turns of pi).
+const GUARD_SPIKE: &[Cuboid] = &[rig::jbox([-0.75, -3.4, -0.75], [1.5, 6.8, 1.5], [236, 190, 86], 8)];
+const SPIKE_AT: [[f32; 3]; 12] = [
+    [0.0, -8.0, 8.0],
+    [0.0, -8.0, -8.0],
+    [8.0, -8.0, 0.0],
+    [-8.0, -8.0, 0.0],
+    [-8.0, 0.0, -8.0],
+    [8.0, 0.0, -8.0],
+    [8.0, 0.0, 8.0],
+    [-8.0, 0.0, 8.0],
+    [0.0, 8.0, 8.0],
+    [0.0, 8.0, -8.0],
+    [8.0, 8.0, 0.0],
+    [-8.0, 8.0, 0.0],
+];
+const SPIKE_ROT: [[f32; 3]; 12] = [
+    [1.75, 0.0, 0.0],
+    [0.25, 0.0, 0.0],
+    [0.0, 0.0, 0.25],
+    [0.0, 0.0, 1.75],
+    [0.5, 0.25, 0.0],
+    [0.5, 1.75, 0.0],
+    [0.5, 1.25, 0.0],
+    [0.5, 0.75, 0.0],
+    [1.25, 0.0, 0.0],
+    [0.75, 0.0, 0.0],
+    [0.0, 0.0, 0.75],
+    [0.0, 0.0, 1.25],
 ];
 const CAT: &[Cuboid] = &[
     cube([-2.5, 3.0, -6.0], [2.5, 7.0, 5.0], [30, 29, 31], 18),
@@ -154,54 +207,128 @@ const TURTLE_HEAD: &[Cuboid] = &[
 const TURTLE_FLIPPER: &[Cuboid] = &[cube([-1.0, -1.0, -2.0], [1.0, 1.0, 2.0], [102, 168, 96], 14)];
 const TURTLE_SIDE_FLIPPER: &[Cuboid] = &[cube([0.0, -0.5, -2.0], [6.0, 0.5, 2.0], [102, 168, 96], 14)];
 
-pub(super) fn pose(m: &Mob, time: f32) -> Parts {
-    let tail = Quat::from_rotation_y((time * 5.0 + m.limb_phase).sin() * 0.3);
+pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
+    use crate::entity::mob_anim::lerp;
+    let tail = Quat::from_rotation_y((time * 5.0 + m.limb_phase * motion::WALK_FREQ).sin() * 0.3);
+    let age = age_ticks(time);
+    let (rx, ry, rz) = (Quat::from_rotation_x, Quat::from_rotation_y, Quat::from_rotation_z);
     match m.kind {
-        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish => parts![
-            part(
-                match m.kind {
-                    MobKind::Salmon => SALMON,
-                    MobKind::TropicalFish => TROPICAL,
-                    _ => FISH,
-                },
-                [0.0; 3],
-                Quat::IDENTITY
-            ),
-            part(FISH_TAIL, [0.0, 3.0, if m.kind == MobKind::Salmon { -7.0 } else { -4.5 }], tail)
-        ],
+        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish => {
+            // v1.0 gap Track 7b: `CodModel`, `SalmonModel` and the tropical
+            // fish models swing the tail (the salmon's back half) on
+            // `sin(0.6 * ageInTicks)`, harder out of water; their renderers
+            // sway the body 4.3 degrees on the same wave and, out of water,
+            // lay it on its side, lifted a little (Java's y turns and
+            // offsets on this model's sides).
+            let salmon = m.kind == MobKind::Salmon;
+            let (amp, freq) = match (salmon, m.in_water) {
+                (true, false) => (1.3, 1.7),
+                (false, false) => (1.5, 1.0),
+                _ => (1.0, 1.0),
+            };
+            let wave = (freq * 0.6 * age).sin();
+            let fin = if salmon { 0.25 * amp * wave } else { 0.45 * amp * wave };
+            let body_amp = if salmon { amp } else { 1.0 };
+            let mut p = parts![
+                part(
+                    match m.kind {
+                        MobKind::Salmon => SALMON,
+                        MobKind::TropicalFish => TROPICAL,
+                        _ => FISH,
+                    },
+                    [0.0; 3],
+                    Quat::IDENTITY
+                ),
+                part(FISH_TAIL, [0.0, 3.0, if salmon { -7.0 } else { -4.5 }], ry(fin))
+            ];
+            let sway = ry((body_amp * 4.3 * wave).to_radians());
+            if m.in_water {
+                p.transform(Vec3::ZERO, sway);
+            } else {
+                let lift = if m.kind == MobKind::Cod { Vec3::new(-1.6, 1.6, 1.6) } else { Vec3::new(-3.2, 1.6, 0.0) };
+                p.transform(sway * lift, sway * rz(-FRAC_PI_2));
+            }
+            p
+        }
         MobKind::Pufferfish => {
-            let mut p = parts![part(PUFFER, [0.0; 3], Quat::IDENTITY)];
+            // `PufferfishRenderer` bobs it `cos(ageInTicks * 0.05) * 0.08`
+            // blocks.
+            let bob = (age * 0.05).cos() * 0.08 * 16.0;
+            // v1.0 gap Track 7c: the pufferfish models' blue fins flap,
+            // `zRot` -+0.2 +- 0.4 sin(ageInTicks * 0.2) (Java's right one on
+            // -X; z turns change sign).
+            let flap = -0.2 + 0.4 * (age * 0.2).sin();
+            let mut p = parts![
+                part(PUFFER, [0.0, bob, 0.0], Quat::IDENTITY),
+                part(PUFFER_FIN_R, [-3.0, 2.0 + bob, 1.5], rz(-flap)),
+                part(PUFFER_FIN_L, [3.0, 2.0 + bob, 1.5], rz(flap))
+            ];
             if m.aquatic.as_ref().is_some_and(|a| a.puff > 0) {
                 for i in 0..8 {
                     let a = i as f32 * PI * 0.25;
-                    p.push(part(SPIKE, [a.sin() * 3.0, 3.0, a.cos() * 3.0], Quat::from_rotation_y(a)));
+                    p.push(part(SPIKE, [a.sin() * 3.0, 3.0 + bob, a.cos() * 3.0], Quat::from_rotation_y(a)));
                 }
             }
             p
         }
         MobKind::Squid | MobKind::GlowSquid => {
+            // `SquidModel`: every tentacle opens outward by
+            // `tentacleAngle`; `SquidRenderer` turns the body about its
+            // middle, half a block up, by `xBodyRot` then `zBodyRot`
+            // (`Squid.aiStep`'s state).
+            let a = &m.anim;
+            let open = lerp(alpha, a.o_tentacle_angle, a.tentacle_angle);
             let mut p = parts![part(SQUID, [0.0; 3], Quat::IDENTITY)];
             for i in 0..8 {
                 let a = i as f32 * PI * 0.25;
-                p.push(part(
-                    TENTACLE,
-                    [a.sin() * 3.0, 6.0, a.cos() * 3.0],
-                    Quat::from_rotation_y(a) * Quat::from_rotation_x(0.4 + (time * 2.0).sin() * 0.3),
-                ));
+                p.push(part(TENTACLE, [a.sin() * 3.0, 6.0, a.cos() * 3.0], ry(a) * rx(-open)));
             }
+            let (x, z) = (lerp(alpha, a.o_x_body_rot, a.x_body_rot), lerp(alpha, a.o_z_body_rot, a.z_body_rot));
+            p.turn_about(Vec3::new(0.0, 8.0, 0.0), rx(-x.to_radians()) * ry(z.to_radians()));
             p
         }
-        MobKind::Dolphin => parts![
-            part(DOLPHIN, [0.0; 3], Quat::IDENTITY),
-            part(FLUKE, [0.0, 3.0, -9.0], Quat::from_rotation_x((time * 4.0).sin() * 0.25))
-        ],
+        MobKind::Dolphin => {
+            // `DolphinModel`: the body pitches with the dolphin and turns
+            // with its head; swimming, it rocks on `cos(ageInTicks * 0.3)`
+            // and the tail and fluke beat (`isMoving`: it is moving, here
+            // its walk speed, which follows the distance moved a tick).
+            let moving = m.limb_amp > 1e-3;
+            let wave = (age * 0.3).cos();
+            let (rock, fluke) = if moving { (-0.05 - 0.05 * wave, -0.3 * wave) } else { (0.0, 0.0) };
+            // (v1.0 gap Track 7c: calves draw `BabyDolphinModel`,
+            // `baby_rigs::dolphin`.)
+            let mut p = parts![part(DOLPHIN, [0.0; 3], Quat::IDENTITY), part(FLUKE, [0.0, 3.0, -9.0], rx(fluke))];
+            let pitch = m.move_ctl.pitch.to_radians() + rock;
+            p.turn_about(Vec3::new(0.0, 4.0, 0.0), ry(-m.head_yaw) * rx(pitch));
+            p
+        }
         MobKind::Axolotl => parts![part(AXOLOTL, [0.0; 3], Quat::IDENTITY), part(AXO_TAIL, [0.0, 1.0, -5.0], tail)],
         MobKind::Guardian | MobKind::ElderGuardian => {
-            let mut p = parts![part(GUARDIAN, [0.0; 3], Quat::IDENTITY), part(GUARD_TAIL, [0.0, 5.0, -6.0], tail)];
-            for i in 0..8 {
-                let a = i as f32 * PI * 0.25;
-                let extent = if m.aquatic.as_ref().is_some_and(|a| a.beam.is_some()) { 4.0 } else { 6.0 };
-                p.push(part(SPIKE, [a.sin() * extent, 6.0, a.cos() * extent], Quat::from_rotation_y(a)));
+            // `GuardianModel`: the tail's three joints swing `sin(tail) *
+            // pi` times 0.05, 0.1 and 0.15, each on the last (v1.0 gap
+            // Track 7c); the twelve spikes stand out by `1 + cos(ageInTicks
+            // * 1.5 + i) / 100` less the withdrawal `(1 - spikes) * 0.55`
+            // (`Guardian.aiStep`'s client state: drawn in while it swims,
+            // flickering out of water). The eye is placed by `track_eye`.
+            let a = &m.anim;
+            let swim = lerp(alpha, a.o_tail, a.tail).sin() * PI;
+            let withdrawal = (1.0 - lerp(alpha, a.o_spikes, a.spikes)) * 0.55;
+            let mut tail = rig::Rig::new(GUARD_TAIL);
+            // The tail's centre line 5 pixels up, its turn about the body's.
+            tail.at[rig::MODEL_ROOT] = [0.0, 3.0, 0.0];
+            for (i, k) in [0.05, 0.1, 0.15].into_iter().enumerate() {
+                tail.y_rot(i, swim * k);
+            }
+            let mut p = parts![part(GUARDIAN, [0.0; 3], Quat::IDENTITY), part(GUARD_EYE, [0.0; 3], Quat::IDENTITY)];
+            for t in tail.parts().iter() {
+                p.push(*t);
+            }
+            let (centre, half) = (Vec3::new(0.0, 6.8, 0.0), Vec3::new(6.0, 6.8, 6.0) / 8.0);
+            for (i, (at, rot)) in SPIKE_AT.iter().zip(SPIKE_ROT).enumerate() {
+                let out = 1.0 + (age * 1.5 + i as f32).cos() * 0.01 - withdrawal;
+                // Java's y runs down and its z back.
+                let at = centre + Vec3::new(at[0], -at[1], -at[2]) * half * out;
+                p.push(part(GUARD_SPIKE, at.to_array(), rig::java_quat(rot.map(|r| r * PI))));
             }
             p
         }
@@ -209,10 +336,13 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             let mut p = parts![
                 part(CAT, [0.0; 3], Quat::IDENTITY),
                 part(CAT_TAIL, [0.0, 5.0, -6.0], tail),
-                part(CAT_LEG, [-2.0, 3.0, 3.0], Quat::from_rotation_x(m.limb_phase.sin() * 0.5)),
-                part(CAT_LEG, [2.0, 3.0, 3.0], Quat::from_rotation_x(-m.limb_phase.sin() * 0.5)),
-                part(CAT_LEG, [-2.0, 3.0, -4.0], Quat::IDENTITY),
-                part(CAT_LEG, [2.0, 3.0, -4.0], Quat::IDENTITY)
+                // v1.0 gap Track 7: `AdultFelineModel`, every leg on
+                // `cos(pos * 0.6662) * speed`, the left hind leading.
+                // (v1.0 gap Track 7c: Java's right legs on -X.)
+                part(CAT_LEG, [-2.0, 3.0, 3.0], Quat::from_rotation_x(walk_cos(m))),
+                part(CAT_LEG, [2.0, 3.0, 3.0], Quat::from_rotation_x(-walk_cos(m))),
+                part(CAT_LEG, [-2.0, 3.0, -4.0], Quat::from_rotation_x(-walk_cos(m))),
+                part(CAT_LEG, [2.0, 3.0, -4.0], Quat::from_rotation_x(walk_cos(m)))
             ];
             if m.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
                 p.push(part(CAT_COLLAR, [0.0; 3], Quat::IDENTITY));
@@ -220,19 +350,50 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             p
         }
         MobKind::Turtle => {
-            let paddle = if m.in_water { (time * 4.0).sin() * 0.6 } else { m.limb_phase.sin() * m.limb_amp };
+            // v1.0 gap Track 7: `TurtleModel`. On land the flippers sweep
+            // round at five times the walk position (front 8, hind 3 times
+            // the speed); off it they row at `0.6662 * 0.6` of it.
+            let (pos, speed) = (m.limb_phase, m.limb_amp);
+            let (ry, rx, rz) = (Quat::from_rotation_y, Quat::from_rotation_x, Quat::from_rotation_z);
+            let (front, hind, row) = if !m.in_water && m.on_ground {
+                let sweep = (pos * 5.0).cos() * speed;
+                (-8.0 * sweep, 3.0 * sweep, 0.0)
+            } else {
+                (0.0, 0.0, (pos * motion::WALK_FREQ * 0.6).cos() * 0.5 * speed)
+            };
             parts![
                 part(TURTLE_SHELL, [0.0; 3], Quat::IDENTITY),
                 part(TURTLE_HEAD, [0.0, 2.0, 8.0], Quat::IDENTITY),
-                part(TURTLE_SIDE_FLIPPER, [6.0, 2.0, 4.0], Quat::from_rotation_y(-0.4 + paddle)),
-                part(TURTLE_SIDE_FLIPPER, [-6.0, 2.0, 4.0], Quat::from_rotation_y(PI + 0.4 - paddle)),
-                part(TURTLE_FLIPPER, [-4.0, 2.0, -8.0], Quat::from_rotation_y(paddle)),
-                part(TURTLE_FLIPPER, [4.0, 2.0, -8.0], Quat::from_rotation_y(-paddle))
+                part(TURTLE_SIDE_FLIPPER, [6.0, 2.0, 4.0], ry(-0.4 + front) * rz(-row)),
+                part(TURTLE_SIDE_FLIPPER, [-6.0, 2.0, 4.0], ry(PI + 0.4 - front) * rz(row)),
+                part(TURTLE_FLIPPER, [-4.0, 2.0, -8.0], ry(hind) * rx(-row)),
+                part(TURTLE_FLIPPER, [4.0, 2.0, -8.0], ry(-hind) * rx(row))
             ]
         }
         _ => Parts::new(),
     }
 }
+/// v1.0 gap Track 7c: `GuardianModel`'s eye on what the guardian watches
+/// (`GuardianRenderer.getEntityToLookAt`: its attack target, else the
+/// viewer): up to two pixels toward the side it is on (the square root
+/// of the sine of its bearing from the guardian's heading, twice) and a
+/// pixel down when it is below the eye.
+pub(super) fn track_eye(m: &Mob, camera: DVec3, parts: &mut Parts) {
+    if !matches!(m.kind, MobKind::Guardian | MobKind::ElderGuardian) {
+        return;
+    }
+    let Some(eye) = parts.iter().position(|p| std::ptr::eq(p.boxes, GUARD_EYE)) else { return };
+    let from = m.pos + DVec3::Y * m.shape().height * 0.5;
+    let target = m.aquatic.as_ref().and_then(|a| a.beam).unwrap_or(camera);
+    let down = if target.y - from.y > 0.0 { 0.0 } else { 1.0 };
+    // `viewVector` flattened, and the bearing turned a quarter round.
+    let view = DVec3::new(f64::from(m.yaw.cos()), 0.0, f64::from(m.yaw.sin())) * f64::from(m.head_pitch.cos());
+    let d = (from - target).with_y(0.0).normalize_or_zero();
+    let dot = (view.x * d.z - view.z * d.x) as f32;
+    let side = dot.abs().sqrt() * 2.0 * dot.signum();
+    parts.data[eye].pivot = Vec3::new(side, -down, 0.0);
+}
+
 pub(super) fn beam(m: &Mob, camera: DVec3, out: &mut EntityMesh) {
     let Some(a) = &m.aquatic else { return };
     let Some(end) = a.beam.filter(|_| a.charge > 0.0) else { return };

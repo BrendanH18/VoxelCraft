@@ -73,6 +73,10 @@ impl BlockSource for NoClip<'_> {
     fn moving_boxes(&self, min: DVec3, max: DVec3, f: &mut dyn FnMut(IVec3, DVec3, DVec3)) {
         self.world.piston_collision_boxes(min, max, Some(self.dir), f);
     }
+
+    fn fast_lava(&self) -> bool {
+        self.world.fast_lava()
+    }
 }
 
 fn intersects(a: (DVec3, DVec3), b: (DVec3, DVec3)) -> bool {
@@ -194,6 +198,21 @@ fn move_by_piston(world: &World, body: &mut PushBody, noclip: IVec3, v: DVec3, l
 fn grounded(world: &World, pos: DVec3, shape: Shape) -> bool {
     let (min, max) = shape.aabb(pos);
     !physics::no_collision(world, min - DVec3::new(0.0, 1.0e-3, 0.0), DVec3::new(max.x, min.y, max.z))
+}
+
+/// v1.0 final F7: whether a push the last moving-block tick recorded would
+/// move the box `aabb` at all (`moveCollidedEntities`' `delta > 0`). Item
+/// frames and paintings break then instead of moving; honey's carry needs
+/// `onGround`, which they never are.
+pub fn pushes_box(world: &World, aabb: (DVec3, DVec3)) -> bool {
+    world.piston_pushes().iter().filter(|p| !p.stuck).any(|push| {
+        let swept = movement_area(push.min, push.max, push.movement, push.delta);
+        intersects((swept.0.min(push.min), swept.1.max(push.max)), aabb)
+            && world.pistons.push_boxes[push.boxes.clone()].iter().any(|&(a, b)| {
+                let moving = movement_area(a, b, push.movement, push.delta);
+                intersects(moving, aabb) && movement(moving, push.movement, aabb) > 0.0
+            })
+    })
 }
 
 /// Applies every push the last moving-block tick recorded to one body.

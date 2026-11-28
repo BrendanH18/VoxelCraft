@@ -23,6 +23,12 @@ pub struct State {
     pub beam: Option<DVec3>,
     pub charge: f32,
     target: Option<super::PlayerId>,
+    /// v1.0 gap Track 3: a guardian's squid or axolotl target (its uid).
+    mob_target: Option<u32>,
+    /// v1.0 gap Track 3b: which of `Mob.serverAiStep`'s alternating ticks
+    /// this is; the target selector's full update (`canUse`) runs on every
+    /// other one.
+    selector_parity: bool,
     prey: Option<(u32, DVec3)>,
     sense_timer: f32,
     pub(super) play_dead: f32,
@@ -54,6 +60,8 @@ impl State {
     pub fn new() -> Self {
         Self {
             target: None,
+            mob_target: None,
+            selector_parity: false,
             prey: None,
             sense_timer: 0.0,
             play_dead: 0.0,
@@ -85,13 +93,23 @@ fn wet<W: physics::BlockSource + ?Sized>(w: &W, p: DVec3) -> bool {
     w.block(p.floor().as_ivec3()).is_some_and(Block::holds_water)
 }
 
-pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
+pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W, rng: &mut super::Rng) {
     if !m.alive() {
         return;
     }
-    let Some(a) = &mut m.aquatic else { return };
-    let submerged = wet(w, m.pos + DVec3::Y * (m.kind.shape().height * 0.8));
     let dolphin = m.kind == MobKind::Dolphin;
+    // v1.0 gap Track 3b: a dolphin breathes at its own eyes
+    // (`isEyeInFluid`, `updateFluidOnEyes` 0.11111111 under `getEyeY`):
+    // 0.3 up, a calf's 0.09375 (`BABY_DIMENSIONS`), and dries by its box
+    // (`isInWaterOrRain`).
+    let eye = if dolphin {
+        super::mob::dolphin::eye_height(m.baby || m.age < 0) - 0.111_111_11
+    } else {
+        m.kind.shape().height * 0.8
+    };
+    let box_wet = dolphin && m.touching_water(w);
+    let Some(a) = &mut m.aquatic else { return };
+    let submerged = wet(w, m.pos + DVec3::Y * eye);
     let axolotl = m.kind == MobKind::Axolotl;
     let guardian = matches!(m.kind, MobKind::Guardian | MobKind::ElderGuardian);
     if guardian {
@@ -99,7 +117,7 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     }
     if dolphin {
         a.air = if submerged { a.air - dt } else { 240.0 };
-        a.dry = if wet(w, m.pos) || w.rains_on(m.pos.floor().as_ivec3()) { 0.0 } else { a.dry + dt };
+        a.dry = if box_wet || w.rains_on(m.pos.floor().as_ivec3()) { 0.0 } else { a.dry + dt };
     } else {
         a.dry = if submerged || (axolotl && w.rains_on(m.pos.floor().as_ivec3())) { 0.0 } else { a.dry + dt };
     }
@@ -108,12 +126,21 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     if suffocating {
         a.damage_tick += dt;
         if a.damage_tick >= 1.0 {
-            m.health -= m.effects.absorb(2.0 * m.effects.resistance_factor());
             a.damage_tick %= 1.0;
+            // v1.0 gap Track 8d: `hurtServer(dryOut, 2)`, through the hurt
+            // cooldown and the rest of `hurtServer`.
+            m.damage_from(2.0, crate::simulation::damage::Cause::DRY_OUT, rng);
         }
     } else {
         a.damage_tick = 0.0;
     }
+}
+
+/// What a guardian aims its beam at.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Aim {
+    Player(super::PlayerId),
+    Mob(u32),
 }
 
 /// Effects and attacks that run whatever the mob is doing: the elder
@@ -126,6 +153,7 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
     dt: f32,
     w: &W,
     ctx: &Ctx,
+    rng: &mut super::Rng,
     events: &mut Vec<EntityEvent>,
 ) -> bool {
     let shape = m.shape();
@@ -155,43 +183,121 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
         }
     }
     if guardian {
-        let target = ctx
-            .players
-            .iter()
-            .filter(|t| t.targetable && t.alive)
-            .filter(|t| {
-                let d = t.pos.distance_squared(m.pos);
-                // `TargetGoal.canAttack`: the target stands inside the home.
-                d < 256.0
-                    && (a.target == Some(t.id) || d <= t.detection_range(16.).powi(2))
-                    && (m.kind == MobKind::ElderGuardian || d > 9.0)
-                    && within_home(t.pos)
-                    && super::mob::line_of_sight(w, eye, t.pos + DVec3::Y)
-            })
-            .min_by(|l, r| l.pos.distance_squared(m.pos).total_cmp(&r.pos.distance_squared(m.pos)));
-        if let Some(t) = target {
-            let to = t.pos + DVec3::Y;
-            if a.target != Some(t.id) {
+        // `NearestAttackableTargetGoal(LivingEntity, GuardianAttackSelector)`:
+        // players, squid (glow squid too) and axolotls more than 3 blocks
+        // away, within the 16-block follow range and the home, in sight.
+        // `GuardianAttackGoal` keeps its target (an elder even within 3
+        // blocks) while it stays in sight; v1.0 gap Track 3 added the mobs.
+        let elder = m.kind == MobKind::ElderGuardian;
+        let valid = |pos: DVec3, current: bool, range: f64| {
+            let d = pos.distance_squared(m.pos);
+            d < 256.0
+                && d <= range * range
+                && (if current { elder || d > 9.0 } else { d > 9.0 })
+                && within_home(pos)
+                && super::mob::line_of_sight(w, eye, pos + DVec3::Y)
+        };
+        let dist =
+            |l: &(Aim, DVec3), r: &(Aim, DVec3)| l.1.distance_squared(m.pos).total_cmp(&r.1.distance_squared(m.pos));
+        let kept = if let Some(id) = a.target {
+            ctx.players
+                .iter()
+                .find(|t| t.id == id && t.targetable && t.alive && valid(t.pos, true, 16.0))
+                .map(|t| (Aim::Player(t.id), t.pos))
+        } else if let Some(uid) = a.mob_target {
+            a.prey.filter(|&(u, pos)| u == uid && valid(pos, true, 16.0)).map(|(u, pos)| (Aim::Mob(u), pos))
+        } else {
+            None
+        };
+        // v1.0 gap Track 3b: without a target, `NearestAttackableTargetGoal`
+        // looks for one only on the selector's full updates (every other
+        // tick), and then only one time in five (`randomInterval`,
+        // `reducedTickDelay(10)`).
+        let mut roll = false;
+        for _ in 0..((dt / 0.05).round() as u32).max(1) {
+            a.selector_parity = !a.selector_parity;
+            if a.selector_parity && rng.next_int(5) == 0 {
+                roll = true;
+            }
+        }
+        let target = kept.or_else(|| {
+            if !roll {
+                return None;
+            }
+            let players = ctx
+                .players
+                .iter()
+                .filter(|t| t.targetable && t.alive && valid(t.pos, false, t.detection_range(16.)))
+                .map(|t| (Aim::Player(t.id), t.pos));
+            let prey = a.prey.filter(|&(_, pos)| valid(pos, false, 16.0)).map(|(u, pos)| (Aim::Mob(u), pos));
+            players.chain(prey).min_by(dist)
+        });
+        if let Some((aim, pos)) = target {
+            let to = pos + DVec3::Y;
+            let (player_id, mob_id) = match aim {
+                Aim::Player(id) => (Some(id), None),
+                Aim::Mob(uid) => (None, Some(uid)),
+            };
+            if a.target != player_id || a.mob_target != mob_id {
                 a.charge = -0.5;
             }
-            a.target = Some(t.id);
+            a.target = player_id;
+            a.mob_target = mob_id;
             a.beam = Some(to);
             a.charge += dt;
             m.yaw = ((to.z - eye.z) as f32).atan2((to.x - eye.x) as f32);
-            let duration = if m.kind == MobKind::ElderGuardian { 3.0 } else { 4.0 };
+            let duration = if elder { 3.0 } else { 4.0 };
             if a.charge >= duration {
                 let magic = if m.difficulty == Difficulty::Hard { 3.0 } else { 1.0 };
-                events.push(EntityEvent::PlayerBeam {
-                    player: t.id,
-                    physical: if m.kind == MobKind::ElderGuardian { 8.0 } else { 6.0 },
-                    magic,
-                });
+                let physical = if elder { 8.0 } else { 6.0 };
+                match aim {
+                    Aim::Player(player) => {
+                        events.push(EntityEvent::PlayerBeam { player, physical, magic, guardian: m.uid })
+                    }
+                    Aim::Mob(target) => {
+                        // v1.0 gap Track 3b: `GuardianAttackGoal.tick`'s two
+                        // hits. First `indirectMagic` (1, 2 more on Hard and
+                        // 2 more from an elder), whole, with `hurtServer`'s
+                        // 0.4 push away from the guardian; then `doHurtTarget`
+                        // (6, an elder's 8) inside the same invulnerability
+                        // window, which takes only what it adds over the
+                        // first (`actuallyHurt(damage - lastHurt)`) and
+                        // pushes nothing, or nothing at all if it adds none.
+                        // v1.0 gap Track 8d: the target's hurt cooldown
+                        // does that now; the second hit carries its whole
+                        // damage.
+                        let magic = magic + if elder { 2.0 } else { 0.0 };
+                        let away = (pos - m.pos).with_y(0.0).normalize_or_zero();
+                        events.push(EntityEvent::MobHit {
+                            target,
+                            attacker: m.uid,
+                            damage: magic,
+                            knockback: away * 8.0,
+                            melee: false,
+                        });
+                        if physical > magic {
+                            events.push(EntityEvent::MobHit {
+                                target,
+                                attacker: m.uid,
+                                damage: physical,
+                                knockback: DVec3::ZERO,
+                                // A guardian holds no weapon, so no Smite or
+                                // Bane applies.
+                                melee: true,
+                            });
+                        }
+                    }
+                }
                 a.charge = -1.0;
             }
+            // v1.0 gap Track 2c: `GuardianAttackGoal.tick`'s
+            // `setLookAt(target, 90, 90)`.
+            m.set_look_at(to, 90.0, 90.0);
             m.stop_navigation();
             return true;
         }
         a.target = None;
+        a.mob_target = None;
         a.beam = None;
         a.charge = 0.0;
     }
@@ -463,6 +569,7 @@ fn axolotl<W: MobWorld + ?Sized>(
                 attacker: m.uid,
                 damage: 2.0,
                 knockback: delta.normalize_or_zero() * 0.3,
+                melee: true,
             });
         }
         let s = m.goal_speed(0.6);
@@ -680,6 +787,7 @@ impl Entities {
                 kind: m.kind,
                 pos: m.pos,
                 baby: m.baby,
+                eye: m.eye_height(),
                 huntable: false,
             }));
         }
@@ -688,11 +796,32 @@ impl Entities {
                 continue;
             }
             let Some(a) = &mut m.aquatic else { continue };
+            // A guardian follows the squid or axolotl it aims at every tick.
+            if let Some(uid) = a.mob_target {
+                a.prey = self.nether_view.iter().find(|v| v.uid == uid).map(|v| (v.uid, v.pos));
+            }
             a.sense_timer -= dt;
             if a.sense_timer > 0.0 {
                 continue;
             }
             a.sense_timer = 0.5;
+            if matches!(m.kind, MobKind::Guardian | MobKind::ElderGuardian) {
+                // v1.0 gap Track 3: `GuardianAttackSelector`'s squid, glow
+                // squid and axolotls; the nearest within the follow range
+                // (`upkeep` checks distance, home and sight).
+                if a.mob_target.is_none() {
+                    a.prey = self
+                        .nether_view
+                        .iter()
+                        .filter(|v| {
+                            matches!(v.kind, MobKind::Squid | MobKind::GlowSquid | MobKind::Axolotl)
+                                && v.pos.distance_squared(m.pos) < 256.0
+                        })
+                        .min_by(|l, r| l.pos.distance_squared(m.pos).total_cmp(&r.pos.distance_squared(m.pos)))
+                        .map(|v| (v.uid, v.pos));
+                }
+                continue;
+            }
             a.prey = None;
             if m.kind == MobKind::Axolotl {
                 a.prey = self
@@ -968,11 +1097,11 @@ mod tests {
     fn fish_suffocate_and_water_resets_the_air_timer() {
         let mut m = Mob::new(MobKind::Cod, DVec3::ZERO, 0.0);
         let dry = Grid::flat(-64);
-        environment(&mut m, 15.5, &dry);
+        environment(&mut m, 15.5, &dry, &mut super::super::Rng::new(1));
         assert_eq!(m.health, 1.0);
-        environment(&mut m, 1.0, &water());
+        environment(&mut m, 1.0, &water(), &mut super::super::Rng::new(1));
         assert_eq!(m.aquatic.as_ref().unwrap().dry, 0.0);
-        environment(&mut m, 14.0, &dry);
+        environment(&mut m, 14.0, &dry, &mut super::super::Rng::new(1));
         assert_eq!(m.health, 1.0);
     }
     #[test]
@@ -981,19 +1110,25 @@ mod tests {
         let mut m = Mob::new(MobKind::Guardian, DVec3::ZERO, 0.0);
         let c = ctx(DVec3::new(10.0, 0.0, 0.0));
         let mut e = vec![];
+        let mut rng = Rng::new(3);
         for _ in 0..80 {
-            upkeep(&mut m, 0.05, &w, &c, &mut e);
+            upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
         }
         assert!(!e.iter().any(|e| matches!(e, EntityEvent::PlayerBeam { .. })));
         w.set(IVec3::new(5, 0, 0), Block::STONE);
         w.set(IVec3::new(5, 1, 0), Block::STONE);
-        upkeep(&mut m, 0.05, &w, &c, &mut e);
+        upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
         assert!(m.aquatic.as_ref().unwrap().beam.is_none());
         w.set(IVec3::new(5, 0, 0), Block::WATER);
         w.set(IVec3::new(5, 1, 0), Block::WATER);
-        for _ in 0..92 {
-            upkeep(&mut m, 0.05, &w, &c, &mut e);
+        // v1.0 gap Track 3b: the target comes back on a 1-in-5 roll every
+        // other tick, then the 4.5-second windup and charge.
+        let mut ticks = 0;
+        while ticks < 400 && !e.iter().any(|e| matches!(e, EntityEvent::PlayerBeam { .. })) {
+            upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
+            ticks += 1;
         }
+        assert!(ticks > 90, "the beam took its windup and charge: {ticks}");
         assert!(
             e.iter().any(
                 |e| matches!(e,EntityEvent::PlayerBeam{player,physical,..} if *player==PlayerId(7)&&*physical==6.0)
@@ -1002,8 +1137,43 @@ mod tests {
         assert!(e.iter().any(|e| matches!(e,EntityEvent::PlayerBeam{magic,..} if *magic==1.0)));
         let mut other = c;
         other.players[0].id = PlayerId(8);
-        upkeep(&mut m, 0.05, &w, &other, &mut e);
+        upkeep(&mut m, 0.05, &w, &other, &mut rng, &mut e);
+        for _ in 0..200 {
+            if m.aquatic.as_ref().unwrap().target == Some(PlayerId(8)) {
+                break;
+            }
+            upkeep(&mut m, 0.05, &w, &other, &mut rng, &mut e);
+        }
+        assert_eq!(m.aquatic.as_ref().unwrap().target, Some(PlayerId(8)));
         assert!(m.aquatic.as_ref().unwrap().charge < 0.0);
+    }
+
+    /// v1.0 gap Track 3b: `NearestAttackableTargetGoal`'s `randomInterval`:
+    /// without a target a guardian looks on every other tick, one time in
+    /// five, so it finds a player in sight after ten ticks on average.
+    #[test]
+    fn guardians_find_targets_one_selector_update_in_five() {
+        let w = water();
+        let c = ctx(DVec3::new(10.0, 0.0, 0.0));
+        let mut total = 0;
+        let runs = 400;
+        for seed in 0..runs {
+            let mut m = Mob::new(MobKind::Guardian, DVec3::ZERO, 0.0);
+            let mut rng = Rng::new(seed);
+            let mut e = vec![];
+            let mut ticks = 1;
+            upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
+            while m.aquatic.as_ref().unwrap().target.is_none() {
+                upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
+                ticks += 1;
+            }
+            // Found on a full update (the first, third, ... tick).
+            assert_eq!(ticks % 2, 1, "seed {seed}");
+            total += ticks;
+        }
+        let mean = total as f64 / runs as f64;
+        // Geometric over full updates: 2 × 5 - 1 = 9 ticks on average.
+        assert!((mean - 9.0).abs() < 1.2, "mean {mean}");
     }
     #[test]
     fn elders_fatigue_survival_players_even_through_walls_and_ignore_creative() {
@@ -1012,7 +1182,8 @@ mod tests {
         let mut c = ctx(DVec3::new(40.0, 0.0, 0.0));
         c.players.push(Target::new(PlayerId(8), DVec3::Y, false));
         let mut e = vec![];
-        upkeep(&mut m, 0.05, &w, &c, &mut e);
+        let mut rng = Rng::new(1);
+        upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
         assert_eq!(
             e.iter()
                 .filter(|e| matches!(
@@ -1023,7 +1194,7 @@ mod tests {
             1
         );
         e.clear();
-        upkeep(&mut m, 1.0, &w, &c, &mut e);
+        upkeep(&mut m, 1.0, &w, &c, &mut rng, &mut e);
         assert!(e.is_empty());
     }
     #[test]
@@ -1031,8 +1202,9 @@ mod tests {
         let w = water();
         let c = ctx(DVec3::new(0.3, 0.0, 0.0));
         let mut e = vec![];
+        let mut rng = Rng::new(1);
         let mut p = Mob::new(MobKind::Pufferfish, DVec3::ZERO, 0.0);
-        upkeep(&mut p, 0.6, &w, &c, &mut e);
+        upkeep(&mut p, 0.6, &w, &c, &mut rng, &mut e);
         // The Poison rides on the sting: `Pufferfish.playerTouch` applies it only when the sting hurts.
         assert!(e.iter().any(|e| matches!(e, EntityEvent::PlayerSting { poison: 120, .. })));
         assert!(!e.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { effect: Effect::Poison, .. })));
@@ -1207,13 +1379,15 @@ mod tests {
             Some(Stack::new(Item::armor(crate::item::ArmorPiece::Leggings, crate::item::ArmorMaterial::Diamond), 1)),
             Some(Stack::new(Item::armor(crate::item::ArmorPiece::Boots, crate::item::ArmorMaterial::Diamond), 1)),
         ];
+        // v1.0 gap Track 8d: the magic lands whole (no armor), then the
+        // attack inside the hurt cooldown by its excess, 5, through armor.
         let expected =
-            crate::simulation::survival::armor_reduce(6.0, a.inventory.armor_points(), a.inventory.armor_toughness())
+            crate::simulation::survival::armor_reduce(5.0, a.inventory.armor_points(), a.inventory.armor_toughness())
                 + 1.0;
-        let taken = a.hurt_beam(6.0, 1.0, &mut e);
+        let taken = a.hurt_beam(6.0, 1.0, None, &mut e);
         assert!((taken - expected).abs() < 1e-5);
         let mut bare = crate::agent::Agent::new(DVec3::ZERO);
-        assert_eq!(bare.hurt_beam(6.0, 1.0, &mut e), 7.0);
+        assert_eq!(bare.hurt_beam(6.0, 1.0, None, &mut e), 6.0);
     }
 
     #[test]
@@ -1369,5 +1543,62 @@ mod tests {
         eprintln!(
             "mob_movement_cost: swimmers {swim:.3} ms/tick, ghasts and blazes {fly:.3} ms/tick, dolphins and turtles {coastal:.3} ms/tick"
         );
+    }
+
+    /// v1.0 gap Track 3b: `GuardianAttackGoal.tick` hits a mob twice:
+    /// `indirectMagic` whole with the push, then `doHurtTarget` for what it
+    /// adds over that inside the invulnerability window, unpushed.
+    #[test]
+    fn a_guardian_beam_hits_a_mob_with_magic_then_the_rest_of_its_attack() {
+        let w = water();
+        let c = Ctx { players: vec![], ..ctx(DVec3::ZERO) };
+        for (kind, magic, physical) in [(MobKind::Guardian, 1.0, 6.0), (MobKind::ElderGuardian, 3.0, 8.0)] {
+            let mut m = Mob::new(kind, DVec3::ZERO, 0.0);
+            m.uid = 1;
+            let mut rng = Rng::new(5);
+            let mut e = vec![];
+            for _ in 0..400 {
+                m.aquatic.as_mut().unwrap().prey = Some((2, DVec3::new(6.0, 0.0, 0.0)));
+                upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
+                if e.iter().any(|e| matches!(e, EntityEvent::MobHit { .. })) {
+                    break;
+                }
+            }
+            let hits: Vec<_> = e
+                .iter()
+                .filter_map(|e| match *e {
+                    EntityEvent::MobHit { target: 2, damage, knockback, melee, .. } => Some((damage, knockback, melee)),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(hits.len(), 2, "{kind:?}: {hits:?}");
+            assert_eq!((hits[0].0, hits[0].2), (magic, false), "{kind:?}");
+            assert!(hits[0].1.x > 0.0, "pushed away");
+            assert_eq!((hits[1].0, hits[1].1, hits[1].2), (physical, DVec3::ZERO, true), "{kind:?}");
+        }
+    }
+
+    /// v1.0 gap Track 3b: a dolphin breathes at its eyes, 0.3 up, a calf's
+    /// at 0.09375 (`updateFluidOnEyes`, 0.11111111 below them).
+    #[test]
+    fn a_calf_breathes_at_its_own_eye_height() {
+        let mut w = Grid::flat(-64);
+        for x in -3..=3 {
+            for y in -3..=8 {
+                for z in -3..=3 {
+                    w.set(IVec3::new(x, y, z), Block::WATER);
+                }
+            }
+        }
+        // Feet at 8.85: the adult's eyes (8.85 + 0.3 - 0.111) are out of the
+        // water; the calf's (8.85 + 0.094 - 0.111) still in it.
+        for (baby, under) in [(false, false), (true, true)] {
+            let mut m = Mob::new(MobKind::Dolphin, DVec3::new(0.5, 8.85, 0.5), 0.0);
+            m.baby = baby;
+            m.age = if baby { -24000 } else { 0 };
+            environment(&mut m, 1.0, &w, &mut super::super::Rng::new(1));
+            let air = m.aquatic.as_ref().unwrap().air;
+            assert_eq!(air < 240.0, under, "baby {baby}: {air}");
+        }
     }
 }

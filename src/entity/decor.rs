@@ -135,7 +135,10 @@ pub struct Decor {
     /// Armor stands: the feet.
     pub pos: DVec3,
     pub previous_pos: DVec3,
-    vel_y: f64,
+    pub(super) vel_y: f64,
+    /// v1.0 final F9: an armor stand's `fallDistance` (not saved), for
+    /// powder snow.
+    pub(super) fall_distance: f64,
     /// Armor stands: Java's yaw in degrees (0 faces south, +Z).
     pub yaw: f32,
     /// What an item frame holds, turned `rotation` eighths of a turn.
@@ -169,6 +172,7 @@ impl Decor {
             pos,
             previous_pos: pos,
             vel_y: 0.0,
+            fall_distance: 0.0,
             yaw: 0.0,
             item: None,
             rotation: 0,
@@ -718,7 +722,14 @@ impl Entities {
             // `LivingEntity.travel`: gravity 0.08 and drag 0.98 a tick.
             d.vel_y = (d.vel_y - 0.08) * 0.98;
             let mut vel = DVec3::Y * d.vel_y;
-            let hit = physics::move_box(world, &mut d.pos, &mut vel, DVec3::Y * d.vel_y, STAND_SHAPE);
+            // v1.0 final F7: the stand's own collision context (leather
+            // boots hold it up on powder snow).
+            let boots = d.armor[ArmorPiece::Boots as usize]
+                .is_some_and(|s| s.item.as_armor() == Some((ArmorPiece::Boots, ArmorMaterial::Leather)));
+            let context = Some(physics::CollisionContext::entity(d.pos.y, d.fall_distance, boots));
+            let start_y = d.pos.y;
+            let hit = physics::move_box_context(world, &mut d.pos, &mut vel, DVec3::Y * d.vel_y, STAND_SHAPE, context);
+            d.fall_distance = super::item::fallen(d.fall_distance, hit.on_ground, start_y, d.pos.y);
             if hit.on_ground {
                 d.vel_y = 0.0;
             }
@@ -737,10 +748,70 @@ impl Entities {
         }
     }
 
+    /// v1.0 gap Track 2c: a mob's melee stab (`DamageTypes.SPEAR`, in
+    /// `#can_break_armor_stand`) on decoration `i`: a framed item pops out
+    /// whatever the rules (`ItemFrame.hurtServer` drops it first); otherwise
+    /// a mob's damage does nothing without mobGriefing
+    /// (`BlockAttachedEntity` and `ArmorStand.hurtServer`); with it an
+    /// armor stand wobbles, and breaks on a second hit within 5 ticks, and
+    /// an empty frame or a painting breaks.
+    pub(super) fn mob_hurt_decor(&mut self, i: usize, source: EventSource) {
+        if i >= self.decor.len() {
+            return;
+        }
+        let drops = self.entity_drops;
+        let now = self.decor_clock;
+        let framed = matches!(self.decor[i].kind, Kind::Frame { .. }) && self.decor[i].item.is_some();
+        if framed {
+            self.post_decor_event(i, GameEvent::BlockChange, source);
+            let d = &mut self.decor[i];
+            let stack = d.item.take();
+            let spot = drop_spot(d);
+            if let Some(s) = stack.filter(|_| drops) {
+                self.items.push(ItemEntity::new(s, spot, DVec3::ZERO, 0.5, &mut self.rng));
+            }
+            return;
+        }
+        if !self.villager_griefing {
+            return;
+        }
+        let d = &mut self.decor[i];
+        if d.kind == Kind::Stand && d.last_hit.is_none_or(|last| now.saturating_sub(last) > BREAK_WINDOW) {
+            d.last_hit = Some(now);
+            d.wobble = WOBBLE_TICKS;
+            self.post_decor_event(i, GameEvent::EntityDamage, source);
+            return;
+        }
+        self.post_decor_event(i, GameEvent::EntityDie, source);
+        self.break_decor(i, drops, drops);
+    }
+
     /// v1.0 Track 9: queues `event` at decoration `i`.
     fn post_decor_event(&mut self, i: usize, event: GameEvent, source: EventSource) {
         let pos = self.decor[i].pos;
         self.sculk.post(pos, event, source, None);
+    }
+
+    /// v1.0 final F7: a moving block reached hanging decoration `i`:
+    /// `BlockAttachedEntity.move` kills it (`entity_die`) and drops its
+    /// item, a frame's held item with it (`dropItem`, which posts a
+    /// frame's `block_change`).
+    pub(super) fn piston_break_decor(&mut self, i: usize) {
+        let drops = self.entity_drops;
+        self.post_decor_event(i, GameEvent::EntityDie, EventSource::NONE);
+        // v1.0 final F9: `dropItem`'s break sound: a frame's always
+        // (`ItemFrame.dropItem`), a painting's only under `doEntityDrops`
+        // (`Painting.dropItem`).
+        let kind = self.decor[i].kind;
+        let frame = matches!(kind, Kind::Frame { .. });
+        if frame || drops {
+            let pos = self.decor[i].pos;
+            self.pending_sounds.push(super::EntityEvent::Sound { sound: super::MobSound::DecorBroken(kind), pos });
+        }
+        if frame {
+            self.post_decor_event(i, GameEvent::BlockChange, EventSource::NONE);
+        }
+        self.break_decor(i, drops, drops);
     }
 
     /// `ArmorStand.hurtServer` for explosions: stands caught in a blast break,
@@ -831,6 +902,10 @@ struct Wrapped<'a, W: BlockSource + ?Sized>(&'a W);
 impl<W: BlockSource + ?Sized> BlockSource for Wrapped<'_, W> {
     fn block(&self, p: IVec3) -> Option<Block> {
         self.0.block(p)
+    }
+
+    fn fast_lava(&self) -> bool {
+        self.0.fast_lava()
     }
 }
 

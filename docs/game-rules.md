@@ -26,6 +26,13 @@ holds the same table (`JAVA_RULES`) and a test keeps this file identical to it.
   (`GameRuleRegistryFix.convertBooleanInverted`). `raids` is the one the
   engine enforces: `disableRaids=true` loads as `raids false`, and a world
   with raids off saves `disableRaids=true`.
+- Create New World's More tab opens **Game Rules** (Java's Edit Game
+  Rules, v1.0 final F6): every rule the engine enforces under Java's
+  categories and names, an ON/OFF button or a number box each (out-of-range
+  numbers grey Done), with the id, Java's description and the default as its
+  tooltip. The new world starts with them; `--gamerule` still sets over them.
+  Rules the engine lacks aren't listed. There is no in-world rule editor:
+  `/gamerule` changes them in a world.
 - A rule never changes saved IDs. Adding an implemented rule means moving its row
   from Missing to Implemented here, in `JAVA_RULES` and in a test; the test
   `docs_inventory_lists_every_rule_with_its_support_level` fails until they agree.
@@ -82,7 +89,7 @@ enforced.
 | `mob_griefing` | `mobGriefing` | boolean | `true` | Partial | - | Gates creeper and ghast block damage, fireball fires, the dragon's smashing, and villager, piglin and allay item pickup. Enderman block carrying, zombie door breaking, silverfish, mob farmland and turtle-egg trampling and snow golem trails are not modelled. |
 | `natural_health_regeneration` | `naturalRegeneration` | boolean | `true` | Implemented | - | Gates food regeneration and Peaceful regeneration (health, saturation and food). |
 | `player_movement_check` | `disablePlayerMovementCheck` | boolean | `true` | Not applicable | n/a | Server-side movement validation of remote players. |
-| `players_nether_portal_creative_delay` | `playersNetherPortalCreativeDelay` | integer 0..2147483647 | `0` | Implemented | - | Ticks in a portal for invulnerable players (Creative and Spectator). |
+| `players_nether_portal_creative_delay` | `playersNetherPortalCreativeDelay` | integer 0..2147483647 | `0` | Implemented | - | Ticks in a Nether portal for invulnerable players (Creative; spectators pass through portals). |
 | `players_nether_portal_default_delay` | `playersNetherPortalDefaultDelay` | integer 0..2147483647 | `80` | Implemented | - | Ticks in a portal for survival and Adventure players (80 = 4 s). |
 | `players_sleeping_percentage` | `playersSleepingPercentage` | integer 0..2147483647 | `100` | Implemented | - | Share of players who must sleep, rounded up and at least one. |
 | `projectiles_can_break_blocks` | `projectilesCanBreakBlocks` | boolean | `true` | Missing | v0.12 | Governs arrows and similar hitting chorus flowers, pointed dripstone and decorated pots (v0.12, v0.16). |
@@ -110,6 +117,7 @@ enforced.
 
 ## Difficulty
 
-Difficulty is world state rather than a rule. The effects VoxelCraft implements,
+Difficulty is world state rather than a rule. In a world it is set on the
+pause menu's World Options, with Java's lock (v1.0 final F6). The effects VoxelCraft implements,
 with the Java class they were read from, are listed in
 [the 2026-10-17 verification record](verification/2026-10-17-game-rules-difficulty.md).

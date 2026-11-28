@@ -44,6 +44,8 @@ mod golden_v5;
 mod m3_corpus;
 #[cfg(test)]
 mod order_tests;
+#[cfg(test)]
+mod portal_corpus;
 mod sulfur_caves;
 
 const TREE_CELL: i32 = 5;
@@ -97,11 +99,21 @@ pub enum Generation {
     /// built from Java's full `bastion/*` pool catalogue. The Overworld and
     /// End generate as in generation 5.
     V6 = 6,
+    /// v1.0 gap-closing build (2026-11-27): generation 6 with Java 26.3's
+    /// End terrain (Track 4, GEN-04b: `EndIslandFunction` and the End noise
+    /// router, see `world::end_islands`, its End biomes read from Java's
+    /// island value) and the Nether's surfaces from Java 26.3's surface
+    /// rules with its features placed in Java's decoration order on
+    /// decorated terrain, one 16 × 16 chunk at a time (Track 5, GEN-04a,
+    /// `world::nether_order`). The Overworld generates as in generation 6;
+    /// generation 6's output is pinned by
+    /// `generation_6_chunk_hashes_stay_identical`.
+    V7 = 7,
 }
 
 impl Generation {
     /// What new worlds use.
-    pub const LATEST: Generation = Generation::V6;
+    pub const LATEST: Generation = Generation::V7;
     /// The `level.txt` key.
     pub const KEY: &'static str = "worldgen";
 
@@ -117,6 +129,7 @@ impl Generation {
             Some(Ok(4)) => Generation::V4,
             Some(Ok(5)) => Generation::V5,
             Some(Ok(6)) => Generation::V6,
+            Some(Ok(7)) => Generation::V7,
             Some(_) => {
                 log::warn!("unknown world generation {value:?}; using {:?}", Generation::LATEST);
                 Generation::LATEST
@@ -805,7 +818,7 @@ impl Generator {
         let mut features = match (&self.nether, self.dimension) {
             (Some(n), _) => n.fortresses.features(cpos),
             (None, Dimension::Overworld) => {
-                let mut features = self.strongholds.features(cpos);
+                let mut features = self.strongholds.features(self, cpos);
                 features.extend(self.dungeons.features(self, cpos));
                 features.extend(self.mineshafts.features(self, cpos));
                 features.extend(self.villages.features(self, cpos));
@@ -818,7 +831,12 @@ impl Generator {
         };
         if self.generation >= Generation::V3 {
             features.extend(self.ancient_cities.features(self, cpos));
-            features.extend(self.ruined_portals.features(self, cpos));
+            match &self.nether {
+                Some(n) if self.generation >= Generation::V7 => {
+                    features.extend(super::nether_order::structure_chests(n, cpos));
+                }
+                _ => features.extend(self.ruined_portals.features(self, cpos)),
+            }
             features.extend(self.buried_treasure.features(self, cpos));
             features.extend(self.trial_chambers.features(self, cpos));
             // v1.0 Track 5: trail ruins' suspicious gravel.
@@ -908,7 +926,9 @@ impl Generator {
         }
         if let Some(nether) = &self.nether {
             let chunk = nether.generate(cpos);
-            return if self.generation >= Generation::V3 && portals {
+            // Generation 7 places the Nether's ruined portals in their
+            // decoration step (`world::nether_order`).
+            return if self.generation >= Generation::V3 && self.generation < Generation::V7 && portals {
                 self.ruined_portals.paint_generated(self, chunk, cpos)
             } else {
                 chunk
@@ -1007,7 +1027,7 @@ impl Generator {
             self.freeze(&mut blocks, base, &columns);
         }
         if base.y < SEA_LEVEL {
-            self.strongholds.paint(&mut blocks, base);
+            self.strongholds.paint(self, &mut blocks, base);
         }
         self.dungeons.paint(self, &mut blocks, base);
         self.mineshafts.paint(self, &mut blocks, base);
@@ -2255,7 +2275,7 @@ mod tests {
                         ("ancient city", g.ancient_cities.nearest(&g, IVec2::ZERO, 3000), 2),
                         ("trial chamber", g.trial_chambers.nearest(&g, IVec2::ZERO, 3000), 2),
                         ("mansion", g.temples.nearest(&g, Kind::Mansion, IVec2::ZERO, 12000), 2),
-                        ("stronghold", g.strongholds.nearest(IVec3::ZERO), 2),
+                        ("stronghold", g.strongholds.nearest(&g, IVec3::ZERO), 2),
                         ("mineshaft", g.mineshafts.nearest(&g, IVec3::ZERO), 1),
                     ],
                     Dimension::Nether => vec![
@@ -2308,6 +2328,7 @@ mod tests {
         assert_eq!(Generation::from_prop(Some("4")), Generation::V4);
         assert_eq!(Generation::from_prop(Some("5")), Generation::V5);
         assert_eq!(Generation::from_prop(Some("6")), Generation::V6);
+        assert_eq!(Generation::from_prop(Some("7")), Generation::V7);
         assert_eq!(Generation::from_prop(Some("99")), Generation::LATEST);
         assert_eq!(Generation::from_prop(Some(&Generation::LATEST.number().to_string())), Generation::LATEST);
         assert_eq!(Generator::new(1).generation, Generation::LATEST);

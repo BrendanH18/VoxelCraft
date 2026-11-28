@@ -11,7 +11,8 @@ struct Globals {
     params: vec4<f32>,
     clouds: vec4<f32>,
     environment: vec4<f32>,
-    // x: night vision strength 0..1.
+    // x: night vision strength 0..1, y: Brightness (less Darkness's blend),
+    // z: Darkness's pulsing lightmap scale.
     effects: vec4<f32>,
     // rgb: visual/ambient_light_color; w: use the skyless dimension lightmap.
     ambient: vec4<f32>,
@@ -57,11 +58,20 @@ fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
     return from_srgb(mix(to_srgb(color), to_srgb(g.fog_color.rgb), f));
 }
 
-// Night vision (Java's lightmap): brightens every light level toward full,
-// keeping its hue; g.effects.x is its strength. Brightness follows.
-fn night_vision(lit: vec3<f32>) -> vec3<f32> {
-    let peak = max(max(lit.r, lit.g), max(lit.b, 1e-3));
-    return brightness(mix(lit, lit / peak, g.effects.x));
+// v1.0 gap Track 5c: lightmap.fsh's ambient term, added before sky and
+// block light: the dimension's `visual/ambient_light_color`, or Night
+// Vision's `visual/night_vision_color` (#999999, in every dimension) times
+// its strength (g.effects.x), whichever is brighter.
+const NIGHT_VISION_COLOR: f32 = 153.0 / 255.0;
+fn ambient_light() -> vec3<f32> {
+    return max(g.ambient.rgb, vec3<f32>(NIGHT_VISION_COLOR * g.effects.x));
+}
+// The lightmap of an unclamped light sum, as lightmap.fsh finishes it:
+// Darkness's pulsing `DarknessScale` (g.effects.z) comes off before the
+// clamp, then the Brightness option (lowered by Darkness's blend on the
+// CPU) clamps and curves it.
+fn lightmap(raw: vec3<f32>) -> vec3<f32> {
+    return brightness(raw - vec3<f32>(g.effects.z));
 }
 
 // The Brightness option (Java's gamma, g.effects.y): lightmap.fsh moves each
@@ -195,25 +205,47 @@ fn overworld_light(sky_level: f32, block_level: f32, normal: vec3<f32>, shade: f
     let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
     let hue = mix(vec3<f32>(1.0, 0.847, 0.549), vec3<f32>(1.0), 0.9 * p);
     let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;
-    let java = clamp(g.ambient.rgb + sky + block, vec3<f32>(0.0), vec3<f32>(1.0));
+    let raw = ambient_light() + sky + block;
     let s = max(max(sky.r, sky.g), sky.b);
     let b = max(max(block.r, block.g), block.b);
     let share = clamp(s / max(s + b, 1e-4), 0.0, 1.0);
     let sun = mix(vec3<f32>(1.0), daylight_tint(normal), share);
-    return from_srgb(night_vision(java)) * shade * sun;
+    return from_srgb(lightmap(raw)) * shade * sun;
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.
 // The Overworld retains its existing daylight presentation in this scoped fix.
 fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     if g.ambient.w > 0.0 {
-        return clamp(g.ambient.rgb + sky + torch, vec3<f32>(0.0), vec3<f32>(1.0));
+        // Unclamped: `lightmap` clamps it after Darkness, as Java does.
+        return ambient_light() + sky + torch;
     }
-    return max(sky, torch) * 0.96 + 0.04;
+    // The Overworld's ambient #0a0a0a (about 0.04), or night vision's.
+    return max(sky, torch) * 0.96 + max(ambient_light(), vec3<f32>(0.04));
 }
 
-@fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+// v1.0 gap track 6b: the enchantment glint (`ItemStack.hasFoil`), added
+// over a flagged vertex's colour. Java scrolls its glint texture along two
+// periods (110 s and 30 s of `millis * glintSpeed 0.5 * 8`, so 27.5 s and
+// 7.5 s), turned 10 degrees; this original pattern drifts two soft purple
+// streaks on those periods instead of sampling Java's texture.
+const GLINT_FLAG: u32 = 0x80000000u;
+fn glint(uv: vec2<f32>) -> vec3<f32> {
+    let t = g.sun.w;
+    let a = uv.x * 0.985 + uv.y * 0.174;
+    let b = uv.y * 0.985 - uv.x * 0.174;
+    let s1 = 0.5 + 0.5 * sin(6.2832 * (a * 0.7 - t / 27.5) + b * 2.0);
+    let s2 = 0.5 + 0.5 * sin(6.2832 * (a * 1.3 + b * 0.6 + t / 7.5));
+    let streak = pow(s1, 6.0) * 0.55 + pow(s2, 8.0) * 0.45;
+    return vec3<f32>(0.5, 0.25, 0.8) * (0.16 + streak * 0.7);
+}
+
+struct Shaded {
+    color: vec3<f32>,
+    alpha: f32,
+}
+
+fn shade_fragment(in: VsOut) -> Shaded {
     let area_normal = cross(dpdx(in.rel), dpdy(in.rel));
     let length_sq = dot(area_normal, area_normal);
     var face_normal = vec3<f32>(0.0, 1.0, 0.0);
@@ -221,20 +253,43 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         face_normal = area_normal * inverseSqrt(length_sq);
     }
     let normal = select(face_normal, -face_normal, dot(face_normal, -in.rel) < 0.0);
+    let layer = in.layer & ~GLINT_FLAG;
     // Both arrays are sampled so derivatives stay in uniform control flow.
-    let block = sample_block(in.uv, min(in.layer, 4095u));
-    let icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 4096u) - 4096u);
-    let tex = select(block, icon, in.layer >= 4096u);
-    if tex.a < 0.5 {
-        discard;
-    }
+    let block = sample_block(in.uv, min(layer, 4095u));
+    let icon = textureSample(items, blocks_sampler, in.uv, max(layer, 4096u) - 4096u);
+    let tex = select(block, icon, layer >= 4096u);
     let l = in.light.xz / (4.0 - 3.0 * in.light.xz);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
     let sky = l.x * g.params.z * daylight_tint(normal);
-    var lit = night_vision(dimension_light(sky, torch)) * in.light.y;
+    var lit = lightmap(dimension_light(sky, torch)) * in.light.y;
     if g.ambient.w <= 0.0 {
         lit = overworld_light(in.light.x, in.light.z, normal, in.light.y);
     }
-    let c = apply_fog(tex.rgb * in.tint * lit, in.dist);
-    return vec4<f32>(c, 1.0);
+    var c = tex.rgb * in.tint * lit;
+    if (in.layer & GLINT_FLAG) != 0u {
+        c = c + glint(in.uv);
+    }
+    var out: Shaded;
+    out.color = apply_fog(c, in.dist);
+    out.alpha = tex.a;
+    return out;
+}
+
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let s = shade_fragment(in);
+    if s.alpha < 0.5 {
+        discard;
+    }
+    return vec4<f32>(s.color, 1.0);
+}
+
+// v1.0 gap track 6b: translucent items (stained glass), blended.
+@fragment
+fn fs_translucent(in: VsOut) -> @location(0) vec4<f32> {
+    let s = shade_fragment(in);
+    if s.alpha < 0.004 {
+        discard;
+    }
+    return vec4<f32>(s.color, s.alpha);
 }

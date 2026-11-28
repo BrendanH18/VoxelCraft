@@ -17,26 +17,27 @@ use crate::simulation::effects::Effect;
 #[derive(Clone, Copy)]
 enum Aim<'a> {
     Player(&'a Target),
-    Mob(u32, DVec3, Shape),
+    /// uid, feet, box and eye height.
+    Mob(u32, DVec3, Shape, f64),
 }
 
 impl Aim<'_> {
     fn pos(&self) -> DVec3 {
         match self {
             Aim::Player(t) => t.pos,
-            Aim::Mob(_, p, _) => *p,
+            Aim::Mob(_, p, ..) => *p,
         }
     }
     fn shape(&self) -> Shape {
         match self {
             Aim::Player(t) => t.shape,
-            Aim::Mob(_, _, s) => *s,
+            Aim::Mob(_, _, s, _) => *s,
         }
     }
     fn eye(&self) -> DVec3 {
         match self {
-            Aim::Player(t) => t.pos + DVec3::Y * crate::player::EYE_HEIGHT,
-            Aim::Mob(_, p, s) => *p + DVec3::Y * (s.height * 0.85),
+            Aim::Player(t) => t.eye(),
+            Aim::Mob(_, p, _, e) => *p + DVec3::Y * *e,
         }
     }
     fn foe(&self) -> Foe {
@@ -56,16 +57,6 @@ fn in_reach(pos: DVec3, half_width: f64, height: f64, deflate: f64, other: DVec3
         && (pos.z - other.z).abs() < half_width + other_shape.half_width + reach
         && pos.y < other.y + other_shape.height
         && pos.y + height > other.y
-}
-
-/// A closed door a mob can open by hand (`DoorBlock.isWoodenDoor`).
-fn wooden_door(b: crate::world::block::Block) -> bool {
-    b.is_door()
-        && !matches!(
-            crate::world::redstone_blocks::component(b),
-            Some(crate::world::redstone_blocks::Component::IronDoor { .. })
-        )
-        && matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, .. }))
 }
 
 impl Mob {
@@ -101,8 +92,8 @@ impl Mob {
         full: bool,
     ) -> Option<Aim<'a>> {
         let s = self.illager.as_ref()?;
-        if let Some((uid, pos, shape)) = s.foe_at.filter(|f| s.hurt_by == Some(f.0)) {
-            return Some(Aim::Mob(uid, pos, shape));
+        if let Some((uid, pos, shape, eye)) = s.foe_at.filter(|f| s.hurt_by == Some(f.0)) {
+            return Some(Aim::Mob(uid, pos, shape, eye));
         }
         let foe_at = s.foe_at;
         // Stunned or roaring ravagers see nothing (`hasLineOfSight`).
@@ -118,7 +109,7 @@ impl Mob {
         if let Some(t) = player {
             return Some(Aim::Player(t));
         }
-        foe_at.map(|(uid, pos, shape)| Aim::Mob(uid, pos, shape))
+        foe_at.map(|(uid, pos, shape, eye)| Aim::Mob(uid, pos, shape, eye))
     }
 
     fn illager_goals<W: MobWorld + ?Sized>(
@@ -201,13 +192,10 @@ impl Mob {
         }
     }
 
-    /// Turn the head toward `at`.
+    /// Turn the head toward `at` (the attack goals' `setLookAt(target, 30,
+    /// 30)`; v1.0 gap Track 2c).
     fn face(&mut self, at: DVec3) {
-        let to = at - self.pos;
-        let flat = to.with_y(0.0).length();
-        let yaw = (to.z as f32).atan2(to.x as f32);
-        let eye = self.shape().height * 0.85;
-        self.head_target = (wrap(yaw - self.yaw).clamp(-1.2, 1.2), ((to.y - eye) as f32).atan2(flat as f32));
+        self.set_look_at(at, super::head::ATTACK_LOOK, super::head::ATTACK_LOOK);
     }
 
     /// The melee hit `Mob.doHurtTarget` lands on `aim`: the attack damage
@@ -247,6 +235,7 @@ impl Mob {
                     attacker: self.uid,
                     damage,
                     knockback: dir * (2.0 + push) + DVec3::Y * 2.0,
+                    melee: true,
                 });
                 if fire > 0.0 {
                     self.illager.as_mut().unwrap().actions.push(Action::Ignite(uid, fire));
@@ -291,7 +280,7 @@ impl Mob {
         let s = self.illager.as_mut().unwrap();
         s.attack_wait = s.attack_wait.saturating_sub(ticks);
         self.face(aim.eye());
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         let sees = line_of_sight(world, eye, aim.eye());
         // Riding a ravager, the attack box spans the mount's too.
         let (hw, deflate) = match (self.kind, self.riding) {
@@ -312,10 +301,11 @@ impl Mob {
         Some((self.pursue(world, aim.pos(), speed, sees || follow_unseen, true, rng), speed))
     }
 
-    /// `VindicatorBreakDoorGoal` (`BreakDoorGoal(mob, 6, Normal or Hard)`):
-    /// in an active raid, pressed against a closed wooden door, a 1 in
-    /// `reducedTickDelay(10)` start; then 240 ticks of blows before the
-    /// door is removed without drops.
+    /// `VindicatorBreakDoorGoal` (`BreakDoorGoal(mob, 6, Normal or Hard)`,
+    /// [`super::door_break`]): in an active raid, pressed against a closed
+    /// wooden door its path crosses, a 1 in `reducedTickDelay(10)` start;
+    /// then 240 ticks of blows before the door breaks. It holds `MOVE`, so
+    /// the vindicator stands facing the door meanwhile.
     fn break_door<W: MobWorld + ?Sized>(
         &mut self,
         full: bool,
@@ -324,41 +314,19 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> Option<(Option<DVec3>, f64)> {
-        let s = self.illager.as_ref()?;
-        let allowed = il::breaks_doors(self.difficulty, s.raider.raid_active);
-        let door_at = |c: IVec3| world.block(c).filter(|&b| wooden_door(b));
-        if let Some((cell, time)) = s.door {
-            let lower = door_at(cell);
-            let near = (cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)).distance_squared(self.pos) < 4.0;
-            if !allowed || lower.is_none() || !near || time > il::DOOR_BREAK_TIME {
-                self.illager.as_mut().unwrap().door = None;
-                return None;
+        let mut running = false;
+        for n in 0..ticks.max(1) {
+            running = self.door_goal(world, full && n == 0, rng, events);
+            if !running {
+                break;
             }
-            let time = time + ticks;
-            self.illager.as_mut().unwrap().door = Some((cell, time));
-            if rng.next_int(20) == 0 {
-                self.attack_anim = 0.35;
-            }
-            if time >= il::DOOR_BREAK_TIME {
-                for c in [cell, cell + IVec3::Y] {
-                    if let Some(block) = world.block(c).filter(|b| b.is_door()) {
-                        events.push(EntityEvent::MobGrief { cell: c, block, drops: false });
-                    }
-                }
-                self.illager.as_mut().unwrap().door = None;
-            }
-            self.face(cell.as_dvec3() + DVec3::splat(0.5));
-            return Some((None, 0.0));
         }
-        if !allowed || !full || !self.blocked || rng.next_int(selector::reduced(10) as u32) != 0 {
+        if !running {
             return None;
         }
-        let ahead = DVec3::new(f64::from(self.yaw.cos()), 0.0, f64::from(self.yaw.sin()));
-        let feet = (self.pos + ahead * 0.8).floor().as_ivec3();
-        let cell = [feet, feet + IVec3::Y].into_iter().find(|&c| door_at(c).is_some())?;
-        let cell = if world.block(cell).is_some_and(|b| b.is_door_upper()) { cell - IVec3::Y } else { cell };
-        self.illager.as_mut().unwrap().door = Some((cell, 0));
+        let cell = self.door_break?.cell;
         self.stop_navigation();
+        self.face(cell.as_dvec3() + DVec3::splat(0.5));
         Some((None, 0.0))
     }
 
@@ -678,7 +646,7 @@ impl Mob {
             }
             return None;
         };
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         let sees = line_of_sight(world, eye, aim.eye());
         let dist2 = self.pos.distance_squared(aim.pos());
         let s = self.illager.as_mut()?;
@@ -727,7 +695,7 @@ impl Mob {
     /// arrows spread by Multishot's angles.
     fn loose_arrows(&mut self, aim: Aim, count: u32, ctx: &Ctx, rng: &mut Rng, events: &mut Vec<EntityEvent>) {
         let _ = ctx;
-        let from = self.pos + DVec3::Y * (self.shape().height * 0.85 - 0.1);
+        let from = self.look_eye() - DVec3::Y * 0.1;
         let target = aim.pos() + DVec3::Y * (aim.shape().height / 3.0);
         let d = target - from;
         let horizontal = d.with_y(0.0).length();
@@ -785,7 +753,7 @@ impl Mob {
             return None;
         };
         let enchants = crossbow.active_enchants();
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         let sees = line_of_sight(world, eye, aim.eye());
         let dist2 = self.pos.distance_squared(aim.pos());
         let charge = il::charge_ticks(enchants.level(crate::enchant::Enchantment::QuickCharge));

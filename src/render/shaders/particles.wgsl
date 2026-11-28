@@ -38,6 +38,7 @@ fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
     return from_srgb(mix(to_srgb(color), to_srgb(g.fog_color.rgb), f));
 }
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
+@group(1) @binding(2) var items: texture_2d_array<f32>;
 @group(1) @binding(1) var block_sampler: sampler;
 // Extra pages on adapters that cap texture arrays (see `block_shader`).
 @group(1) @binding(3) var blocks_1: texture_2d_array<f32>;
@@ -90,16 +91,26 @@ struct Output {
 fn curve(l: f32) -> f32 { return l / (4. - 3. * l); }
 // Java 26.3 adds the environment ambient colour to sky and block light.
 // The Overworld retains its existing daylight presentation in this scoped fix.
+// v1.0 gap Track 5c: night vision is lightmap.fsh's ambient term, the
+// brighter of the ambient colour and `visual/night_vision_color` (#999999)
+// times its strength (g.effects.x), as in chunk.wgsl.
+fn ambient_light() -> vec3<f32> {
+    return max(g.ambient.rgb, vec3<f32>(153. / 255. * g.effects.x));
+}
 fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     if g.ambient.w > 0.0 {
-        return clamp(g.ambient.rgb + sky + torch, vec3<f32>(0.0), vec3<f32>(1.0));
+        return ambient_light() + sky + torch;
     }
-    return max(sky, torch) * 0.96 + 0.04;
+    // The Overworld's ambient #0a0a0a (about 0.04), or night vision's.
+    return max(sky, torch) * 0.96 + max(ambient_light(), vec3<f32>(0.04));
 }
 
 @fragment fn fs_main(in: Output) -> @location(0) vec4<f32> {
     var texel: vec4<f32>;
-    if (in.light.w % 2.) > 0.5 {
+    // light.w: 0 sprite, 1 block, 4 item icon (v1.0 gap Track 2g); +2 emissive.
+    if in.light.w > 3.5 {
+        texel = textureSampleLevel(items, block_sampler, in.uv, i32(in.light.z), 0.);
+    } else if (in.light.w % 2.) > 0.5 {
         texel = sample_block(in.uv, u32(in.light.z));
     } else {
         texel = textureSampleLevel(sprites, sprite_sampler, in.uv, i32(in.light.z), 0.);
@@ -112,9 +123,11 @@ fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     let sky = curve(in.light.x) * g.params.z;
     let torch = curve(in.light.y) * vec3<f32>(1., 0.86, 0.66);
     var lit = dimension_light(vec3<f32>(sky), torch);
-    if in.light.w > 1.5 { lit = vec3<f32>(1.); }
-    let peak = max(max(lit.r, lit.g), max(lit.b, 0.001));
-    lit = clamp(mix(lit, lit / peak, g.effects.x), vec3<f32>(0.), vec3<f32>(1.));
+    // Darkness (g.effects.z) comes off the light before its clamp, as in
+    // chunk.wgsl; full-bright particles keep their light.
+    var dark = g.effects.z;
+    if (in.light.w % 4.) > 1.5 { lit = vec3<f32>(1.); dark = 0.; }
+    lit = clamp(lit - vec3<f32>(dark), vec3<f32>(0.), vec3<f32>(1.));
     // Brightness (Java's gamma, g.effects.y), as in chunk.wgsl.
     let top = max(max(lit.r, lit.g), max(lit.b, 1e-4));
     let inv = 1. - top;

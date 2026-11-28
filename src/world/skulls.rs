@@ -241,7 +241,11 @@ const fn layer(kind: Kind, face: u16) -> u16 {
 }
 
 /// Name, render kind and the layers the item icon draws (+X, -X, +Y, -Y,
-/// +Z, -Z; the face on +Z).
+/// +Z, -Z). The face is on +Z, where Java's head item model has it (the
+/// item's `transformation` turns the skull model, which faces -Z, half
+/// about x), so `item/template_skull`'s GUI turn of 45 degrees shows it on
+/// the right of a slot (v1.0 gap track 6c; Track 6 had put it on -Z for
+/// the game's mirrored slot view).
 pub const fn registry(id: u16) -> (&'static str, RenderKind, [u16; 6]) {
     let Some(s) = decode(Block(id)) else { return ("unknown", RenderKind::Invisible, [0; 6]) };
     let k = s.kind;

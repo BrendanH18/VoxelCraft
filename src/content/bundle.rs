@@ -268,10 +268,55 @@ pub fn try_insert(contents: &mut Vec<Stack>, offered: &mut Option<Stack>) -> u8 
     amount
 }
 
-/// `Mutable.removeOne`: takes the front stack (no item is selected: the
-/// selection only exists while a Java client scrolls over a bundle).
+/// `Mutable.removeOne` with nothing selected: takes the front stack.
 pub fn remove_one(contents: &mut Vec<Stack>) -> Option<Stack> {
-    (!contents.is_empty()).then(|| contents.remove(0))
+    remove_selected(contents, None)
+}
+
+/// `Mutable.removeOne`: takes the selected stack (`selected`, an index from
+/// the front), or the front one when nothing in range is selected.
+pub fn remove_selected(contents: &mut Vec<Stack>, selected: Option<usize>) -> Option<Stack> {
+    if contents.is_empty() {
+        return None;
+    }
+    let i = selected.filter(|&i| i < contents.len()).unwrap_or(0);
+    Some(contents.remove(i))
+}
+
+/// `BundleItem.MAX_SHOWN_GRID_ITEMS`: the contents tooltip's twelve cells,
+/// four across (`MAX_SHOWN_GRID_ITEMS_X`).
+pub const SHOWN_MAX: usize = 12;
+/// `MAX_SHOWN_GRID_ITEMS_X`.
+pub const SHOWN_COLUMNS: usize = 4;
+
+/// `BundleContents.getNumberOfItemsToShow` for a bundle of `stacks`
+/// stacks: up to twelve (eleven when more don't fit, the twelfth cell
+/// showing "+n"), trimmed so every row but none is full.
+pub fn shown_count(stacks: usize) -> usize {
+    let available = if stacks > SHOWN_MAX { SHOWN_MAX - 1 } else { SHOWN_MAX };
+    let partial = stacks % SHOWN_COLUMNS;
+    let empty = if partial == 0 { 0 } else { SHOWN_COLUMNS - partial };
+    stacks.min(available - empty)
+}
+
+/// `ScrollWheelHandler.getNextScrollWheelSelection`: the selection after
+/// one wheel step over a bundle showing `limit` stacks. A step down (`wheel`
+/// negative) moves to the next stack, up to the previous one, both wrapping;
+/// from no selection, down picks the front and up the last shown.
+pub fn next_selection(wheel: f64, current: Option<usize>, limit: usize) -> Option<usize> {
+    if limit == 0 {
+        return None;
+    }
+    let mut i = current.map_or(-1, |c| c as i64) - wheel.signum() as i64;
+    i = i.max(-1);
+    let limit = limit as i64;
+    while i < 0 {
+        i += limit;
+    }
+    while i >= limit {
+        i -= limit;
+    }
+    Some(i as usize)
 }
 
 /// What a bundle click did, for feedback (Java's insert, insert-fail and
@@ -286,6 +331,89 @@ pub enum Click {
     Removed,
     /// Handled with no change (an empty bundle emptied again).
     Nothing,
+}
+
+impl Click {
+    /// The sound Java plays for this click, if any.
+    pub fn cue(self) -> Option<Cue> {
+        match self {
+            Click::Inserted => Some(Cue::Insert),
+            Click::InsertFailed => Some(Cue::InsertFail),
+            Click::Removed => Some(Cue::RemoveOne),
+            Click::Nothing => None,
+        }
+    }
+
+    /// Whether the clicked bundle keeps its selected stack after this
+    /// click: Java leaves the selection alone only when a stack went in
+    /// (or failed to) from the cursor; taking one out or any other click
+    /// on it clears it (`removeOne`, `toggleSelectedItem(-1)`).
+    pub fn keeps_selection(self) -> bool {
+        matches!(self, Click::Inserted | Click::InsertFailed)
+    }
+}
+
+/// v1.0 gap track 6: the four bundle sounds (`SoundEvents.BUNDLE_*`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum Cue {
+    /// `item.bundle.insert` ("Item packed"): volume 0.8, pitch 0.8-1.2.
+    Insert,
+    /// `item.bundle.insert_fail` ("Bundle full"): volume 1, pitch 1.
+    InsertFail,
+    /// `item.bundle.remove_one` ("Item unpacked"): volume 0.8, pitch 0.8-1.2.
+    RemoveOne,
+    /// `item.bundle.drop_contents` ("Bundle empties"): volume 0.8, pitch
+    /// 0.8-1.2, at the player's block.
+    DropContents,
+}
+
+impl Cue {
+    pub const ALL: [Cue; 4] = [Cue::Insert, Cue::InsertFail, Cue::RemoveOne, Cue::DropContents];
+
+    /// The Java sound event.
+    pub fn event(self) -> &'static str {
+        match self {
+            Cue::Insert => "item.bundle.insert",
+            Cue::InsertFail => "item.bundle.insert_fail",
+            Cue::RemoveOne => "item.bundle.remove_one",
+            Cue::DropContents => "item.bundle.drop_contents",
+        }
+    }
+
+    /// Java's volume and pitch range (`BundleItem.play*Sound`).
+    pub fn volume_pitch(self) -> (f32, (f32, f32)) {
+        match self {
+            Cue::InsertFail => (1.0, (1.0, 1.0)),
+            _ => (0.8, (0.8, 1.2)),
+        }
+    }
+}
+
+thread_local! {
+    /// The selected stack of the bundle a click lands on, and what the last
+    /// bundle click did, for [`clicking`].
+    static CLICK: std::cell::Cell<(Option<usize>, Option<Click>)> = const { std::cell::Cell::new((None, None)) };
+}
+
+/// Runs `f`, a container click, with `selected` as the clicked bundle's
+/// selected stack (the one the hovered bundle's tooltip highlights), and
+/// returns what a bundle override did during it. Every screen reaches the
+/// override through [`crate::inventory::click_slot`], so the adapters wrap
+/// their clicks here rather than threading the selection and the sound
+/// through each screen's slot rules.
+pub fn clicking<R>(selected: Option<usize>, f: impl FnOnce() -> R) -> (R, Option<Click>) {
+    let outer = CLICK.replace((selected, None));
+    let r = f();
+    let (_, click) = CLICK.replace(outer);
+    (r, click)
+}
+
+fn record(click: Click) {
+    CLICK.set((None, Some(click)));
+}
+
+fn clicked_selection() -> Option<usize> {
+    CLICK.get().0
 }
 
 fn set_contents(bundle: &mut Stack, contents: Vec<Stack>) {
@@ -305,6 +433,14 @@ fn set_contents(bundle: &mut Stack, contents: Vec<Stack>) {
 /// - Holding nothing, right click a bundle: the front stack comes out onto
 ///   the cursor.
 pub fn click(slot: &mut Option<Stack>, cursor: &mut Option<Stack>, right: bool) -> Option<Click> {
+    let result = held_or_clicked(slot, cursor, right);
+    if let Some(click) = result {
+        record(click);
+    }
+    result
+}
+
+fn held_or_clicked(slot: &mut Option<Stack>, cursor: &mut Option<Stack>, right: bool) -> Option<Click> {
     if let Some(mut bundle) = cursor.filter(|c| is_bundle(c.item)) {
         let mut contents = bundle.bundle_contents().to_vec();
         let result = match (*slot, right) {
@@ -355,7 +491,7 @@ fn clicked_bundle(slot: &mut Option<Stack>, cursor: &mut Option<Stack>, right: b
                 Click::InsertFailed
             }
         }
-        (false, true) => match remove_one(&mut contents) {
+        (false, true) => match remove_selected(&mut contents, clicked_selection()) {
             Some(out) => {
                 *cursor = Some(out);
                 Click::Removed
@@ -367,6 +503,37 @@ fn clicked_bundle(slot: &mut Option<Stack>, cursor: &mut Option<Stack>, right: b
     set_contents(&mut bundle, contents);
     *slot = Some(bundle);
     Some(result)
+}
+
+/// `BundleItem.removeOneItemFromBundle`: takes the front stack out of
+/// `bundle` (a held bundle has nothing selected), or `None` when it holds
+/// nothing or isn't a bundle.
+pub fn take_one(bundle: &mut Stack) -> Option<Stack> {
+    if !is_bundle(bundle.item) {
+        return None;
+    }
+    let mut contents = bundle.bundle_contents().to_vec();
+    let out = remove_one(&mut contents)?;
+    set_contents(bundle, contents);
+    Some(out)
+}
+
+/// `Item.onDestroyed`: what an item lying on the ground spills when it
+/// burns or is blown up (`ItemUtils.onContainerDestroyed`): a bundle's
+/// stacks front first (`BundleItem.onDestroyed`), or a block item's
+/// `container` contents in slot order, empty slots skipped
+/// (`BlockItem.onDestroyed`, v1.0 gap track 6b: shulker boxes). Nothing for
+/// any other item.
+pub fn destroyed_contents(stack: &Stack) -> Vec<Stack> {
+    if is_bundle(stack.item) {
+        return stack.bundle_contents().to_vec();
+    }
+    match stack.payload() {
+        Some(crate::inventory::components::Payload::Container(slots)) if stack.item.block().is_some() => {
+            slots.iter().flatten().copied().collect()
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// The sixteen `crafting_transmute` recipes (`<colour>_bundle.json`): any
@@ -400,5 +567,76 @@ mod tests {
         assert_eq!(Fraction::new(1, 16).saturating_sub(Fraction::ONE), Fraction::ZERO);
         assert!(Fraction::new(63, 64) < Fraction::ONE);
         assert_eq!(Fraction::new(1, 64).checked_mul(64), Some(Fraction::ONE));
+    }
+
+    #[test]
+    fn the_tooltip_shows_whole_rows_and_the_wheel_wraps() {
+        // `getNumberOfItemsToShow` for every stack count up to 64.
+        let java = |n: usize| {
+            let available = if n > 12 { 11 } else { 12 };
+            let partial = n % 4;
+            n.min(available - if partial == 0 { 0 } else { 4 - partial })
+        };
+        for n in 0..64 {
+            assert_eq!(shown_count(n), java(n), "{n} stacks");
+        }
+        assert_eq!([1, 2, 5, 12, 13, 20].map(shown_count), [1, 2, 5, 12, 8, 11]);
+        // `getNextScrollWheelSelection`: down from none picks the front, up
+        // the last shown; both wrap.
+        assert_eq!(next_selection(-1.0, None, 5), Some(0));
+        assert_eq!(next_selection(1.0, None, 5), Some(4));
+        assert_eq!(next_selection(-1.0, Some(4), 5), Some(0));
+        assert_eq!(next_selection(1.0, Some(0), 5), Some(4));
+        assert_eq!(next_selection(-1.0, Some(1), 5), Some(2));
+        assert_eq!(next_selection(1.0, Some(3), 0), None);
+    }
+
+    #[test]
+    fn a_selected_stack_comes_out_first_and_clicks_report_their_cue() {
+        use crate::item::Item;
+        let held = [Stack::new(Item::STICK, 3), Stack::new(Item::DIAMOND, 1), Stack::new(Item::APPLE, 2)];
+        let mut contents = held.to_vec();
+        assert_eq!(remove_selected(&mut contents, Some(1)), Some(held[1]));
+        assert_eq!(contents, [held[0], held[2]]);
+        assert_eq!(remove_selected(&mut contents, Some(7)), Some(held[0]), "out of range takes the front");
+        // The clicked bundle's selection reaches `removeOne` through `clicking`.
+        let bundle = Stack::new(BUNDLE, 1).with_payload(Payload::Bundle(held.to_vec()));
+        let (mut slot, mut cursor) = (Some(bundle), None);
+        let ((), click) = clicking(Some(2), || {
+            crate::inventory::click_slot(&mut slot, &mut cursor, true);
+        });
+        assert_eq!(click, Some(Click::Removed));
+        assert_eq!(click.and_then(Click::cue), Some(Cue::RemoveOne));
+        assert_eq!(cursor, Some(held[2]));
+        assert_eq!(slot.unwrap().bundle_contents(), &held[..2]);
+        // Outside a scope nothing is selected: the front comes out.
+        cursor = None;
+        let ((), click) = clicking(None, || crate::inventory::click_slot(&mut slot, &mut cursor, true));
+        assert_eq!((click, cursor), (Some(Click::Removed), Some(held[0])));
+        // A full stack offered to a full bundle fails, with Java's sound.
+        let full = Stack::new(BUNDLE, 1).with_payload(Payload::Bundle(vec![Stack::new(Item::STICK, 64)]));
+        let (mut slot, mut cursor) = (Some(full), Some(Stack::new(Item::APPLE, 1)));
+        let ((), click) = clicking(None, || crate::inventory::click_slot(&mut slot, &mut cursor, false));
+        assert_eq!(click.and_then(Click::cue), Some(Cue::InsertFail));
+        assert!(click.unwrap().keeps_selection());
+        // An ordinary click reports nothing.
+        let (mut slot, mut cursor) = (Some(Stack::new(Item::STICK, 1)), None);
+        let ((), click) = clicking(None, || crate::inventory::click_slot(&mut slot, &mut cursor, false));
+        assert_eq!(click, None);
+    }
+
+    #[test]
+    fn using_and_destroying_a_bundle_takes_from_the_front() {
+        use crate::item::Item;
+        let held = [Stack::new(Item::STICK, 3), Stack::new(Item::DIAMOND, 1)];
+        let mut bundle = Stack::new(dyed(DyeColor::Red), 1).with_payload(Payload::Bundle(held.to_vec()));
+        assert_eq!(destroyed_contents(&bundle), held);
+        assert_eq!(take_one(&mut bundle), Some(held[0]));
+        assert_eq!(take_one(&mut bundle), Some(held[1]));
+        assert_eq!(take_one(&mut bundle), None);
+        assert_eq!(bundle, Stack::new(dyed(DyeColor::Red), 1), "an emptied bundle equals a fresh one");
+        let mut stick = Stack::new(Item::STICK, 1);
+        assert_eq!(take_one(&mut stick), None);
+        assert!(destroyed_contents(&stick).is_empty());
     }
 }

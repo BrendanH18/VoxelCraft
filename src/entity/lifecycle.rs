@@ -55,7 +55,9 @@ impl Entities {
         self.trader_tick(dt as f32, world, ctx);
         self.tick_decor(world);
         self.village_upkeep(dt as f32, world);
+        self.villager_pickup(world);
         self.populate_village_residents(world, difficulty);
+        self.populate_mineshaft_carts(world);
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.endermite_upkeep(dt, world);
@@ -78,6 +80,7 @@ impl Entities {
             .collect();
         self.player_spots.clear();
         self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
+        self.age_departed(dt as f32);
         self.resolve_hurt_by(ctx);
         self.call_reinforcements(world, ctx);
         self.nether_sense(dt as f32, world, ctx);
@@ -89,17 +92,24 @@ impl Entities {
         self.panda_upkeep(dt, world, ctx, &mut events);
         self.armadillo_upkeep(dt, world, ctx, &mut events);
         self.ocelot_upkeep(dt, ctx);
+        self.fox_upkeep(ctx);
+        self.fox_village_stroll(world, ctx);
         self.tick_allays(dt, world, ctx, &mut events);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
         self.tick_boat_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
         self.tick_undead_mounts(dt, world, ctx);
+        self.piglin_rides(world, ctx);
         self.sense_goals(world);
+        // v1.0 gap Track 2c: what the mobs' look goals and brains see.
+        self.sense_looks(world);
         self.sense_schools();
         self.sense_dolphins(world, &moved);
         // v0.16 Track C: the Wither's server AI before the mobs move.
         self.wither_tick(dt, world, ctx, &mut events);
+        // v1.0 gap Track 2b: lowered mob spears stab before the mobs move.
+        self.mob_spear_stabs(world, ctx, &mut events);
         if self.still.is_some() {
             self.still_ticks = self.still_ticks.saturating_add(1);
         }
@@ -168,6 +178,8 @@ impl Entities {
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 let dead = self.mobs.swap_remove(i);
+                // v1.0 final F8: a death message may still name it.
+                self.depart(&dead);
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                     && let Some(stack) = dead
                         .wolf_armor
@@ -244,12 +256,14 @@ impl Entities {
                 && (self.mobs[i].on_ground || self.still_ticks > 10)
             {
                 self.mobs[i].hold_still(world, face);
+                self.mobs[i].burning = self.still_burning;
                 i += 1;
                 continue;
             }
             let before_tame = self.mobs[i].mount.as_ref().map(|s| (s.tame, s.rider));
             let grounded = self.mobs[i].on_ground;
             self.mobs[i].difficulty = difficulty;
+            self.mobs[i].griefing = self.villager_griefing;
             self.mobs[i].local_difficulty = local_difficulty;
             self.mobs[i].trader_night = (0.5..0.96).contains(&self.village_time);
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
@@ -332,10 +346,16 @@ impl Entities {
             }
         }
         // v1.0 Track 7: dragons no fight owns (spawn eggs).
-        self.wild_dragons.update(dt, world, ctx, &mut self.rng, &self.crystals, &mut events);
+        self.wild_dragons.griefing_off = !self.villager_griefing;
         if let Some(fight) = &mut self.fight {
+            fight.griefing_off = !self.villager_griefing;
+        }
+        let dragons_from = events.len();
+        self.wild_dragons.update(dt, world, ctx, &mut self.rng, &self.crystals, self.fight.as_ref(), &mut events);
+        if let Some(fight) = &mut self.fight {
+            fight.dragon_ticking = fight.dragon.as_ref().is_none_or(|d| world.entity_ticking(d.pos.floor().as_ivec3()));
             // The End's crystals tick with the fight.
-            fight.update(dt, world, ctx, &mut self.rng, &mut self.crystals, &mut events);
+            fight.update_beside(dt, world, ctx, &mut self.rng, &mut self.crystals, &self.wild_dragons, &mut events);
         } else if !self.crystals.is_empty() {
             self.crystal_time += dt;
             while self.crystal_time >= 0.05 - 1e-9 {
@@ -344,6 +364,14 @@ impl Entities {
             }
         } else {
             self.crystal_time = 0.0;
+        }
+        // v1.0 gap Track 8: `EnderDragon.aiStep`'s `processFlappingMovement`
+        // posts `flap` at the dragon with each wing beat it sounds.
+        for e in &events[dragons_from..] {
+            if let EntityEvent::Sound { sound: super::MobSound::DragonFlap, pos } = *e {
+                let none = crate::world::vibration::EventSource::NONE;
+                self.sculk.post(pos, crate::world::vibration::GameEvent::Flap, none, None);
+            }
         }
 
         // Mob bow/crossbow shots become arrows, blaze shots fireballs.
@@ -390,19 +418,22 @@ impl Entities {
                     self.sculk.post(t.pos, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
                     self.tridents.push(t);
                 }
-                EntityEvent::ThrowPotion { from, vel, potion } => {
+                EntityEvent::ThrowPotion { from, vel, potion, thrower } => {
                     // The witch isn't named, so the shot has no source.
                     self.sculk.shot(from, crate::world::vibration::EventSource::NONE);
-                    self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
+                    let mut thrown = potion::ThrownPotion::new(potion, None, from, vel);
+                    thrown.thrower = Some(thrower);
+                    self.potions.push(thrown);
                 }
                 EntityEvent::ShootWindCharge { from, dir, inaccuracy, shooter } => {
                     self.sculk.shot(from, crate::world::vibration::EventSource::mob(shooter));
                     self.thrown.push(thrown::Thrown::breeze_charge(from, dir, inaccuracy, shooter, &mut self.rng));
                 }
                 EntityEvent::ChargedBlast { center } => self.charged_blasts.push(center),
-                EntityEvent::Fireball { from, dir, large } => {
-                    let ball =
+                EntityEvent::Fireball { from, dir, large, shooter } => {
+                    let mut ball =
                         if large { fireball::Fireball::large(from, dir) } else { fireball::Fireball::new(from, dir) };
+                    ball.owner = Some(super::trident::Owner::Mob(shooter));
                     if large {
                         let mut burst = crate::particles::Burst::new(crate::particles::Kind::LargeSmoke, from, 6);
                         burst.spread = DVec3::splat(0.4);
@@ -426,7 +457,11 @@ impl Entities {
                     | EntityEvent::ShootWindCharge { .. }
             )
         });
-        self.update_wither_skulls(world, ctx, &mut events);
+        // v1.0 gap Track 4c: the crystals and dragon parts as they now
+        // stand, for every projectile but arrows (which strike them at
+        // once); their hits are applied once they have all moved.
+        let boss = super::dragon::Boxes::new(self.fight.as_ref(), &self.wild_dragons, &self.crystals);
+        self.update_wither_skulls(world, ctx, &boss, &mut events);
         {
             let (mobs, sculk) = (&self.mobs, &mut self.sculk);
             let carts: Vec<(u32, DVec3, DVec3)> = if self.fireballs.is_empty() {
@@ -439,7 +474,7 @@ impl Entities {
                     return true;
                 }
                 let before = f.pos;
-                let keep = f.update(dt, world, ctx, mobs, &carts, &mut events);
+                let keep = f.update(dt, world, ctx, mobs, &carts, &boss, &mut events);
                 if !keep {
                     let none = crate::world::vibration::EventSource::NONE;
                     sculk.land(world, f.pos, f.pos - before, none);
@@ -450,10 +485,10 @@ impl Entities {
         if self.arrows.iter().any(|a| a.piercing()) {
             self.ensure_mob_ids();
         }
-        let targets = if self.arrows.is_empty() { Vec::new() } else { self.arrow_targets() };
+        let others = if self.arrows.is_empty() { Vec::new() } else { self.arrow_targets() };
         {
             let (mobs, rng, sculk) = (&mut self.mobs, &mut self.rng, &mut self.sculk);
-            let mut boss = super::dragon::Targets {
+            let mut targets = super::dragon::Targets {
                 fight: self.fight.as_mut(),
                 wild: &mut self.wild_dragons,
                 crystals: &mut self.crystals,
@@ -464,7 +499,7 @@ impl Entities {
                 }
                 let was_stuck = a.is_stuck();
                 let before = a.pos;
-                let keep = a.update(dt, world, ctx, mobs, &targets, Some(&mut boss), rng, &mut events);
+                let keep = a.update(dt, world, ctx, mobs, &others, Some(&mut targets), rng, &mut events);
                 // `Projectile.onHit`: `projectile_land` on the block it stuck
                 // in, or where it hit an entity and went.
                 if !was_stuck && (a.is_stuck() || !keep) {
@@ -475,13 +510,21 @@ impl Entities {
                 keep
             });
             // Thrown things are removed when they hit (`Projectile.onHit`).
+            let mut gateways = self.fight.as_mut().map(|f| &mut f.gateway_entities);
+            let pearl_tickets = &mut self.pearl_tickets;
             self.pearls.retain_mut(|p| {
+                // v1.0 final F11: a pearl ticks where its chunk is
+                // entity-ticking, which its own ticket keeps it (the
+                // owner's `ENDER_PEARL` ticket, [`Entities::pearl_tickets`]),
+                // in whatever level it flies.
                 if !world.entity_ticking(p.pos.floor().as_ivec3()) {
                     return true;
                 }
-                let keep = p.update(dt, world, mobs, rng, &mut events);
+                let keep = p.update(dt, world, mobs, rng, &mut events, gateways.as_deref_mut(), &boss);
                 if !keep {
                     sculk.land(world, p.pos, p.vel, sculk_events::Sculk::projectile_source(Some(p.owner), None));
+                } else if let Some(chunk) = p.ticket() {
+                    pearl_tickets.push(chunk);
                 }
                 keep
             });
@@ -489,7 +532,7 @@ impl Entities {
                 if !world.entity_ticking(p.pos.floor().as_ivec3()) {
                     return true;
                 }
-                let keep = p.update(dt, world, ctx, mobs, rng, &mut events);
+                let keep = p.update(dt, world, ctx, mobs, &boss, rng, &mut events);
                 if !keep {
                     sculk.land(world, p.pos, p.vel, sculk_events::Sculk::projectile_source(p.owner, None));
                 }
@@ -499,7 +542,7 @@ impl Entities {
                 if !world.entity_ticking(t.pos.floor().as_ivec3()) {
                     return true;
                 }
-                let keep = t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events);
+                let keep = t.update(dt, world, mobs, &self.mob_index, &ctx.players, &boss, rng, &mut events);
                 if !keep {
                     let source = sculk_events::Sculk::projectile_source(t.owner, t.shooter);
                     sculk.land(world, t.pos, t.pos - t.previous_pos, source);
@@ -508,16 +551,27 @@ impl Entities {
             });
         }
         self.pearl_endermites(&events, ctx);
-        self.update_tridents(dt, world, ctx, &mut events);
+        self.update_tridents(dt, world, ctx, &boss, &mut events);
         // v0.16 Track B: firework rockets.
-        self.update_fireworks(world, ctx, &mut events);
+        self.update_fireworks(world, ctx, &boss, &mut events);
         {
             let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
             let mut i = 0;
             while i < self.bobbers.len() {
                 if !world.entity_ticking(self.bobbers[i].pos.floor().as_ivec3())
-                    || self.bobbers[i].update(dt, world, rng, ctx, mobs, index)
+                    || self.bobbers[i].update(dt, world, rng, ctx, mobs, index, &boss)
                 {
+                    // v1.0 gap Track 8d: the block its flight hit.
+                    let b = &mut self.bobbers[i];
+                    if let Some(cell) = b.struck.take() {
+                        events.push(super::projectile::block_hit(
+                            cell,
+                            b.pos,
+                            b.burning(),
+                            false,
+                            Some(super::trident::Owner::Player(b.owner)),
+                        ));
+                    }
                     i += 1;
                 } else {
                     self.bobbers.swap_remove(i);
@@ -533,8 +587,9 @@ impl Entities {
         self.ensure_mob_ids();
         self.clouds.retain_mut(|cloud| {
             !world.entity_ticking(cloud.pos.floor().as_ivec3())
-                || cloud.tick(dt, ctx, &mut self.mobs, &mut self.rng, &mut events)
+                || cloud.tick(dt, ctx, &mut self.mobs, &boss, &mut self.rng, &mut events)
         });
+        self.apply_dragon_hits(&mut events);
         self.update_eyes(dt, world, &mut events);
         self.apply_entity_shots(&events, ctx);
         self.resolve_mob_hits(&mut events);
@@ -589,10 +644,7 @@ impl Entities {
                         self.animals_owner_attack(i, owner);
                     }
                 }
-                EntityEvent::OwnerHurt { player, attacker } => {
-                    // Java's OwnerHurtByTargetGoal: wolves go for whatever hurt their owner.
-                    self.animals_defend_owner(attacker, player);
-                }
+                EntityEvent::OwnerHurt { player, attacker } => self.mob_hurt_player(player, attacker),
                 EntityEvent::DragonXp { pos, points } => {
                     if self.mob_loot {
                         self.spawn_xp(pos, points);
@@ -616,6 +668,12 @@ impl Entities {
                 }
                 EntityEvent::ExperienceBurst { pos, toward, points } => self.spawn_xp_toward(pos, toward, points),
                 EntityEvent::DropEquipment { stack, pos } => self.scatter(stack, pos),
+                EntityEvent::ThrowItem { stack, pos, vel } => {
+                    self.items.push(item::ItemEntity::new(stack, pos, vel, 0.5, &mut self.rng));
+                }
+                EntityEvent::ItemParticle { pos, vel, item } => {
+                    self.particles.push(crate::particles::Request::Item { pos, vel, item });
+                }
                 _ => {}
             }
         }
@@ -628,13 +686,31 @@ impl Entities {
                     | EntityEvent::Hatched { .. }
                     | EntityEvent::ExperienceBurst { .. }
                     | EntityEvent::DropEquipment { .. }
+                    | EntityEvent::ThrowItem { .. }
+                    | EntityEvent::ItemParticle { .. }
             )
         });
-        self.items.retain_mut(|item| !world.entity_ticking(item.pos.floor().as_ivec3()) || item.update(dt, world));
+        let mut destroyed = Vec::new();
+        self.items.retain_mut(|item| {
+            if !world.entity_ticking(item.pos.floor().as_ivec3()) {
+                return true;
+            }
+            let alive = item.update(dt, world);
+            // Burnt, not despawned: a bundle spills what it holds.
+            if !alive && item.age < item::LIFETIME {
+                destroyed.push(*item);
+            }
+            alive
+        });
+        for item in destroyed {
+            self.spill_destroyed(&item);
+        }
         self.orbs.retain_mut(|orb| !world.entity_ticking(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         let tnt_explodes = self.tnt_explodes;
+        let mobs = &self.mobs;
+        let alive = |uid| mobs.iter().find(|m| m.uid == uid && m.alive()).map(|m| m.kind);
         self.tnt.retain_mut(|t| {
-            !world.entity_ticking(t.pos.floor().as_ivec3()) || t.update(dt, world, &mut events, tnt_explodes)
+            !world.entity_ticking(t.pos.floor().as_ivec3()) || t.update(dt, world, &mut events, tnt_explodes, alive)
         });
         self.merge_timer -= dt as f32;
         if self.merge_timer <= 0.0 {
@@ -658,5 +734,62 @@ impl Entities {
         }
         events.retain(|e| !matches!(e, EntityEvent::Vibration { .. }));
         events
+    }
+}
+
+impl Entities {
+    /// Mob `attacker` hurt `player` (their `lastHurtByMob`): Java's
+    /// `OwnerHurtByTargetGoal` sends their wolves at it, and (v1.0 gap
+    /// Track 2f) foxes that trust them defend against it. v1.0 gap Track
+    /// 8f: also the mob behind a blast that hurt them.
+    ///
+    /// [`EntityEvent::OwnerHurt`]; v1.0 gap Track 2h: also called by the game for a blast a mob is behind (a
+    /// ghast's fireball, a creeper), as `hurtServer` records any living
+    /// source entity.
+    pub fn mob_hurt_player(&mut self, player: PlayerId, attacker: u32) {
+        self.animals_defend_owner(attacker, player);
+        self.player_hurts = self.player_hurts.wrapping_add(1);
+        // v1.0 gap Track 2f: the player's `lastHurtByMob`, which foxes that
+        // trust it defend against.
+        self.player_hurt_by.insert(player, (fox::Attacker::Mob(attacker), self.player_hurts, 0));
+    }
+
+    /// v1.0 gap Track 8f: a blast hurt mob `i`, and `by` was behind it
+    /// (`DamageSource.getEntity`, for primed TNT its owner): `hurtServer`
+    /// makes them its attacker (`setLastHurtByMob`, `lastHurtByPlayer`),
+    /// as a projectile they shot does.
+    pub(super) fn blamed_for_blast(&mut self, i: usize, by: super::trident::Owner, killed: bool) {
+        use super::trident::Owner;
+        let Some((kind, own_uid)) = self.mobs.get(i).map(|m| (m.kind, m.uid)) else { return };
+        match by {
+            Owner::Player(owner) => {
+                if kind == MobKind::Villager {
+                    self.note_villager_hurt(i, owner, killed);
+                }
+                if killed {
+                    return;
+                }
+                if kind == MobKind::Warden {
+                    self.warden_hurt(i, crate::world::vibration::EntityRef::Player(owner), false);
+                }
+                if self.mobs[i].nether.is_some() {
+                    self.nether_hurt(i, nether::Foe::Player(owner));
+                }
+                self.hurt_by_player_target(i, owner);
+                self.animals_owner_attack(i, owner);
+            }
+            // A mob isn't its own attacker (a creeper's blast is its own).
+            Owner::Mob(uid) if uid != own_uid && !killed => {
+                let Some(attacker) = self.mobs.iter().find(|a| a.uid == uid && a.alive()) else { return };
+                if kind == MobKind::Wither {
+                    if super::wither::friend(attacker.kind) {
+                        return;
+                    }
+                    self.wither_hurt_by_mob(i, uid);
+                }
+                self.hurt_by_mob(i, uid, false);
+            }
+            Owner::Mob(_) => {}
+        }
     }
 }

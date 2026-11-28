@@ -114,20 +114,39 @@ pub struct Args {
     pub decor: Vec<(glam::IVec3, glam::IVec3, item::Item, Option<item::Item>)>,
     /// `--brush`: accepted brush strokes on a suspicious block's face.
     pub brush: Vec<(glam::IVec3, glam::IVec3, u8)>,
+    /// v1.0 gap Track 8c, `--projectile`: an arrow (false) or trident (true)
+    /// stuck in the top of a block, and whether it burns.
+    pub projectiles: Vec<(bool, glam::IVec3, bool)>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
     /// The optional armor material forces a full set on a zombie or skeleton.
     pub spawn: Vec<(entity::MobKind, glam::IVec3, Option<entity::armor::Equipped>)>,
-    /// `--spawn allay,x,y,z,item`: the item a spawned allay holds (by index).
+    /// `--spawn allay,x,y,z,item`: the item a spawned allay holds (by index);
+    /// any other mob holds it in its main hand.
     pub spawn_held: Vec<(usize, item::Item)>,
+    /// `--spawn kind,x,y,z,baby`: spawned mobs that are babies (by index).
+    pub spawn_baby: Vec<usize>,
+    /// v1.0 gap Track 7e, `--spawn villager,x,y,z,type[:profession[:level]]`:
+    /// a spawned villager's or zombie villager's type, job and level (by
+    /// index), for the capture scenes' outfits.
+    pub spawn_villager: Vec<(usize, String)>,
     /// Seconds to keep running after loading before `--screenshot`.
     pub wait: f64,
     /// `--animation-time`: hold the animation clock here, so captures can be compared.
     pub animation_time: Option<f32>,
     /// `--still-mobs`: landed mobs hold still facing the camera, for comparable captures.
     pub still_mobs: bool,
+    /// v1.0 gap Track 8d: `--burning`, for captures of Java's flame: the
+    /// player starts alight for ten minutes and still mobs hold still
+    /// burning.
+    pub burning: bool,
     /// v0.18 Track 7: `--panorama DIR`, with `--screenshot`: render the six
     /// title panorama faces from the pose into DIR before the screenshot.
     pub panorama: Option<std::path::PathBuf>,
+    /// v1.0 gap track 6: `--item-review DIR`, with `--screenshot`: contact
+    /// sheets of every item's icon, dropped and held models, and the range
+    /// of `Item::all_items` (`--item-review-range FROM-TO`) to show.
+    pub item_review: Option<std::path::PathBuf>,
+    pub item_review_range: Vec<(usize, usize)>,
     /// v0.18 Track 7: `--world-icon`: take the world's icon in a scripted
     /// run too (by the usual rule), waiting for it before `--screenshot` exits.
     pub world_icon: bool,
@@ -147,6 +166,8 @@ pub struct Args {
     pub give: Vec<(item::Item, u8)>,
     /// Armor worn at startup (`--wear`).
     pub wear: Vec<item::Item>,
+    /// v1.0 final track F1: the off-hand stack at startup (`--offhand`).
+    pub offhand: Option<item::Item>,
     /// Enchantments put on the first stack given (`--enchant`).
     pub enchants: Vec<(enchant::Enchantment, u8)>,
     /// Dyes mixed into the first hotbar stack and the worn armor (`--dye`).
@@ -212,7 +233,7 @@ voxelcraft [options]
                     palette (creative) open
                     (screenshots)
   --open-menu <m>   start with a menu open (screenshots): pause, options, video, sound,
-                    controls, mouse, keybinds, accessibility or lan in a world; title,
+                    controls, mouse, keybinds, accessibility, chat, world or lan in a world; title,
                     select, create, edit, recreate, backup, multiplayer or direct on the
                     title screens (edit, recreate and backup use --world's save, else
                     the last played)
@@ -237,11 +258,13 @@ voxelcraft [options]
   --drop item[,n]   throw n of an item in front of the player once loaded
                     (repeatable; like --give)
   --wear item       put on a piece of armor at startup (repeatable)
+  --offhand item    hold one of an item in the off-hand at startup
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
   --dye c[,c...]    dye the first hotbar stack and the worn armor, when
                     dyeable, with these dyes mixed (e.g. --dye red,blue)
   --cart x,y,z,kind spawn a cart on rails, or a named boat/raft (repeatable)
+  --projectile arrow|trident,x,y,z[,fire] an arrow or trident stuck in the top of a block, burning with fire (repeatable)
   --decor x,y,z,face,item[,held]
                     hang an item frame or painting on, or stand an armor stand
                     against, face up|down|north|south|east|west of block x,y,z;
@@ -256,13 +279,22 @@ voxelcraft [options]
                     for the terrain surface, e.g. zombie,4,~,10). material
                     (leather, chainmail, iron, gold, diamond, netherite) and
                     glint equip a zombie or skeleton; allay,x,y,z,item gives
-                    an allay an item to hold
+                    an allay an item to hold, and any other mob that item in
+                    its main hand; kind,x,y,z,baby[,item] spawns a baby (holding
+                    the item); villager,x,y,z,type[:job[:level]]
+                    dresses a villager or zombie villager (with baby, armor
+                    or an item in the other field)
   --wait <secs>     with --screenshot: keep simulating this long first
   --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
   --still-mobs      landed mobs stop moving and face the starting camera, for comparable captures
   --panorama <dir>  with --screenshot and a square --size: render the title
                     panorama's six faces (panorama_0..5.png) from the --pose
                     position into dir first
+  --item-review <dir>  with --screenshot: contact sheets (items-NN.png) of
+                    every item's icon, dropped model and held model, one
+                    tile each, staged ahead of the --pose position
+  --item-review-range <n|from-to,...>  only these items (indices into the
+                    full item list, as the sheets number them)
   --world-icon      take the world's icon.png even in a scripted run
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies, rain or a thunderstorm (clear,
@@ -359,12 +391,18 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         carts: Vec::new(),
         decor: Vec::new(),
         brush: Vec::new(),
+        projectiles: Vec::new(),
         spawn: Vec::new(),
         spawn_held: Vec::new(),
+        spawn_baby: Vec::new(),
+        spawn_villager: Vec::new(),
         wait: 0.0,
         animation_time: None,
         still_mobs: false,
+        burning: false,
         panorama: None,
+        item_review: None,
+        item_review_range: Vec::new(),
         world_icon: false,
         pose: None,
         health: None,
@@ -375,6 +413,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         orbs: Vec::new(),
         give: Vec::new(),
         wear: Vec::new(),
+        offhand: None,
         enchants: Vec::new(),
         dyes: Vec::new(),
         drop: Vec::new(),
@@ -493,7 +532,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             }
             "--open-menu" => {
                 let m = value("--open-menu")?;
-                const MENUS: [&str; 17] = [
+                const MENUS: [&str; 19] = [
                     "pause",
                     "options",
                     "video",
@@ -502,6 +541,8 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                     "mouse",
                     "keybinds",
                     "accessibility",
+                    "chat",
+                    "world",
                     "lan",
                     "title",
                     "select",
@@ -609,6 +650,21 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                 let strokes = parts[4].parse().ok().filter(|s| (1..=9).contains(s)).ok_or_else(bad)?;
                 args.brush.push((glam::IVec3::new(n[0], n[1], n[2]), face, strokes));
             }
+            "--projectile" => {
+                let v = value("--projectile")?;
+                let parts: Vec<_> = v.split(',').collect();
+                let bad = || format!("--projectile needs arrow|trident,x,y,z[,fire] (got {v})");
+                if !(4..=5).contains(&parts.len()) || parts.get(4).is_some_and(|&f| f != "fire") {
+                    return Err(bad());
+                }
+                let trident = match parts[0] {
+                    "arrow" => false,
+                    "trident" => true,
+                    _ => return Err(bad()),
+                };
+                let n: Vec<i32> = parts[1..4].iter().map(|s| s.parse()).collect::<Result<_, _>>().map_err(|_| bad())?;
+                args.projectiles.push((trident, glam::IVec3::new(n[0], n[1], n[2]), parts.len() == 5));
+            }
             "--cart" => {
                 let v = value("--cart")?;
                 let parts: Vec<_> = v.split(',').collect();
@@ -648,7 +704,38 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                     .iter()
                     .map(|s| if *s == "~" { Ok(i32::MIN) } else { s.parse().map_err(|_| bad()) })
                     .collect::<Result<_, _>>()?;
-                let armor = if parts.len() == 5 && kind == entity::MobKind::Allay {
+                const TYPES: [&str; 7] = ["desert", "jungle", "plains", "savanna", "snow", "swamp", "taiga"];
+                let dressed = |p: &str| TYPES.contains(&p.split(':').next().unwrap_or(""));
+                let villager = matches!(kind, entity::MobKind::Villager | entity::MobKind::ZombieVillager);
+                let armor = if villager && parts[4..].iter().any(|p| dressed(p)) {
+                    // v1.0 gap Track 7e: a villager's type (with `baby`, a
+                    // zombie villager's armor material or a held item).
+                    let mut armor = None;
+                    for &p in &parts[4..] {
+                        if dressed(p) {
+                            args.spawn_villager.push((args.spawn.len(), p.to_owned()));
+                        } else if p == "baby" {
+                            args.spawn_baby.push(args.spawn.len());
+                        } else if let Some(material) = entity::armor::ArmorKind::from_name(p) {
+                            armor = Some(entity::armor::Equipped { kind: material, glint: false });
+                        } else {
+                            let held = item::Item::from_name(p).ok_or_else(|| format!("--spawn: unknown item {p}"))?;
+                            args.spawn_held.push((args.spawn.len(), held));
+                        }
+                    }
+                    armor
+                } else if parts.len() >= 5 && parts[4] == "baby" {
+                    // v1.0 gap Track 7f: `kind,x,y,z,baby,item`, a baby
+                    // holding an item (a fox kit's mouth item).
+                    args.spawn_baby.push(args.spawn.len());
+                    if let Some(p) = parts.get(5) {
+                        let held = item::Item::from_name(p).ok_or_else(|| format!("--spawn: unknown item {p}"))?;
+                        args.spawn_held.push((args.spawn.len(), held));
+                    }
+                    None
+                } else if parts.len() == 5
+                    && (kind == entity::MobKind::Allay || entity::armor::ArmorKind::from_name(parts[4]).is_none())
+                {
                     let held =
                         item::Item::from_name(parts[4]).ok_or_else(|| format!("--spawn: unknown item {}", parts[4]))?;
                     args.spawn_held.push((args.spawn.len(), held));
@@ -675,6 +762,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
             "--still-mobs" => args.still_mobs = true,
+            "--burning" => args.burning = true,
             "--animation-time" => {
                 args.animation_time = Some(value("--animation-time")?.parse().map_err(|_| "bad --animation-time")?);
             }
@@ -728,6 +816,10 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                     args.dyes.push(colour);
                 }
             }
+            "--offhand" => {
+                let v = value("--offhand")?;
+                args.offhand = Some(item::Item::from_name(v.trim()).ok_or(format!("--offhand: unknown item {v}"))?);
+            }
             "--wear" => {
                 let v = value("--wear")?;
                 let item = item::Item::from_name(v.trim()).filter(|i| i.as_armor().is_some());
@@ -743,6 +835,19 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--panorama" => args.panorama = Some(value("--panorama")?.into()),
+            "--item-review" => args.item_review = Some(value("--item-review")?.into()),
+            "--item-review-range" => {
+                let v = value("--item-review-range")?;
+                let bad = || format!("--item-review-range needs N or FROM-TO, comma-separated (got {v})");
+                for part in v.split(',') {
+                    let (a, b) = part.split_once('-').unwrap_or((part, part));
+                    let (a, b) = (a.trim().parse().map_err(|_| bad())?, b.trim().parse().map_err(|_| bad())?);
+                    if a > b {
+                        return Err(bad());
+                    }
+                    args.item_review_range.push((a, b));
+                }
+            }
             "--world-icon" => args.world_icon = true,
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();
@@ -818,7 +923,10 @@ impl Args {
         self.open_block = None;
         self.spawn.clear();
         self.spawn_held.clear();
+        self.spawn_baby.clear();
+        self.spawn_villager.clear();
         self.still_mobs = false;
+        self.burning = false;
         self.pose = None;
         self.health = None;
         self.air = None;
@@ -828,6 +936,7 @@ impl Args {
         self.orbs.clear();
         self.give.clear();
         self.wear.clear();
+        self.offhand = None;
         self.enchants.clear();
         self.drop.clear();
     }

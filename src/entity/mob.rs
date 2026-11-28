@@ -12,23 +12,31 @@ use crate::world::terrain::Dimension;
 
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
+pub(crate) mod brain_walk;
 mod breeze;
+pub(crate) mod chase;
 mod creaking;
 pub(crate) mod dolphin;
+pub(crate) mod door_break;
 mod drowned;
 mod endermite;
 pub(crate) mod equine;
+mod eyes;
+pub(crate) use eyes::baby_shape;
 mod frog;
 pub(crate) mod goals;
-mod hazards;
+pub(super) mod hazards;
+pub(crate) mod head;
 mod illager;
 mod navigate;
 pub(crate) use navigate::is_sand;
+mod fox;
 mod nether_ai;
 mod ocelot;
 mod polar_bear;
 mod raider;
 pub(crate) mod selector;
+pub(crate) mod spear;
 mod sulfur_cube;
 pub(crate) mod swim;
 pub(crate) mod turtle;
@@ -52,8 +60,18 @@ const JUMP_VELOCITY: f64 = 8.4;
 const MAX_STEP: f64 = 1.0 / 60.0;
 /// Seconds of red flash (and knockback immunity) after taking damage.
 pub const HURT_TIME: f32 = 0.5;
-/// Length of the death animation before the mob is removed.
-pub const DEATH_TIME: f32 = 0.9;
+/// v1.0 gap Track 8d: `hurtServer`'s `damageCooldownTime = 20` on a full hit.
+pub const COOLDOWN: u8 = 20;
+/// The hurt cooldown's half-way mark: above it a hit lands only by its excess.
+pub const COOLDOWN_HALF: u8 = 10;
+/// How long a dead mob stays before it is removed. v1.0 gap Track 7:
+/// Java's `tickDeath` removes it as its `deathTime` reaches 20 ticks after
+/// death; this game removes it at the start of a tick, before that tick's
+/// update, so the threshold sits between 18 and 19 ticks of
+/// [`Mob::dying`] and the mob is last drawn at the same `deathTime` 19.
+pub const DEATH_TIME: f32 = (super::motion::DEATH_TICKS - 1.5) * super::motion::TICK;
+/// What [`Mob::pose_values`] holds (see there).
+pub type Pose = [f32; 7];
 /// Hostile mobs notice players within this many blocks.
 const CHASE_RANGE: f64 = 24.0;
 const ATTACK_RANGE: f64 = 1.2;
@@ -1270,6 +1288,14 @@ pub struct Mob {
     /// Java 26.3 `AgeableMob.AGE_LOCKED`: a golden dandelion stopped this
     /// baby growing up (v0.16 Track D). Saved.
     pub age_locked: bool,
+    /// v1.0 gap Track 3b: `AgeableMob.forcedAge`, the growth a baby was
+    /// forced (fed) through, given back as its age when it comes of age by
+    /// feeding (saved when set), and `forcedAgeTimer`, the 40 ticks of
+    /// happy-villager particles after a forced growth (not saved).
+    pub forced_age: i32,
+    pub(crate) forced_age_timer: u8,
+    /// Forced-growth particles due since the last particle pass.
+    pub(crate) forced_sparkles: u8,
     /// Java slime size (1, 2 or 4).
     pub size: u8,
     /// A baby zombie: half size and 50% faster.
@@ -1288,9 +1314,11 @@ pub struct Mob {
     /// arrow or a blast); consumed by `take_damage`. Never saved.
     pub(crate) hit_cause: Option<Cause>,
     /// v1.0 Track 5: blocks fallen since the last landing (`fallDistance`,
-    /// not saved) and the fall damage the last moves queued.
+    /// saved as `fall_distance` since v1.0 gap Track 1) and the fall damage
+    /// the last moves queued, with its type (`fall` or `stalagmite`).
     pub(super) fall_distance: f64,
     pub(super) pending_fall: f32,
+    pub(super) pending_fall_cause: Cause,
     pub phantom: Option<Box<super::phantom::State>>,
     pub freezing: Option<super::hostiles::Freezing>,
     pub mooshroom: Option<Box<super::mooshroom::State>>,
@@ -1300,6 +1328,8 @@ pub struct Mob {
     pub panda: Option<Box<super::panda::State>>,
     pub armadillo: Option<Box<super::armadillo::State>>,
     pub ocelot: Option<Box<super::ocelot::State>>,
+    /// v1.0 gap Track 2e: the fox's hunting states and goals.
+    pub fox: Option<Box<super::fox::State>>,
     pub copper_golem: Option<Box<super::copper_golem::State>>,
     pub creaking: Option<Box<super::creaking::State>>,
     pub sniffer: Option<Box<super::sniffer::State>>,
@@ -1352,10 +1382,17 @@ pub struct Mob {
     /// v0.18 Track 6: [`Mob::pose_values`] at the start of the last
     /// simulation step, so the model turns and walks smoothly between ticks
     /// as Java's renderers do with the partial tick. Not saved.
-    pub previous_pose: [f32; 5],
+    pub previous_pose: Pose,
     pub vel: DVec3,
     /// Body facing, same convention as the player: forward = (cos, 0, sin).
+    /// v1.0 gap Track 2c: this is Java's `yRot`, the heading the move
+    /// control turns and movement follows; the drawn body is [`Self::body_yaw`].
     pub yaw: f32,
+    /// v1.0 gap Track 2c: Java's `yBodyRot`, which `BodyRotationControl`
+    /// turns (the travel heading while moving, after the head while still);
+    /// [`Self::pose_values`] hands it to the models as their body yaw. Not
+    /// saved: it starts at [`Self::yaw`].
+    pub body_yaw: f32,
     /// Head yaw relative to the body, and pitch (positive looks up).
     pub head_yaw: f32,
     pub head_pitch: f32,
@@ -1370,25 +1407,55 @@ pub struct Mob {
     pub dying: Option<f32>,
     pub on_ground: bool,
     pub in_water: bool,
+    /// v1.0 gap Track 3b: the dimension's `FAST_LAVA` (the Nether), for
+    /// lava currents, set from the update's context.
+    pub(crate) fast_lava: bool,
+    /// v1.0 gap Track 3b: the part of a land mob's motion (blocks a tick)
+    /// that water and lava currents built up, kept apart from its walking
+    /// in the continuous fluid model and dragged as Java's `travelInWater`
+    /// and `travelInLava` drag the whole motion.
+    pub(crate) current: DVec3,
     pub burning: bool,
-    /// Walk cycle phase (radians) and amplitude (0..1).
+    /// v1.0 gap Track 7: Java's `WalkAnimationState` position and speed
+    /// ([`super::motion`]). While a model is built they hold what Java's
+    /// renderer hands its model instead: `walkAnimationPos` (scaled for
+    /// babies, interpolated) and `walkAnimationSpeed` (at most 1).
     pub limb_phase: f32,
     pub limb_amp: f32,
+    /// v1.0 final Track F4: Java's `moveDist` and `nextStep`, for the mobs
+    /// with their own footsteps ([`super::mob_steps`]). Not saved (Java
+    /// doesn't save them either).
+    pub(crate) move_dist: f32,
+    pub(crate) next_step: f32,
     /// Seconds left of the arm swing after an attack.
     pub attack_anim: f32,
+    /// v1.0 gap Track 7: Java's `SwingState`, started when an attack sets
+    /// [`Self::attack_anim`]. Not saved.
+    pub swing: super::motion::Swing,
+    /// [`Self::attack_anim`] as the last tick left it, to see a new attack.
+    swing_seen: f32,
+    /// v1.0 gap Track 7b: Java's `tickCount`, the ticks this mob has lived
+    /// since it was spawned or loaded, which its model's idle animations
+    /// read as `ageInTicks` ([`Self::age_in_ticks`]). Not saved, as in Java.
+    pub tick_count: u32,
+    /// v1.0 gap Track 7b: Java's client-side animation state
+    /// ([`super::mob_anim`]). Not saved.
+    pub anim: super::mob_anim::Anim,
     /// Sky light estimate at the mob, 0..1 (refreshed a few times a second).
     pub sky_light: f32,
     /// Torch light where it stands, 0..1.
     pub block_light: f32,
-    /// Creeper fuse: seconds lit, 0 when not fusing.
+    /// Creeper fuse: seconds lit (Java's `swell`), 0 when not fusing. A
+    /// fall adds to it (`Creeper.causeFallDamage`) without lighting it.
     pub fuse: f32,
+    /// A creeper's `swellDir > 0`: its `SwellGoal` is running, so the fuse
+    /// burns up rather than down. Not saved, as in Java.
+    pub swelling: bool,
     /// Seconds a hit spider stays angry in daylight.
     pub(super) provoked: f32,
     pub(super) ai: Ai,
     pub(super) ai_timer: f32,
     pub(super) move_yaw: f32,
-    head_target: (f32, f32),
-    head_timer: f32,
     pub(super) attack_cooldown: f32,
     burn_timer: f32,
     fire_left: f32,
@@ -1426,6 +1493,8 @@ pub struct Mob {
     offset_timer: f32,
     /// Feet of whatever this mob is walking toward (a villager, monster, or player).
     pub(super) hunt: Option<DVec3>,
+    /// The eye height of what `hunt` follows (Track 2d; 1 for a place).
+    pub(super) hunt_eye: f64,
     /// `think` wants a melee swing resolved against `hunt` this tick.
     pub(super) strike: bool,
     /// Player-built golems stay loaded instead of despawning.
@@ -1465,9 +1534,6 @@ pub struct Mob {
     pub(crate) goals: goals::Goals,
     /// Java's `MoveControl` for swimmers, ghasts and airborne blazes.
     pub(crate) move_ctl: swim::MoveCtl,
-    /// v1.0 Track 7: seconds the chased player has been out of sight
-    /// (`TargetGoal.unseenTicks`, never saved).
-    pub(crate) target_unseen: f32,
     /// `Mob.homePosition` and `homeRadius` (`restrictTo`): random targets
     /// and attack targets stay within the radius. Elder guardians set one
     /// around where they first act; saved as Java saves it.
@@ -1481,10 +1547,52 @@ pub struct Mob {
     pub(super) reinforce_call: Option<Option<super::PlayerId>>,
     /// The player a reinforcement was sent after (`setTarget`). Never saved.
     pub(super) reinforce_target: Option<super::PlayerId>,
+    /// v1.0 gap Track 2: a running `BreakDoorGoal` (not saved).
+    pub(crate) door_break: Option<door_break::DoorBreak>,
+    /// The `mobGriefing` rule, refreshed before each update.
+    pub(crate) griefing: bool,
+    /// v1.0 gap Track 2: the shared chase's `TargetGoal` target and its
+    /// unseen full updates, `MeleeAttackGoal`, the zombie goal selector,
+    /// `SpearUseGoal` and a lowered spear (none saved, as in Java).
+    pub(crate) chase_target: Option<super::PlayerId>,
+    pub(crate) chase_unseen: i32,
+    pub(crate) melee: chase::Melee,
+    pub(crate) chase_goals: selector::Selector,
+    pub(crate) spear: Option<chase::SpearUse>,
+    pub(crate) spear_use: Option<chase::SpearCharge>,
+    /// v1.0 gap Track 2c: Java's `yHeadRot` and `xRot` and the
+    /// `LookControl` that turns them, for every mob (never saved).
+    pub(crate) look: head::JavaLook,
+    /// v1.0 gap Track 2c: the idle look goals, brain look behaviours and
+    /// `BodyRotationControl` (never saved).
+    pub(crate) head: head::Head,
+    /// v1.0 gap Track 2e: a brain's `WALK_TARGET` and idle movement.
+    pub(crate) walking: brain_walk::Walking,
+    /// A mount carrying a rider's spear charge: `hunt` at its
+    /// `chargeSpeedModifier` (1.4 for zombie horses, 4 for camel husks).
+    pub(crate) hunt_charge: bool,
+    /// A strider a zombified piglin rider steers (never saved; refreshed
+    /// every update).
+    pub(crate) mob_steered: bool,
+    /// Ticks since it was last hurt (`HURT_BY` lasts 40), and where a baby
+    /// piglin walks to mount (`Mount`); never saved.
+    pub(crate) hurt_age: u32,
+    /// v1.0 gap Track 8d: `LivingEntity.damageCooldownTime` (Java's old
+    /// `invulnerableTime`), in ticks: 20 after a hit that lands in full,
+    /// counted down once a tick; above 10, a hit lands only by what it adds
+    /// over `last_hurt`. Never saved (Java saves neither).
+    pub(crate) damage_cooldown: u8,
+    /// `LivingEntity.lastHurt`: the amount of the last hit that landed,
+    /// before armor and the rest of `actuallyHurt`.
+    pub(crate) last_hurt: f32,
+    pub(crate) ride_walk: Option<DVec3>,
     /// v1.0 Track 9: how many times a slime block or bed has bounced it
     /// (`restituteMovementAfterCollisions`), for the `bounce` game event.
     /// Never saved.
     pub(crate) bounces: u32,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Per-kind state of the mobs on the flagged goal selector. Mobs hold it
@@ -1506,7 +1614,8 @@ impl Mob {
             ))
         });
         let health = mount.as_ref().map_or(kind.max_health(), |s| s.max_health);
-        Self {
+        let mut m = Self {
+            portal_cooldown: 0,
             simulation_active: true,
             infested: 0,
             mount,
@@ -1526,6 +1635,9 @@ impl Mob {
             persistent: super::mounts::equine(kind) && kind != MobKind::CamelHusk
                 || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem | MobKind::Allay),
             age_locked: false,
+            forced_age: 0,
+            forced_age_timer: 0,
+            forced_sparkles: 0,
             size: 1,
             baby: false,
             grow: 0.0,
@@ -1544,6 +1656,7 @@ impl Mob {
             hit_cause: None,
             fall_distance: 0.0,
             pending_fall: 0.0,
+            pending_fall_cause: Cause::FALL,
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             bat: (kind == MobKind::Bat).then(Box::default),
@@ -1552,6 +1665,7 @@ impl Mob {
             panda: (kind == MobKind::Panda).then(Box::default),
             armadillo: (kind == MobKind::Armadillo).then(Box::default),
             ocelot: (kind == MobKind::Ocelot).then(Box::default),
+            fox: (kind == MobKind::Fox).then(Box::default),
             copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
             creaking: (kind == MobKind::Creaking).then(Box::default),
             sniffer: (kind == MobKind::Sniffer).then(Box::default),
@@ -1581,9 +1695,10 @@ impl Mob {
             riding: None,
             pos,
             previous_pos: pos,
-            previous_pose: [yaw, 0.0, 0.0, 0.0, 0.0],
+            previous_pose: [yaw, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             vel: DVec3::ZERO,
             yaw,
+            body_yaw: yaw,
             head_yaw: 0.0,
             head_pitch: 0.0,
             health,
@@ -1592,23 +1707,30 @@ impl Mob {
             dying: None,
             on_ground: false,
             in_water: false,
+            fast_lava: false,
+            current: DVec3::ZERO,
             burning: false,
             limb_phase: 0.0,
             limb_amp: 0.0,
+            move_dist: 0.0,
+            next_step: 0.0,
             attack_anim: 0.0,
+            swing: Default::default(),
+            swing_seen: 0.0,
+            tick_count: 0,
+            anim: Default::default(),
             sky_light: 1.0,
             block_light: 0.0,
             ai: Ai::Idle,
             ai_timer: 1.0,
             move_yaw: yaw,
-            head_target: (0.0, 0.0),
-            head_timer: 0.0,
             attack_cooldown: 0.0,
             burn_timer: 0.0,
             fire_left: 0.0,
             player_hit_left: 0.0,
             light_timer: 0.0,
             fuse: 0.0,
+            swelling: false,
             bee: (kind == MobKind::Bee).then(super::bee::State::default),
             provoked: 0.0,
             blocked: false,
@@ -1629,6 +1751,7 @@ impl Mob {
             height_offset: 0.5,
             offset_timer: 0.0,
             hunt: None,
+            hunt_eye: 1.0,
             strike: false,
             built: false,
             weakness_left: 0.0,
@@ -1650,7 +1773,6 @@ impl Mob {
             idle: 0.0,
             goals: Default::default(),
             move_ctl: Default::default(),
-            target_unseen: 0.0,
             restrict: None,
             java_goals: match kind {
                 MobKind::Dolphin => Some(Box::new(JavaGoals::Dolphin(Default::default()))),
@@ -1660,8 +1782,34 @@ impl Mob {
             attrs: Default::default(),
             reinforce_call: None,
             reinforce_target: None,
+            door_break: None,
+            griefing: true,
+            chase_target: None,
+            chase_unseen: 0,
+            melee: Default::default(),
+            chase_goals: Default::default(),
+            spear: None,
+            spear_use: None,
+            look: Default::default(),
+            head: Default::default(),
+            walking: Default::default(),
+            hunt_charge: false,
+            mob_steered: false,
+            hurt_age: u32::MAX,
+            damage_cooldown: 0,
+            last_hurt: 0.0,
+            ride_walk: None,
             bounces: 0,
+        };
+        // v1.0 gap Track 2g: `PiglinBrute.finalizeSpawn` (`PiglinBruteAi.initMemories`):
+        // a brute's `HOME` is where it spawns, however it spawns (a saved brute
+        // loads its own).
+        if kind == MobKind::PiglinBrute
+            && let Some(n) = m.nether.as_mut()
+        {
+            n.home = Some(pos);
         }
+        m
     }
 
     pub(super) fn melee_attack(&self) -> (f32, Cause) {
@@ -1678,7 +1826,9 @@ impl Mob {
         // `Mob.doHurtTarget` reads the attack damage attribute, which the
         // main-hand item's modifiers raise (`entity::mob_combat`).
         let weapon = if self.kind == MobKind::ZombifiedPiglin { 0.0 } else { self.weapon_attack_bonus() };
-        ((base + strength + held + weapon - weakness).max(0.0), cause)
+        // v1.0 gap Track 8g: the mob is the hit's attacker, which the death
+        // message names (its custom name) and the kill credit remembers.
+        ((base + strength + held + weapon - weakness).max(0.0), cause.by(Some(super::trident::Owner::Mob(self.uid))))
     }
 
     /// Retaliation from the armor worn by a player struck in melee.
@@ -1750,12 +1900,32 @@ impl Mob {
             self.convert_by = None;
             v.sleeping = false;
             v.trading = false;
+            v.customer = None;
             v.fleeing = false;
             v.goal = None;
         }
         // `finishConversion`: the villager wakes with 200 ticks of Nausea.
         self.effects.add(crate::simulation::effects::Effect::Nausea, 0, 200);
         dropped
+    }
+
+    /// v1.0 final F7: Java 26.3's `CollisionContext.of(mob)`, which
+    /// `Entity.collide` passes to every block shape: scaffolding holds a
+    /// mob up only from above (no mob is ever `isDescending`), and powder
+    /// snow holds up only a falling mob (`fallDistance > 2.5`), or from
+    /// above one in leather boots or in `powder_snow_walkable_mobs`.
+    pub fn collision_context(&self) -> crate::physics::CollisionContext {
+        crate::physics::CollisionContext::entity(self.pos.y, self.fall_distance, self.walks_on_powder_snow())
+    }
+
+    /// `PowderSnowBlock.canEntityWalkOnPowderSnow` for a mob.
+    pub fn walks_on_powder_snow(&self) -> bool {
+        use crate::item::{ArmorMaterial, ArmorPiece};
+        matches!(self.kind, MobKind::Rabbit | MobKind::Endermite | MobKind::Silverfish | MobKind::Fox)
+            || self
+                .equipment
+                .get(super::equipment::Slot::of_piece(ArmorPiece::Boots))
+                .is_some_and(|s| s.item.as_armor() == Some((ArmorPiece::Boots, ArmorMaterial::Leather)))
     }
 
     pub fn shape(&self) -> Shape {
@@ -1775,21 +1945,24 @@ impl Mob {
             Shape::new(base * 0.5, base)
         } else if self.kind.is_cube() {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
-        } else if self.baby || self.age < 0 {
-            let s = self.kind.shape();
-            let scale = if super::undead_mounts::undead(self.kind) {
-                0.7
-            } else if self.kind == MobKind::Armadillo {
-                0.6
-            } else if self.kind == MobKind::HappyGhast {
-                super::happy_ghast::BABY_SCALE
-            } else {
-                0.5
-            };
-            Shape::new(s.half_width * scale, s.height * scale)
+        } else if let Some(s) = self.mount.as_ref().filter(|_| super::mounts::camel_like(self.kind)) {
+            // v1.0 gap Track 3: `Camel.getDefaultDimensions` by pose and age.
+            let (width, height) = super::mounts::camel::dimensions(self.baby || self.age < 0, s.camel_sitting);
+            Shape::new(width / 2.0, height)
         } else {
-            self.kind.shape()
+            let shape = if self.baby || self.age < 0 { baby_shape(self.kind) } else { self.kind.shape() };
+            // v1.0 gap Track 2f: `Goat.getDefaultDimensions` scales its box by
+            // `LONG_JUMPING_DIMENSION_SCALE_FACTOR` (0.7) in the
+            // `LONG_JUMPING` pose.
+            if self.goat_long_jumping() { Shape::new(shape.half_width * 0.7, shape.height * 0.7) } else { shape }
         }
+    }
+
+    /// v1.0 gap Track 2f: a goat in Java's `Pose.LONG_JUMPING`
+    /// (`LongJumpMidJump`: from its launch until it lands), for the box
+    /// and the model.
+    pub fn goat_long_jumping(&self) -> bool {
+        self.kind == MobKind::Goat && self.animal.as_ref().is_some_and(|a| a.long_jumping)
     }
 
     pub fn set_size(&mut self, size: u8) {
@@ -1861,6 +2034,26 @@ impl Mob {
             || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0)
             // `primeTime` makes a lit sulfur cube permanently invulnerable.
             || self.sulfur_cube.as_ref().is_some_and(|s| s.primed())
+            || self.cooldown_refuses(amount)
+    }
+
+    /// v1.0 gap Track 8d: `LivingEntity.hurtServer`'s hurt cooldown refusing
+    /// a hit: within the first half of `damageCooldownTime` (above 10 of
+    /// its 20 ticks), a hit no harder than `lastHurt` does nothing at all
+    /// (`#bypasses_cooldown` is empty in 26.3).
+    pub fn cooldown_refuses(&self, amount: f32) -> bool {
+        // `Armadillo.hurtServer` halves a scared one's hit before the check.
+        let amount =
+            if self.armadillo.as_ref().is_some_and(|s| s.scared()) { ((amount - 1.0) / 2.0).max(0.0) } else { amount };
+        self.damage_cooldown > COOLDOWN_HALF && amount <= self.last_hurt
+    }
+
+    /// Whether a hit now would land in full (`tookFullDamage`): outside the
+    /// first half of the hurt cooldown. Only a full hit flashes, plays the
+    /// hurt or death sound, kicks the legs and takes `hurtServer`'s own
+    /// knockback (`dealDefaultKnockback`).
+    pub fn full_hit(&self) -> bool {
+        self.damage_cooldown <= COOLDOWN_HALF
     }
     fn damage_typed(&mut self, amount: f32, knockback: Option<DVec3>, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
         // `isInvulnerableTo` refuses the hit before any knockback.
@@ -1873,7 +2066,8 @@ impl Mob {
         } else {
             1.0 - self.knockback_resistance()
         };
-        if let Some(kb) = knockback.filter(|_| taken > 0.0).map(|kb| kb * taken) {
+        // v1.0 gap Track 8d: a hit inside the hurt cooldown takes no knockback.
+        if let Some(kb) = knockback.filter(|_| taken > 0.0 && self.full_hit()).map(|kb| kb * taken) {
             self.vel.x = kb.x;
             self.vel.z = kb.z;
             self.vel.y = self.vel.y.max(kb.y);
@@ -1910,12 +2104,33 @@ impl Mob {
     /// Takes a hit followed by Java's knockbacks in order (`hurtServer`'s
     /// default push, then the attacker's extra one), each halving the motion
     /// left by the previous. Returns `true` if this killed the mob.
+    ///
+    /// The first push is `hurtServer`'s own (`dealDefaultKnockback`), which a
+    /// hit inside the hurt cooldown doesn't take (v1.0 gap Track 8d).
     pub fn damage_pushed(&mut self, amount: f32, pushes: &[crate::knockback::Push], rng: &mut Rng) -> bool {
+        let (default, extra) = match pushes.split_first() {
+            Some((first, rest)) => (Some(*first), rest),
+            None => (None, pushes),
+        };
+        self.damage_knocked(amount, default, extra, rng)
+    }
+
+    /// [`Mob::damage_pushed`] with `hurtServer`'s own push (`default`, taken
+    /// only by a full hit) apart from the attacker's (`extra`: the attack's
+    /// knockback and sweep, which any hit that lands takes).
+    pub fn damage_knocked(
+        &mut self,
+        amount: f32,
+        default: Option<crate::knockback::Push>,
+        extra: &[crate::knockback::Push],
+        rng: &mut Rng,
+    ) -> bool {
         // `isInvulnerableTo` refuses the hit before any knockback.
         if self.refuses_hit(amount) {
             return false;
         }
-        for &push in pushes {
+        let default = default.filter(|_| self.full_hit());
+        for push in default.into_iter().chain(extra.iter().copied()) {
             self.knock_back(push, rng);
         }
         // A sulfur cube with a block takes melee and projectile hits only
@@ -1984,6 +2199,23 @@ impl Mob {
         if self.armadillo.is_some() && amount <= 0.0 {
             return false;
         }
+        // v1.0 gap Track 8d: `LivingEntity.hurtServer`'s hurt cooldown, on
+        // the amount `Armadillo.hurtServer` passes on, before armor
+        // (`actuallyHurt` reduces only what lands).
+        let full = self.full_hit();
+        let amount = if full {
+            self.last_hurt = amount;
+            self.damage_cooldown = COOLDOWN;
+            amount
+        } else {
+            if amount <= self.last_hurt {
+                self.hit_cause = None;
+                return false;
+            }
+            let excess = amount - self.last_hurt;
+            self.last_hurt = amount;
+            excess
+        };
         // v0.16 Track A: a shut shulker's shell is 20 armor; the hit
         // decides on its teleport and duplication next tick.
         let amount = match &mut self.shulker {
@@ -2009,6 +2241,12 @@ impl Mob {
         if attacked && let Some(s) = &mut self.silverfish {
             s.notify_hurt();
         }
+        // `Camel.actuallyHurt` stands it up at once (v1.0 gap Track 3).
+        if super::mounts::camel_like(self.kind)
+            && let Some(s) = self.mount.as_mut()
+        {
+            s.stand_up_instantly();
+        }
         if let Some(a) = &mut self.animal {
             a.love = 0.0;
             a.courtship = 0.0;
@@ -2022,7 +2260,8 @@ impl Mob {
         // Horse armor's BODY attributes: armor points and toughness.
         let body = self.mount.as_ref().and_then(|s| s.slots[1]).map(|s| s.item);
         let armor = body.map_or(0, super::mounts::armor_points);
-        let amount = if armor > 0 {
+        let bypasses_armor = self.hit_cause.is_some_and(|c| c.is(crate::simulation::damage::DamageTag::BypassesArmor));
+        let amount = if armor > 0 && !bypasses_armor {
             let toughness = body.map_or(0.0, super::mounts::armor_toughness);
             crate::simulation::survival::armor_reduce_with(amount, armor, toughness, self.armor_effectiveness)
         } else {
@@ -2043,6 +2282,14 @@ impl Mob {
             _ => amount,
         };
         self.health -= self.effects.absorb(amount);
+        // v1.0 gap Track 3b: `AbstractHorse.hurtServer` rears one time in
+        // three after a hit that hurt (`standIfPossible`).
+        if super::mounts::rears(self.kind)
+            && let Some(s) = self.mount.as_mut()
+            && rng.next_int(3) == 0
+        {
+            s.stand_if_possible(self.kind);
+        }
         // `InfestedMobEffect.onMobHurt`, after a hit that didn't kill (a
         // death clears the effects first).
         if self.health > 0.0
@@ -2063,7 +2310,14 @@ impl Mob {
         if let Some(s) = &mut self.copper_golem {
             s.interrupt();
         }
-        self.hurt = HURT_TIME;
+        // Only a full hit sets `hurtTime` and sends the damage event
+        // (`handleDamageEvent` kicks the legs); any hit that lands is
+        // remembered (`setLastHurtByMob`).
+        if full {
+            self.hurt = HURT_TIME;
+            self.limb_amp = super::motion::HURT_KICK;
+        }
+        self.hurt_age = 0;
         if let Some(s) = &mut self.bat {
             s.resting = false;
         }
@@ -2090,6 +2344,8 @@ impl Mob {
             MobKind::Wolf => !attacked,
             MobKind::PolarBear => self.baby || !attacked,
             MobKind::Panda | MobKind::Armadillo => !attacked,
+            // v1.0 gap Track 2f: `FoxPanicGoal.shouldPanic`: not while defending.
+            MobKind::Fox => !self.fox.as_ref().is_some_and(|s| s.defending),
             k => !k.is_hostile(),
         };
         if scared {
@@ -2115,12 +2371,18 @@ impl Mob {
             self.provoked.max(if self.kind == MobKind::Enderman { ENDERMAN_ANGER_TIME } else { PROVOKED_TIME });
         if self.health <= 0.0 {
             self.dying = Some(0.0);
-            self.cry = Some(if let Some(s) = &self.copper_golem {
-                MobSound::CopperGolem(super::copper_golem::Sound::Death, s.stage as u8)
-            } else {
-                MobSound::Death(self.kind)
-            });
+            // A killing hit inside the hurt cooldown dies silently.
+            if full {
+                self.cry = Some(if let Some(s) = &self.copper_golem {
+                    MobSound::CopperGolem(super::copper_golem::Sound::Death, s.stage as u8)
+                } else {
+                    MobSound::Death(self.kind)
+                });
+            }
             return true;
+        }
+        if !full {
+            return false;
         }
         self.cry = Some(if let Some(s) = &self.copper_golem {
             MobSound::CopperGolem(super::copper_golem::Sound::Hurt, s.stage as u8)
@@ -2154,34 +2416,100 @@ impl Mob {
         }
     }
 
-    /// Advances the mob by `dt` seconds.
     /// v0.18 Track 6: what the model's pose is drawn from: body yaw, head
-    /// yaw and pitch, walk-cycle phase and amplitude.
-    pub fn pose_values(&self) -> [f32; 5] {
-        [self.yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp]
+    /// yaw and pitch, walk position and speed, and (v1.0 gap Track 7) the
+    /// arm swing and the attack countdown.
+    pub fn pose_values(&self) -> Pose {
+        let body = if self.look.ready() { self.body_yaw } else { self.yaw };
+        [body, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp, self.swing.anim, self.attack_anim]
     }
 
-    pub fn set_pose_values(&mut self, [yaw, head_yaw, head_pitch, limb_phase, limb_amp]: [f32; 5]) {
-        (self.yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp) =
-            (yaw, head_yaw, head_pitch, limb_phase, limb_amp);
+    pub fn set_pose_values(&mut self, [yaw, head_yaw, head_pitch, limb_phase, limb_amp, swing, attack]: Pose) {
+        (self.yaw, self.body_yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp) =
+            (yaw, yaw, head_yaw, head_pitch, limb_phase, limb_amp);
+        (self.swing.anim, self.attack_anim) = (swing, attack);
+    }
+
+    /// Whether Java draws this mob as a baby (`isBaby`).
+    pub fn is_baby(&self) -> bool {
+        self.baby || self.age < 0
     }
 
     /// The pose `alpha` of the way from the last step's start to now, as
-    /// `Mth.rotLerp` and `WalkAnimationState` interpolate it: angles the
-    /// short way round, the walk phase across its wrap.
-    pub fn render_pose(&self, alpha: f32) -> [f32; 5] {
-        use std::f32::consts::{PI, TAU};
+    /// Java's renderers interpolate it: angles the short way round
+    /// (`Mth.rotLerp`); the walk as `WalkAnimationState.position(partial)`
+    /// and `speed(partial)` (scaled three times for babies, capped at 1,
+    /// and still while dead or riding); the swing as
+    /// `SwingState.getAnimation`; and the attack countdown less the
+    /// partial tick, as the iron golem's and ravager's renderers do.
+    pub fn render_pose(&self, alpha: f32) -> Pose {
+        use super::motion;
         let (from, to) = (self.previous_pose, self.pose_values());
         let angle = |a: f32, b: f32| a + ((b - a + PI).rem_euclid(TAU) - PI) * alpha;
-        let wrap = TAU * 64.0;
-        let phase = from[3] + ((to[3] - from[3] + wrap / 2.0).rem_euclid(wrap) - wrap / 2.0) * alpha;
+        let scale = if self.is_baby() { motion::BABY_WALK_SCALE } else { 1.0 };
+        let (walk_pos, walk_speed) = if self.alive() && self.riding.is_none() {
+            motion::walk_render(to[3], from[4], to[4], alpha, scale)
+        } else {
+            (0.0, 0.0)
+        };
         [
             angle(from[0], to[0]),
             angle(from[1], to[1]),
             angle(from[2], to[2]),
-            phase,
-            from[4] + (to[4] - from[4]) * alpha,
+            walk_pos,
+            walk_speed,
+            motion::swing_render(from[5], to[5], alpha),
+            (to[6] - alpha * motion::TICK).max(0.0),
         ]
+    }
+
+    /// v1.0 gap Track 7b: Java's `ageInTicks`, `tickCount` plus the
+    /// partial tick, the clock this mob's idle animations run on (each mob
+    /// on its own, not in step with the others).
+    pub fn age_in_ticks(&self, alpha: f32) -> f32 {
+        // A float, as Java's is.
+        self.tick_count as f32 + alpha
+    }
+
+    /// v1.0 gap Track 7: `deathTime` with the partial tick, as
+    /// `LivingEntityRenderer.extractRenderState` reads it (0 alive, and in
+    /// the tick the mob died).
+    pub fn death_ticks(&self, alpha: f32) -> f32 {
+        match self.dying {
+            Some(t) if t > 0.0 => t / super::motion::TICK + alpha,
+            _ => 0.0,
+        }
+    }
+
+    /// One tick of the walk cycle after the mob moved by `moved`:
+    /// `LivingEntity.calculateEntityAnimation`, which stops it while dead
+    /// or riding.
+    pub(crate) fn advance_walk(&mut self, moved: DVec3) {
+        use super::motion;
+        // v1.0 gap Track 7b: `tickCount` counts every tick, alive or not,
+        // and the client animations follow the tick.
+        self.tick_count = self.tick_count.wrapping_add(1);
+        self.tick_anim(moved);
+        if !self.alive() || self.riding.is_some() {
+            (self.limb_phase, self.limb_amp) = (0.0, 0.0);
+            return;
+        }
+        let rule = motion::walk_rule(self.kind);
+        let carrying = self.sulfur_body().is_some();
+        let y = if rule.with_y || carrying { moved.y } else { 0.0 };
+        let distance = DVec3::new(moved.x, y, moved.z).length() as f32;
+        motion::walk_step(&mut self.limb_phase, &mut self.limb_amp, distance, rule);
+    }
+
+    /// Starts Java's arm swing when an attack set [`Self::attack_anim`]
+    /// since the last tick, then advances it a tick
+    /// (`LivingEntity.swing` and `SwingState.tick`).
+    pub(crate) fn advance_swing(&mut self) {
+        if self.attack_anim > self.swing_seen {
+            self.swing.start_if_able(super::motion::SWING_TICKS);
+        }
+        self.swing.tick();
+        self.swing_seen = self.attack_anim;
     }
 
     /// v0.18 Track 6: `--still-mobs`. Holds a landed mob in place facing
@@ -2205,6 +2533,9 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) {
         let event_start = events.len();
+        let tick_start = self.pos;
+        self.fast_lava = ctx.dimension == crate::world::terrain::Dimension::Nether;
+        self.advance_swing();
         let before = self.kind;
         self.tick_water_conversion(dt, world);
         if self.kind != before {
@@ -2226,9 +2557,20 @@ impl Mob {
                 let base = self.mount.as_ref().map_or(self.max_health(), |s| s.max_health);
                 self.health = self.health.min(base + self.effects.max_health_bonus());
             }
-            let damage = outcome.damage + outcome.wither + outcome.poison.min((self.health - 1.0).max(0.0));
-            if damage > 0.0 {
-                self.damage_bypassing_wolf_armor(damage, None, rng);
+            // v1.0 gap Track 8d: each effect hurts on its own
+            // (`hurtServer(magic, 1)`, `hurtServer(wither, 1)`), so the hurt
+            // cooldown refuses a second 1 in the same tick.
+            let poison = outcome.poison.min((self.health - 1.0).max(0.0));
+            for damage in [poison, outcome.wither, outcome.damage] {
+                if damage > 0.0 && self.alive() && self.damage_bypassing_wolf_armor(damage, None, rng) {
+                    events.push(EntityEvent::MobKilled {
+                        kind: self.kind,
+                        pos: self.pos,
+                        burning: self.burning,
+                        player_kill: self.player_hit_left > 0.0,
+                        looting: 0,
+                    });
+                }
             }
         }
         self.hop_left -= dtf;
@@ -2236,15 +2578,36 @@ impl Mob {
             self.hop_delay = rng.range(0.5, 1.5);
         }
         if let Some(sound) = self.cry.take() {
+            // v1.0 gap Track 2c: `Mob.playHurtSound` resets the ambient
+            // sound time to `-getAmbientSoundInterval()` (80 ticks), so no
+            // idle call follows a hurt cry within four seconds.
+            if matches!(sound, MobSound::Hurt(_)) {
+                self.ambient_timer = self.ambient_timer.max(4.0);
+            }
+            // v1.0 final Track F4: a hatchling turtle's own cries.
+            let sound = match sound {
+                MobSound::Hurt(MobKind::Turtle) if self.is_baby() => MobSound::BabyTurtle(false),
+                MobSound::Death(MobKind::Turtle) if self.is_baby() => MobSound::BabyTurtle(true),
+                sound => sound,
+            };
             events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
         }
         self.ambient_timer -= dtf;
         if self.ambient_timer <= 0.0 {
-            self.ambient_timer =
-                if self.kind == MobKind::Ocelot { rng.range(45.0, 56.0) } else { rng.range(7.0, 18.0) };
+            // `Turtle.getAmbientSoundInterval` is 200 ticks.
+            self.ambient_timer = match self.kind {
+                MobKind::Ocelot => rng.range(45.0, 56.0),
+                MobKind::Turtle => rng.range(10.0, 30.0),
+                _ => rng.range(7.0, 18.0),
+            };
             if self.alive()
                 && self.armadillo.as_ref().is_none_or(|s| !s.scared())
                 && self.kind != MobKind::CopperGolem
+                // v1.0 final Track F4: Java's iron golem has no ambient call,
+                // and a turtle calls only as an adult on land
+                // (`Turtle.getAmbientSound`).
+                && self.kind != MobKind::IronGolem
+                && (self.kind != MobKind::Turtle || (!self.is_baby() && self.on_ground && !self.in_water))
                 && self
                     .sniffer
                     .as_ref()
@@ -2254,7 +2617,7 @@ impl Mob {
                 && self.kind != MobKind::Warden
                 && (self.bat.as_ref().is_none_or(|s| !s.resting) || rng.next_int(4) == 0)
             {
-                let sound = MobSound::Ambient(self.kind);
+                let sound = self.fox_ambient(ctx, rng).unwrap_or(MobSound::Ambient(self.kind));
                 events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
             }
         }
@@ -2264,6 +2627,15 @@ impl Mob {
             events.push(EntityEvent::Sound { sound: MobSound::TraderDrink(vanished), pos: self.pos + DVec3::Y });
         }
         self.hurt = (self.hurt - dtf).max(0.0);
+        self.hurt_age = self.hurt_age.saturating_add(1);
+        // `LivingEntity.baseTick`: the hurt cooldown counts down a tick.
+        self.damage_cooldown = self.damage_cooldown.saturating_sub(1);
+        // v1.0 gap Track 7f: `Villager.tick` counts the unhappy shake down.
+        if self.kind == MobKind::Villager
+            && let Some(v) = self.villager.as_mut()
+        {
+            v.unhappy = v.unhappy.saturating_sub(1);
+        }
         self.provoked = (self.provoked - dtf).max(0.0);
         if matches!(self.kind, MobKind::Wolf | MobKind::Llama | MobKind::Enderman | MobKind::ZombifiedPiglin)
             && self.provoked == 0.0
@@ -2293,6 +2665,7 @@ impl Mob {
             v.bell_hide = (v.bell_hide - dtf).max(0.0);
         }
         self.attack_anim = (self.attack_anim - dtf).max(0.0);
+        self.swing_seen = self.attack_anim;
 
         self.light_timer -= dtf;
         if self.light_timer <= 0.0 {
@@ -2307,7 +2680,18 @@ impl Mob {
             self.teleport(world, rng, None, events);
         }
 
-        super::aquatic::environment(self, dtf, world);
+        if self.alive() {
+            super::aquatic::environment(self, dtf, world, rng);
+            if !self.alive() {
+                events.push(EntityEvent::MobKilled {
+                    kind: self.kind,
+                    pos: self.pos,
+                    burning: self.burning,
+                    player_kill: self.player_hit_left > 0.0,
+                    looting: 0,
+                });
+            }
+        }
         // Bred horses and donkeys age with the shared animal clock; mules only here.
         if super::mounts::equine(self.kind)
             && !super::undead_mounts::undead(self.kind)
@@ -2323,6 +2707,14 @@ impl Mob {
         }
         super::bee::upkeep(self, dtf, rng, events);
         self.pathing = false;
+        // v1.0 gap Track 3b: the camel brain's look memory, before its
+        // idle behaviours pick (`SetWalkTargetFromLookTarget` reads it).
+        let body_yaw = self.yaw;
+        if self.dying.is_none() {
+            for _ in 0..((dtf / super::motion::TICK).round() as u32).max(1) {
+                self.camel_look(world, ctx, rng);
+            }
+        }
         let (wish, speed) = if let Some(t) = &mut self.dying {
             *t += dtf;
             (None, 0.0)
@@ -2335,8 +2727,33 @@ impl Mob {
             // Its goals run in `Entities::wither_tick`.
             (None, 0.)
         } else {
+            // v1.0 gap Track 2c: `AbstractHorse.aiStep` grazes on the grass
+            // block under its feet (`blockPosition().below()`).
+            if let Some(s) = self.mount.as_mut() {
+                let below = self.pos.floor().as_ivec3() - IVec3::Y;
+                s.on_grass = world.block(below) == Some(crate::world::block::Block::GRASS);
+            }
             super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))
         };
+        let (wish, speed) = self.camel_hold(world, wish, speed);
+        // v1.0 gap Track 2c: the idle look goals and brain look behaviours,
+        // after the mob's other goals took their flags.
+        if self.dying.is_none() {
+            self.head_goals(world, ctx, rng, wish.is_some());
+            // v1.0 gap Track 2f: `HarvestFarmland` breaking a ripe crop;
+            // Track 2g: planting, bone meal, composting and items.
+            for act in std::mem::take(&mut self.walking.farm_acts) {
+                use brain_walk::FarmAct;
+                events.push(match act {
+                    FarmAct::Harvest(cell) => EntityEvent::VillagerHarvest { cell },
+                    FarmAct::Plant(cell, block) => EntityEvent::VillagerPlant { cell, block },
+                    FarmAct::Bonemeal(cell) => EntityEvent::VillagerBonemeal { cell },
+                    FarmAct::Compost { cell, from, to } => EntityEvent::VillagerCompost { cell, from, to },
+                    FarmAct::Item(stack, pos, vel) => EntityEvent::ThrowItem { stack, pos, vel },
+                    FarmAct::WorkSound(job) => EntityEvent::Sound { sound: MobSound::VillagerWork(job), pos: self.pos },
+                });
+            }
+        }
 
         // Don't walk off tall drops; wanderers pick another direction.
         let controlled = self.mount.as_ref().is_some_and(|s| s.controlled());
@@ -2361,11 +2778,17 @@ impl Mob {
         let java = (!controlled || self.kind == MobKind::HappyGhast || super::nautilus::is_nautilus(self.kind))
             && self.riding.is_none()
             && self.java_moves(world);
-        // Turn the body toward the direction of travel.
+        // Turn toward the direction of travel: v1.0 gap Track 2c,
+        // `MoveControl.tick`'s `rotlerp(yRot, wanted, 90)` a tick.
         if let Some(dir) = wish.filter(|_| !controlled && !java && !matches!(self.kind, MobKind::Bee | MobKind::Allay))
         {
             let target = (dir.z as f32).atan2(dir.x as f32);
-            self.yaw = turn_toward(self.yaw, target, 8.0 * dtf);
+            self.yaw = turn_toward(self.yaw, target, std::f32::consts::FRAC_PI_2 * dtf / super::motion::TICK);
+        }
+        // `LookControl.tick` after the move control (v1.0 gap Track 2b for
+        // spears, Track 2c for every mob).
+        for _ in 0..((dtf / super::motion::TICK).round() as u32).max(1) {
+            self.look_tick();
         }
 
         if std::mem::take(&mut self.jump) && self.on_ground && wish.is_some() && !controlled && self.alive() {
@@ -2392,12 +2815,9 @@ impl Mob {
             super::illager::vex_travel(self, dt);
         } else if self.sulfur_has_block() {
             self.sulfur_travel(dt, world);
-        } else if controlled
-            && equine::java_ridden(self.kind)
-            && !self.touching_water(world)
-            && !self.touching_lava(world)
-        {
-            // v1.0 Track 7: a steered horse rides Java's `travelRidden`.
+        } else if controlled && equine::java_ridden(self.kind) {
+            // v1.0 Track 7: a steered horse rides Java's `travelRidden`, in
+            // water and lava as well since v1.0 gap Track 3, as do camels.
             self.move_ctl.time += dt;
             while self.move_ctl.time >= equine::TICK - 1e-9 {
                 self.move_ctl.time -= equine::TICK;
@@ -2419,7 +2839,8 @@ impl Mob {
         }
         let wolf_fall = self.wolf_armor.as_mut().map_or(0.0, |s| std::mem::take(&mut s.pending_fall));
         if wolf_fall > 0.0 {
-            self.damage_from(wolf_fall, Cause::FALL, rng);
+            let cause = std::mem::replace(&mut self.pending_fall_cause, Cause::FALL);
+            self.damage_from(wolf_fall, cause, rng);
         }
         self.take_fall(rng);
         if let Some(s) = &mut self.mount {
@@ -2428,6 +2849,21 @@ impl Mob {
                 && let Some(player) = s.rider
             {
                 events.push(EntityEvent::PlayerFall { player, damage });
+            }
+        }
+        // v1.0 gap Track 3b: the camel's sit, stand, dash and dash-ready
+        // sounds, and a horse's angry and rearing calls.
+        let mount_events = self.mount.as_mut().map(|s| s.take_events()).unwrap_or_default();
+        if !mount_events.is_empty() {
+            let at = self.pos + DVec3::Y * (self.shape().height * 0.8);
+            for event in mount_events {
+                let sound = match event {
+                    super::mounts::Event::Ambient => Some(MobSound::Ambient(self.kind)),
+                    e => super::mounts::Cue::for_event(self.kind, self.baby, e).map(MobSound::Mount),
+                };
+                if let Some(sound) = sound {
+                    events.push(EntityEvent::Sound { sound, pos: at });
+                }
             }
         }
         if self.health <= 0.0 && (self.dying.is_none() || alive_before_move) {
@@ -2451,16 +2887,37 @@ impl Mob {
             });
         }
 
-        // Walk cycle follows ground speed.
-        let hspeed = self.vel.x.hypot(self.vel.z) as f32;
-        self.limb_phase = (self.limb_phase + hspeed * dtf * 3.2) % (TAU * 64.0);
-        let amp = (hspeed / 2.0).min(1.0);
-        self.limb_amp += (amp - self.limb_amp) * (dtf * 10.0).min(1.0);
+        // v1.0 gap Track 7: the walk cycle follows the distance moved this
+        // tick, as Java's `calculateEntityAnimation` does.
+        for _ in 0..((dtf / super::motion::TICK).round() as u32).max(1) - 1 {
+            self.advance_walk(DVec3::ZERO);
+        }
+        self.advance_walk(self.pos - tick_start);
+        // v1.0 final Track F4: `Entity.move`'s step sound, for the mobs
+        // whose `playStepSound` is their own (on a block, not in water).
+        if self.alive() && self.on_ground && !self.in_water && self.riding.is_none() {
+            let moved = self.pos - tick_start;
+            let below = (self.pos - DVec3::Y * 0.2).floor().as_ivec3();
+            let block = world.block(below).unwrap_or(crate::world::block::Block::AIR);
+            let sand = super::mob_steps::camel_sand(block);
+            if let Some(cue) = super::mob_steps::StepCue::of(self.kind, self.is_baby(), sand)
+                && block != crate::world::block::Block::AIR
+                && super::mob_steps::advance(
+                    &mut self.move_dist,
+                    &mut self.next_step,
+                    moved.with_y(0.0).length() as f32,
+                )
+            {
+                events.push(EntityEvent::Sound { sound: MobSound::Step(cue), pos: self.pos });
+            }
+        }
 
-        // Head eases toward its target.
-        let k = (dtf * 6.0).min(1.0);
-        self.head_yaw += (self.head_target.0 - self.head_yaw) * k;
-        self.head_pitch += (self.head_target.1 - self.head_pitch) * k;
+        // v1.0 gap Track 3b: a camel's body follows its head within 30
+        // degrees, and holds still while it sits or changes pose.
+        self.camel_turn(body_yaw, self.pos - tick_start);
+        // v1.0 gap Track 2c: `BodyRotationControl` after the move, and the
+        // drawn head from Java's `yHeadRot` and `xRot`.
+        self.body_tick(self.pos - tick_start);
 
         let (health, provoked) = (self.health, self.provoked);
         let alive = self.alive();
@@ -2509,6 +2966,24 @@ impl Mob {
         }
     }
 
+    /// `InteractWithDoor`: open the closed wooden doors on the previous and
+    /// next nodes of the path.
+    fn open_path_doors<W: MobWorld + ?Sized>(&self, world: &W, events: &mut Vec<EntityEvent>) {
+        let Some(p) = &self.nav.path else { return };
+        for node in [p.previous_node(), p.next_node()].into_iter().flatten() {
+            if node.ty == path::PathType::WalkableDoor || node.ty == path::PathType::DoorWoodClosed {
+                for dy in 0..2 {
+                    let cell = node.pos + IVec3::Y * dy;
+                    if world.block(cell).is_some_and(|b| {
+                        matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, upper: false, .. }))
+                    }) {
+                        events.push(EntityEvent::VillagerDoor { cell });
+                    }
+                }
+            }
+        }
+    }
+
     /// Picks a movement direction and speed for this tick.
     fn think<W: MobWorld + ?Sized>(
         &mut self,
@@ -2539,11 +3014,12 @@ impl Mob {
         // v1.0 Track 6: a raid witch with a raider to heal walks until it
         // sees it within 10 blocks (`RangedAttackGoal`); the raid tick throws.
         if self.kind == MobKind::Witch
-            && let Some((_, at)) = self.illager.as_ref().and_then(|s| s.raider.heal_target)
+            && let Some((_, at, at_eye)) = self.illager.as_ref().and_then(|s| s.raider.heal_target)
         {
-            let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
-            let sees = line_of_sight(world, eye, at + DVec3::Y);
-            self.look_at(at, 1.2);
+            let eye = self.look_eye();
+            let sees = line_of_sight(world, eye, at + DVec3::Y * at_eye);
+            // `RangedAttackGoal.tick`: `setLookAt(target, 30, 30)`.
+            self.set_look_at(at + DVec3::Y * at_eye, head::ATTACK_LOOK, head::ATTACK_LOOK);
             if (at - self.pos).with_y(0.0).length() <= WITCH_RANGE && sees {
                 self.stop_navigation();
                 return (None, 0.0);
@@ -2572,11 +3048,12 @@ impl Mob {
         if self.kind == MobKind::CamelHusk
             && let Some(goal) = self.hunt
         {
-            let speed = self.mount.as_ref().map_or(2.2, |s| s.speed * 43.17);
+            let charge = if self.hunt_charge { 4.0 } else { 1.0 };
+            let speed = self.mount.as_ref().map_or(2.2, |s| s.speed * 43.17) * charge;
             if ((goal - self.pos) * DVec3::new(1.0, 0.0, 1.0)).length() <= 0.9 {
                 return (None, 0.0);
             }
-            let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.85), goal + DVec3::Y);
+            let sees = line_of_sight(world, self.look_eye(), goal + DVec3::Y);
             return (self.pursue(world, goal, speed, sees, true, rng), speed);
         }
         if let Some(wish) = self.leash_think(dt, world, rng) {
@@ -2631,15 +3108,44 @@ impl Mob {
         if let Some(wish) = self.polar_think(world, rng, events) {
             return wish;
         }
+        // v1.0 gap Track 2e: the fox's goals around the shared table
+        // (`FoxMoveControl` holds it still while it can't move).
+        if self.fox.is_some() {
+            let full = self.goals.full(self.uid);
+            let wish = match self.fox_pre_think(world, rng, full, events) {
+                Some(wish) => {
+                    self.goals.ticks = self.goals.ticks.wrapping_add(1);
+                    Some(wish)
+                }
+                None => {
+                    let base = self.run_goals(world, ctx, rng);
+                    self.fox_think(world, ctx, rng, full, events).or(base)
+                }
+            };
+            let s = self.fox.as_ref().unwrap();
+            let can_move = s.can_move(self.animal.as_ref().is_some_and(|a| a.sleeping));
+            let wish = wish.map(|w| if can_move { w } else { (None, 0.0) });
+            if let Some(wish) = wish {
+                self.fox.as_mut().unwrap().still = wish.0.is_none();
+                return wish;
+            }
+            if !can_move {
+                self.fox.as_mut().unwrap().still = true;
+                return (None, 0.0);
+            }
+        }
         if let Some(wish) = self.companion_think(dt, world, ctx, rng, events) {
             return wish;
         }
         if self.kind == MobKind::Strider {
             self.update_strider_cold(world);
+            if self.mob_steered {
+                return self.steered_strider(world, ctx, rng);
+            }
         }
         // A guardian aiming its beam stands still, and an axolotl playing
         // dead (`PLAY_DEAD`, its top activity) does nothing else.
-        if self.kind.is_aquatic() && super::aquatic::upkeep(self, dt, world, ctx, events) {
+        if self.kind.is_aquatic() && super::aquatic::upkeep(self, dt, world, ctx, rng, events) {
             self.stop_goal(world);
             return (None, 0.0);
         }
@@ -2651,9 +3157,18 @@ impl Mob {
         }
         if self.panda.is_none()
             && self.ocelot.is_none()
+            && self.fox.is_none()
             && let Some(wish) = self.run_goals(world, ctx, rng)
         {
+            if self.sniffer.is_some() {
+                self.walking.walk = None;
+            }
             return wish;
+        }
+        // v1.0 gap Track 2e: an idle sniffer walks its `RunOne`'s walk
+        // targets (`MoveToTargetSink(500, 700)`) instead of wandering.
+        if self.sniffer.is_some() && self.ai != Ai::Panic {
+            return self.walk_sink(world, ctx, rng, (500, 700)).unwrap_or((None, 0.0));
         }
         if self.kind == MobKind::Bee {
             return super::bee::steer(self, dt, world, ctx, rng, events);
@@ -2671,8 +3186,24 @@ impl Mob {
             && let Some(v) = &self.villager
         {
             if v.sleeping || v.trading && !v.fleeing {
+                self.walking.walk = None;
                 return (None, 0.0);
             }
+            if v.goal.is_some() {
+                // The game's own walks (home, job site, bell, crops, a
+                // partner, fleeing) take `WALK_TARGET`.
+                self.walking.walk = None;
+            } else if self.kind == MobKind::Villager {
+                // v1.0 gap Track 2e: the brain's idle movement replaces the
+                // wandering: `MoveToTargetSink` walks what the activity's
+                // `RunOne` set (the play package's own sink times out after
+                // 80 to 120 ticks).
+                let timeout = if self.age < 0 { (80, 120) } else { (150, 250) };
+                let Some(wish) = self.walk_sink(world, ctx, rng, timeout) else { return (None, 0.0) };
+                self.open_path_doors(world, events);
+                return wish;
+            }
+            let v = self.villager.as_ref().unwrap();
             if let Some(goal) = v.goal {
                 let speed = if v.fleeing { 4.0 } else { 2.0 };
                 let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
@@ -2694,26 +3225,9 @@ impl Mob {
                         self.repath_in = if reaches { 0 } else { 20 };
                     }
                 }
-                // `InteractWithDoor`: open the closed wooden doors on the
-                // previous and next nodes of the path.
-                if let Some(p) = &self.nav.path {
-                    for node in [p.previous_node(), p.next_node()].into_iter().flatten() {
-                        if node.ty == path::PathType::WalkableDoor || node.ty == path::PathType::DoorWoodClosed {
-                            for dy in 0..2 {
-                                let cell = node.pos + IVec3::Y * dy;
-                                if world.block(cell).is_some_and(|b| {
-                                    matches!(
-                                        b.shaped(),
-                                        Some(crate::world::block::Shaped::Door { open: false, upper: false, .. })
-                                    )
-                                }) {
-                                    events.push(EntityEvent::VillagerDoor { cell });
-                                }
-                            }
-                        }
-                    }
-                }
-                return (self.follow_path(world, speed, false), speed);
+                let wish = (self.follow_path(world, speed, false), speed);
+                self.open_path_doors(world, events);
+                return wish;
             }
         }
         if self.trader.as_ref().is_some_and(|t| t.drink > 0.0) {
@@ -2729,33 +3243,35 @@ impl Mob {
             let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
             let dist = flat.length();
             if dist > 1e-4 {
-                let dir = flat / dist;
                 let reach = match self.kind {
                     MobKind::IronGolem => 2.4,
                     MobKind::Enderman => super::endermite::ENDERMAN_REACH,
                     _ => 1.5,
                 };
-                self.head_target = (wrap((dir.z as f32).atan2(dir.x as f32) - self.yaw).clamp(-1.2, 1.2), 0.0);
+                // `MeleeAttackGoal.tick`: `setLookAt(target, 30, 30)`.
+                self.set_look_at(goal + DVec3::Y * self.hunt_eye, head::ATTACK_LOOK, head::ATTACK_LOOK);
                 let golem = self.kind == MobKind::IronGolem;
                 if dist <= reach
                     && self.attack_cooldown <= 0.0
                     && (golem || self.kind.is_zombie() || self.kind == MobKind::Enderman)
                 {
                     self.attack_cooldown = if golem { 1.2 } else { ATTACK_COOLDOWN };
-                    self.attack_anim = 0.4;
+                    // `IronGolem.doHurtTarget`: `attackAnimationTick = 10`.
+                    self.attack_anim = if golem { 10.0 * super::motion::TICK } else { 0.4 };
                     self.strike = true;
                 }
                 if dist <= 0.9 {
                     return (None, 0.0);
                 }
                 let speed = if super::undead_mounts::undead(self.kind) {
-                    self.mount.as_ref().map_or(2.2, |s| s.speed * 43.17)
+                    let charge = if self.hunt_charge && self.kind == MobKind::ZombieHorse { 1.4 } else { 1.0 };
+                    self.mount.as_ref().map_or(2.2, |s| s.speed * 43.17) * charge
                 } else if self.kind == MobKind::IronGolem {
                     1.5
                 } else {
                     self.kind.chase_speed()
                 };
-                let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.85), goal + DVec3::Y);
+                let sees = line_of_sight(world, self.look_eye(), goal + DVec3::Y * self.hunt_eye);
                 return (self.pursue(world, goal, speed, sees, true, rng), speed);
             }
         }
@@ -2769,6 +3285,16 @@ impl Mob {
             && let Some(wish) = self.raider_goals(world, rng)
         {
             return wish;
+        }
+        // v1.0 gap Track 2: `Mount.create(0.8)` walks a baby piglin to its
+        // ride target.
+        if self.kind == MobKind::Piglin
+            && self.riding.is_none()
+            && let Some(at) = self.ride_walk
+        {
+            let speed = self.kind.chase_speed() * 0.8 * if self.baby { nether_ai::BABY_SPEED } else { 1.0 };
+            let sees = line_of_sight(world, self.look_eye(), at + DVec3::Y * 0.5);
+            return (self.pursue(world, at, speed, sees, false, rng), speed);
         }
         if self.nether.is_some()
             && let Some(wish) = self.nether_think(dt, world, ctx, rng, events)
@@ -2806,16 +3332,16 @@ impl Mob {
         } else {
             ctx.nearest_target(self.pos)
         };
-        let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
-        let flat = DVec3::new(to_player.x, 0.0, to_player.z);
-        let hdist = flat.length();
-
-        if self.kind.is_hostile()
+        // v1.0 gap Track 2: the shared hostile chase follows Java's target
+        // goal scheduling (`chase::chase_schedule`).
+        let mut full = false;
+        let target = if self.kind.is_hostile()
             && self.nether.is_none()
             && self.kind != MobKind::Blaze
             && self.kind != MobKind::Endermite
             && (self.illager.is_none() || self.kind == MobKind::Witch)
         {
+            full = self.chase_full();
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
@@ -2826,44 +3352,35 @@ impl Mob {
                 _ => true,
             };
             let (range, height) = match self.kind {
+                // Slimes' and magma cubes' target predicate: 4 blocks up or down.
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => (16.0, 4.0),
                 // `NearestAttackableTargetGoal` searches the follow range.
-                k if k.is_zombie() => (self.follow_range(), 12.0),
-                _ => (CHASE_RANGE, 12.0),
+                k if k.is_zombie() => (self.follow_range(), f64::INFINITY),
+                _ => (CHASE_RANGE, f64::INFINITY),
             };
+            // A reinforcement's `setTarget` and a hit (`HurtByTargetGoal`)
+            // set the target outside the goal, at once.
             let sent = self.reinforce_target;
-            // v1.0 Track 7: `NearestAttackableTargetGoal` with `mustSee`
-            // (zombies, skeletons, creepers, spiders, slimes, silverfish,
-            // witches): a player is taken only in sight (eye to eye through
-            // collision shapes), and `TargetGoal.canContinueToUse` lets go
-            // after 60 ticks out of sight. Reinforcements and mobs hurt into
-            // a fight keep their target, as `setTarget` and
-            // `HurtByTargetGoal` set it outside this goal.
-            let seen = target.is_some_and(|t| {
-                let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
-                line_of_sight(world, eye, t.pos + DVec3::Y * (t.shape.height * 0.9))
-            });
-            if seen || self.ai != Ai::Chase {
-                self.target_unseen = 0.0;
-            } else {
-                self.target_unseen += dt;
-            }
-            let held = sent.is_some() && target.is_some_and(|t| sent == Some(t.id)) || self.provoked > 0.0;
-            let in_sight = seen || held || (self.ai == Ai::Chase && self.target_unseen < UNSEEN_MEMORY);
-            let chasing = aggressive
-                && in_sight
-                && target.is_some_and(|t| hdist < t.detection_range_for(range, self.kind) || sent == Some(t.id))
-                && to_player.y.abs() < height;
-            if chasing {
-                self.ai = Ai::Chase;
-            } else if self.ai == Ai::Chase {
-                self.ai = Ai::Idle;
-                self.ai_timer = 1.0;
-                self.stop_navigation();
-            }
+            let forced = target.filter(|t| sent == Some(t.id) || self.provoked > 0.0);
+            self.chase_schedule(world, ctx, forced, aggressive, range, height, full, rng)
+        } else {
+            target
+        };
+        // A lowered spear stabs every tick (`updatingUsingItem`) in
+        // `Entities::mob_spear_stabs`, before the mobs move; the flagless
+        // door goal runs beside everything else.
+        if self.kind != MobKind::Vindicator && self.has_door_goal() {
+            self.door_goal(world, full, rng, events);
+        } else {
+            self.door_break = None;
         }
+        let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
+        let flat = DVec3::new(to_player.x, 0.0, to_player.z);
+        let hdist = flat.length();
+
         if self.ai != Ai::Chase {
             self.fuse = (self.fuse - dt).max(0.0);
+            self.swelling = false;
             self.lift = false;
             self.charged = false;
             self.attack_step = 0;
@@ -2872,10 +3389,13 @@ impl Mob {
         match self.ai {
             Ai::Chase => {
                 let Some(&target) = target else { return (None, 0.0) };
-                // Look at the player's face.
-                let eye = to_player.y + 1.62 - self.shape().height * 0.9;
-                let face_yaw = (to_player.z as f32).atan2(to_player.x as f32);
-                self.head_target = (wrap(face_yaw - self.yaw).clamp(-1.2, 1.2), (eye as f32).atan2(hdist as f32));
+                // The attack goals look at the target's eyes:
+                // `setLookAt(target, 30, 30)`.
+                self.set_look_at(
+                    target.pos + DVec3::Y * head::player_eye(&target),
+                    head::ATTACK_LOOK,
+                    head::ATTACK_LOOK,
+                );
                 let dir = if hdist > 1e-6 { flat / hdist } else { DVec3::X };
                 if self.kind == MobKind::Enderman && self.enderman_tactics(dt, world, &target, rng, events) {
                     return (None, 0.0);
@@ -2892,6 +3412,16 @@ impl Mob {
                         if let Some(stop) = self.creeper_fuse(dt, hdist, events) {
                             return stop;
                         }
+                    }
+                    // v1.0 gap Track 2: Java's `MeleeAttackGoal`, and the
+                    // zombies' goal table with `SpearUseGoal`.
+                    k if chase::java_melee(k) => {
+                        let speed = self.kind.chase_speed() * if self.baby { 1.5 } else { 1.0 };
+                        return if chase::zombie_table(k) {
+                            self.zombie_chase(world, ctx, &target, speed, full, rng, events)
+                        } else {
+                            self.chase_melee(world, &target, speed, full, rng, events)
+                        };
                     }
                     _ => {
                         let reach = if self.kind.is_cube() { 0.6 * self.size as f64 } else { ATTACK_RANGE };
@@ -2976,9 +3506,9 @@ impl Mob {
                 // Java's `MeleeAttackGoal`: walk a path to the target, planned
                 // again as it moves. Only spiders follow unseen targets.
                 let speed = self.kind.chase_speed() * if self.baby { 1.5 } else { 1.0 };
-                let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+                let eye = self.look_eye();
                 let sees = matches!(self.kind, MobKind::Spider | MobKind::CaveSpider)
-                    || line_of_sight(world, eye, target.pos + DVec3::Y * 1.62);
+                    || line_of_sight(world, eye, target.eye());
                 (self.pursue(world, target.pos, speed, sees, true, rng), speed)
             }
             Ai::Panic => {
@@ -2997,18 +3527,15 @@ impl Mob {
                         self.panic_target(world, ctx, rng, speed);
                     }
                     if let Some(dir) = self.follow_path(world, speed, false) {
-                        self.head_target = (0.0, 0.0);
                         return (Some(dir), speed);
                     }
                 }
                 if rng.chance(dt * 1.2) || self.blocked && rng.chance(dt * 4.0) {
                     self.move_yaw = rng.range(0.0, TAU);
                 }
-                self.head_target = (0.0, 0.0);
                 (Some(yaw_dir(self.move_yaw)), speed)
             }
             Ai::Wander if self.path_move => {
-                self.head_target = (0.0, 0.0);
                 let speed = self.stroll_speed();
                 match self.follow_path(world, speed, false) {
                     Some(dir) if self.ai_timer > 0.0 => (Some(dir), speed),
@@ -3031,21 +3558,22 @@ impl Mob {
                     self.ai = Ai::Idle;
                     self.ai_timer = rng.range(2.0, 6.0);
                 }
-                self.head_target = (0.0, 0.0);
                 (Some(yaw_dir(self.move_yaw)), self.kind.wander_speed())
             }
             Ai::Idle => {
-                // Occasionally look around.
-                self.head_timer -= dt;
-                if self.head_timer <= 0.0 {
-                    self.head_timer = rng.range(1.0, 3.5);
-                    self.head_target =
-                        if rng.chance(0.6) { (rng.range(-1.1, 1.1), rng.range(-0.35, 0.3)) } else { (0.0, 0.0) };
-                }
-                if self.kind.walks_paths() {
+                if super::mounts::camel_like(self.kind) {
+                    self.camel_idle(world, ctx, rng);
+                } else if self.kind.walks_paths() {
                     // `RandomStrollGoal`: a 1-in-`interval` chance a tick (1 in
                     // half the interval per goal update, every other tick).
-                    if rng.chance(dt * 20.0 / self.kind.stroll_interval()) && self.try_stroll(world, ctx, rng) {
+                    // Track 2d: a running idle look goal holding `MOVE` at a
+                    // better priority keeps the stroll from starting.
+                    let stroll = goals::table(self.kind).iter().find(|e| matches!(e.goal, goals::Goal::Stroll));
+                    let allowed = stroll.is_none_or(|e| self.idle_look_allows(e.priority, false));
+                    if allowed
+                        && rng.chance(dt * 20.0 / self.kind.stroll_interval())
+                        && self.try_stroll(world, ctx, rng)
+                    {
                         self.path_move = true;
                     }
                 } else if self.ai_timer <= 0.0 {
@@ -3077,8 +3605,8 @@ impl Mob {
         full: bool,
         accept: impl Fn(&super::Target) -> bool,
     ) -> Option<&'a super::Target> {
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
-        let sees = |t: &super::Target| line_of_sight(world, eye, t.pos + DVec3::Y * crate::player::EYE_HEIGHT);
+        let eye = self.look_eye();
+        let sees = |t: &super::Target| line_of_sight(world, eye, t.eye());
         let c = &mut self.move_ctl;
         let current = c.target.and_then(|id| ctx.players.iter().find(|t| t.id == id));
         if let Some(t) = current {
@@ -3173,12 +3701,12 @@ impl Mob {
             self.path_move = false;
             self.stop_navigation();
         }
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
-        let target_eye = target.pos + DVec3::Y * crate::player::EYE_HEIGHT;
+        let eye = self.look_eye();
+        let target_eye = target.eye();
         self.lift = target_eye.y > eye.y + self.height_offset as f64;
         let to = target.pos - self.pos;
-        let face = (to.z as f32).atan2(to.x as f32);
-        self.head_target = (wrap(face - self.yaw).clamp(-1.2, 1.2), 0.0);
+        // `BlazeAttackGoal.tick`: `setLookAt(target, 10, 10)`.
+        self.set_look_at(target_eye, 10.0, 10.0);
         let sees = line_of_sight(world, eye, target_eye);
         self.move_ctl.last_seen = if sees { 0 } else { self.move_ctl.last_seen + ticks as i32 };
         let toward = (Some((to * DVec3::new(1.0, 0.0, 1.0)).normalize_or(DVec3::X)), path::ground_speed(0.23));
@@ -3229,7 +3757,7 @@ impl Mob {
                     let spread = d2.sqrt().sqrt() * 0.5 * 2.297;
                     let dir = DVec3::new(rng.triangle(xd, spread), yd, rng.triangle(zd, spread)).normalize_or(DVec3::X);
                     let from = DVec3::new(self.pos.x, mid + 0.5, self.pos.z);
-                    events.push(EntityEvent::Fireball { from, dir, large: false });
+                    events.push(EntityEvent::Fireball { from, dir, large: false, shooter: self.uid });
                     events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: eye });
                 }
             }
@@ -3293,7 +3821,12 @@ impl Mob {
                     let view = yaw_dir(self.yaw);
                     let from = DVec3::new(self.pos.x + view.x * 4.0, mid.y + 0.5, self.pos.z + view.z * 4.0);
                     let aim = DVec3::new(target.pos.x - from.x, target_mid.y - (0.5 + mid.y), target.pos.z - from.z);
-                    events.push(EntityEvent::Fireball { from, dir: aim.normalize_or(view), large: true });
+                    events.push(EntityEvent::Fireball {
+                        from,
+                        dir: aim.normalize_or(view),
+                        large: true,
+                        shooter: self.uid,
+                    });
                     events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: mid });
                     c.charge = -40;
                 }
@@ -3313,7 +3846,7 @@ impl Mob {
     /// Java's `isLookingAtMe`: `target` looks within a narrowing cone of
     /// this enderman's eyes, with nothing in between.
     fn watched_by<W: MobWorld + ?Sized>(&self, world: &W, target: &super::Target) -> bool {
-        let from = target.pos + DVec3::Y * crate::player::EYE_HEIGHT;
+        let from = target.eye();
         let to = self.eye() - from;
         let d = to.length();
         target.look != DVec3::ZERO
@@ -3451,7 +3984,7 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
+        let eye = self.look_eye();
         let target = player + DVec3::Y * 1.2;
         if self.attack_cooldown <= 0.0 && hdist < SHOOT_RANGE && line_of_sight(world, eye, target) {
             self.attack_cooldown = if self.kind == MobKind::Skeleton {
@@ -3511,7 +4044,7 @@ impl Mob {
             }
             return self.drink_left > 0.0;
         }
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         let eye_in_water = world.block(eye.floor().as_ivec3()).is_some_and(Block::holds_water);
         let tick_chance = |rng: &mut Rng, p: f32| rng.chance(1.0 - (1.0 - p).powf(dt * 20.0));
         let drink = if eye_in_water && !self.effects.has(Effect::WaterBreathing) && tick_chance(rng, 0.15) {
@@ -3545,7 +4078,7 @@ impl Mob {
     ) -> (Option<DVec3>, f64) {
         use crate::simulation::effects::Effect;
         let player = target.pos;
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
+        let eye = self.look_eye();
         let aim_at = player + DVec3::Y * 1.2;
         let sees = line_of_sight(world, eye, aim_at);
         if !self.effects.has(Effect::Speed) && (player - self.pos).length_squared() > 121.0 && rng.chance(0.5) {
@@ -3567,7 +4100,12 @@ impl Mob {
                 let flat = DVec3::new(aim_at.x - eye.x, 0.0, aim_at.z - eye.z);
                 let aim = DVec3::new(flat.x, aim_at.y - 1.1 - eye.y + flat.length() * 0.2, flat.z).normalize_or(dir);
                 if let Some(potion) = crate::potion::Potion::from_id(id) {
-                    events.push(EntityEvent::ThrowPotion { from: eye + dir * 0.4, vel: aim * WITCH_SPEED, potion });
+                    events.push(EntityEvent::ThrowPotion {
+                        from: eye + dir * 0.4,
+                        vel: aim * WITCH_SPEED,
+                        potion,
+                        thrower: self.uid,
+                    });
                 }
                 self.attack_cooldown = 3.0;
                 self.attack_anim = 0.35;
@@ -3580,7 +4118,10 @@ impl Mob {
     /// Creepers stop and hiss when close; returns the movement to use
     /// while fusing (or `None` to keep approaching).
     fn creeper_fuse(&mut self, dt: f32, hdist: f64, events: &mut Vec<EntityEvent>) -> Option<(Option<DVec3>, f64)> {
-        let fusing = if self.fuse > 0.0 { hdist < FUSE_KEEP } else { hdist < FUSE_START };
+        // `SwellGoal.canUse`: already swelling, or the target within 3 blocks;
+        // it stops past 7. A swell left by a fall burns down meanwhile.
+        let fusing = if self.swelling { hdist < FUSE_KEEP } else { hdist < FUSE_START };
+        self.swelling = fusing;
         if !fusing {
             self.fuse = (self.fuse - dt).max(0.0);
             return None;
@@ -3597,7 +4138,9 @@ impl Mob {
             events.push(EntityEvent::Explosion {
                 center,
                 power: CREEPER_POWER * if self.lightning_charged { 2. } else { 1. },
-                cause: Cause::CREEPER,
+                // `explosion(creeper, creeper)`: TNT it sets off is the
+                // creeper's, who is gone by the time that goes off.
+                cause: Cause::CREEPER.by(Some(super::trident::Owner::Mob(self.uid))),
                 credit_player: false,
             });
             // Gone in the blast: no death animation, no loot.
@@ -3625,11 +4168,6 @@ impl Mob {
         } else {
             physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0))
         };
-        if self.kind == MobKind::SnowGolem && self.alive() && self.in_water {
-            // Java: one damage each tick while in water. Death loot is emitted
-            // by the caller once health is gone.
-            self.health -= self.effects.absorb(20.0 * dt as f32 * self.effects.resistance_factor());
-        }
         let hopping = self.kind.is_cube();
         let speed = if hopping { (0.2 + 0.1 * self.size as f64) * 10.0 * effect_speed } else { speed };
         let wish = if hopping && self.on_ground && self.hop_left > 0.0 { None } else { wish };
@@ -3661,7 +4199,10 @@ impl Mob {
         if swims && self.in_water {
             self.vel += (target - self.vel) * (dt * 3.0).min(1.0);
             let delta = self.vel * dt;
-            let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape);
+            let hit = {
+                let context = Some(self.collision_context());
+                physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, shape, context)
+            };
             self.on_ground = hit.on_ground;
             self.blocked = hit.horizontal;
             // `travelInWater`: lift onto a bank only when the way ahead is free
@@ -3681,6 +4222,8 @@ impl Mob {
             self.vel += (target - self.vel) * k;
         } else if self.in_water {
             let k = (dt * 4.0).min(1.0);
+            // Flowing water and lava carry the mob in `Mob::current` (v1.0
+            // gap Track 3b; see `fluid_current_flow`).
             self.vel.x += (target.x * 0.6 - self.vel.x) * k;
             self.vel.z += (target.z * 0.6 - self.vel.z) * k;
             if self.kind.floats() {
@@ -3705,7 +4248,10 @@ impl Mob {
         } else {
             // Knockback isn't cancelled instantly: little control in the air.
             let k = (dt * if self.on_ground { 10.0 } else { 1.5 }).min(1.0);
-            if self.on_ground || wish.is_some() {
+            // v1.0 gap Track 2g: a long-jumping goat flies its arc
+            // (`setDiscardFriction`).
+            let long_jump = self.goat_long_jumping();
+            if (self.on_ground || wish.is_some()) && !long_jump {
                 self.vel.x += (target.x - self.vel.x) * k;
                 self.vel.z += (target.z - self.vel.z) * k;
             }
@@ -3716,6 +4262,10 @@ impl Mob {
                 let ticks = dt * 20.0;
                 let target = 0.05 * (f64::from(amplifier) + 1.0) * 20.0;
                 (target + (self.vel.y - target) * 0.8f64.powf(ticks)) * 0.98f64.powf(ticks)
+            } else if long_jump {
+                // v1.0 gap Track 2g: `LongJumpUtil`'s arc: Java's 0.08 a tick
+                // squared and, with friction discarded, no drag.
+                (self.vel.y - 32.0 * dt).max(-78.)
             } else if super::mounts::equine(self.kind) {
                 // Java: gravity 0.08 blocks/tick and vertical drag 0.98.
                 ((self.vel.y - 32.0 * dt) * 0.98f64.powf(dt * 20.)).max(-78.)
@@ -3733,6 +4283,10 @@ impl Mob {
                 self.vel.y = self.vel.y.max(3.0); // climbs walls
             } else if self.alive()
                 && !matches!(self.kind, MobKind::Ghast | MobKind::Blaze | MobKind::Parrot)
+                // v1.0 gap Track 3b: `AbstractHorse.onClimbable` is false:
+                // horses, llamas and camels never climb.
+                && !super::mounts::equine(self.kind)
+                && self.kind != MobKind::TraderLlama
                 && world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_climbable)
             {
                 // Java `LivingEntity.handleOnClimbable`: a mob inside a ladder or vine slides at
@@ -3765,14 +4319,21 @@ impl Mob {
             }
         }
         // v1.0 Track 5: `makeStuckInBlock` in a cobweb (see `hazards`).
+        // v1.0 gap Track 3b: the current's share of the motion, built up a
+        // tick at a time (`fluid_current_flow`).
+        let flow = self.fluid_current_flow(world, dt);
+        let before = self.vel + flow;
+        let mut moving = before;
         let delta = match self.web_hold(world) {
             Some(hold) => {
-                let delta = self.vel * dt * hold;
+                let delta = moving * dt * hold;
                 self.vel = DVec3::ZERO;
+                self.current = DVec3::ZERO;
+                moving = DVec3::ZERO;
                 self.fall_distance = 0.0;
                 delta
             }
-            None => self.vel * dt,
+            None => moving * dt,
         };
         let from_y = self.pos.y;
         let falling = self.vel.y;
@@ -3788,10 +4349,31 @@ impl Mob {
             crate::player::STEP_HEIGHT
         };
         let hit = if self.on_ground {
-            physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, shape, step_height)
+            {
+                let context = Some(self.collision_context());
+                physics::move_box_stepping_context(
+                    world,
+                    &mut self.pos,
+                    &mut moving,
+                    delta,
+                    shape,
+                    step_height,
+                    context,
+                )
+            }
         } else {
-            physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape)
+            {
+                let context = Some(self.collision_context());
+                physics::move_box_context(world, &mut self.pos, &mut moving, delta, shape, context)
+            }
         };
+        // A blocked axis stops the walking and the current alike.
+        for axis in 0..3 {
+            if moving[axis] == 0.0 && before[axis] != 0.0 {
+                self.vel[axis] = 0.0;
+                self.current[axis] = 0.0;
+            }
+        }
         // `Entity.restituteMovementAfterCollisions`: slime blocks and beds
         // throw a falling mob back up, once it falls faster than one tick of
         // gravity (0.08 a tick).
@@ -3827,7 +4409,12 @@ impl Mob {
                 } else {
                     (s.fall_distance - 3.).ceil().max(0.) as f32
                 };
-                self.health -= self.effects.absorb(damage * self.effects.resistance_factor());
+                // v1.0 gap Track 8d: through `hurtServer`, queued for the
+                // tick's `take_fall`.
+                if damage > 0. {
+                    self.pending_fall += damage;
+                    self.pending_fall_cause = Cause::FALL;
+                }
                 // `AbstractHorse.causeFallDamage`: only a fall that hurts the
                 // horse passes on, as each rider's own fall damage.
                 if super::mounts::equine(self.kind) && s.rider.is_some() && damage > 0. {
@@ -3872,16 +4459,15 @@ impl Mob {
             self.fire_left = 0.0;
         } else if sunburn || in_fire {
             self.fire_left = 8.0;
-            if in_fire && !self.burning {
-                self.damage_from(1.0, Cause::IN_FIRE, rng);
-            }
         } else {
             self.fire_left = (self.fire_left - dt).max(0.0);
         }
         let wet = physics::touches_block(world, self.pos, self.shape(), Block::holds_water) || world.rains_on(head);
-        if self.kind.hurt_by_water() && wet && self.hurt <= 0.0 {
-            // Water hurts endermen and blazes (Java's 1 damage, spaced by hurt time).
-            self.damage(1.0, None, rng);
+        // `LivingEntity.aiStep`: `isSensitiveToWater` mobs (endermen, blazes,
+        // striders, snow golems) take `hurtServer(drown, 1)` each tick in
+        // water or rain, which the hurt cooldown spaces (v1.0 gap Track 8d).
+        if (self.kind.hurt_by_water() || self.kind == MobKind::SnowGolem) && wet && self.alive() {
+            self.damage_from(1.0, Cause::DROWN, rng);
         }
         self.burning = self.alive() && self.fire_left > 0.0;
         if self.kind == MobKind::Blaze {
@@ -3894,24 +4480,25 @@ impl Mob {
             return;
         }
         // v1.0 Track 5: `lava`, `in_fire` and `on_fire` damage, so armor
-        // and Fire Protection reduce it as Java's do.
-        let (interval, amount, cause) = if in_lava {
-            (0.5, 4.0, Cause::LAVA)
-        } else if in_fire {
-            (0.5, 1.0, Cause::IN_FIRE)
-        } else {
-            (1.0, if sunburn { 2.0 } else { 1.0 }, Cause::ON_FIRE)
-        };
-        self.burn_timer += dt;
-        if self.burn_timer >= interval {
-            self.burn_timer -= interval;
-            self.damage_from(amount, cause, rng);
+        // and Fire Protection reduce it as Java's do. v1.0 gap Track 8d:
+        // lava (`lavaHurt`, 4) and fire (`BaseFireBlock.entityInside`, 1)
+        // hurt every tick they touch, which the hurt cooldown spaces to one
+        // in ten ticks; burning hurts once a second outside lava
+        // (`remainingFireTicks % 20`), refused too while a hit as hard is
+        // cooling down.
+        if in_lava {
+            self.burn_timer = 0.0;
+            self.damage_from(4.0, Cause::LAVA, rng);
+            return;
         }
-    }
-
-    /// Visual rotation of the whole body for the death animation (0..1).
-    pub fn death_progress(&self) -> f32 {
-        self.dying.map_or(0.0, |t| (t / (DEATH_TIME * 0.6)).min(1.0))
+        if in_fire {
+            self.damage_from(1.0, Cause::IN_FIRE, rng);
+        }
+        self.burn_timer += dt;
+        if self.burn_timer >= 1.0 && self.alive() {
+            self.burn_timer -= 1.0;
+            self.damage_from(if sunburn { 2.0 } else { 1.0 }, Cause::ON_FIRE, rng);
+        }
     }
 }
 
@@ -3985,9 +4572,6 @@ fn estimate_sky_light<W: MobWorld + ?Sized>(world: &W, p: DVec3) -> f32 {
 /// Java 26.3 LivingEntity.hasLineOfSight clips collision shapes with
 /// Fluid.NONE, capped at 128 blocks. DDA visits each crossed cell once;
 /// the old quarter-block samples missed thin/corner hits and filled slab gaps.
-/// `TargetGoal.unseenMemoryTicks` (60 ticks), in seconds.
-pub const UNSEEN_MEMORY: f32 = 3.0;
-
 pub(super) fn line_of_sight<W: BlockSource + ?Sized>(world: &W, from: DVec3, to: DVec3) -> bool {
     if !from.is_finite() || !to.is_finite() || from.distance_squared(to) > 128.0 * 128.0 {
         return false;
@@ -4229,11 +4813,26 @@ mod equipment_effect_tests {
     fn resistance_also_reduces_snow_golem_water_damage() {
         let mut world = Grid::flat(10);
         world.set(IVec3::new(0, 11, 0), Block::WATER);
+        // v1.0 gap Track 8d: the water's `hurtServer(drown, 1)` comes from
+        // `aiStep` in a whole update now, not the physics step.
+        world.set(IVec3::new(0, 12, 0), Block::WATER);
         let mut m = Mob::new(MobKind::SnowGolem, DVec3::new(0.5, 11., 0.5), 0.);
         m.effects.add(Effect::Resistance, 2, 400);
         let before = m.health;
-        m.physics_step(0.05, &world, None, 0.);
-        assert!((before - m.health - 0.4).abs() < 1e-6);
+        let c = crate::entity::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![crate::entity::Target::new(
+                crate::entity::PlayerId::HOST,
+                DVec3::new(60.5, 10.0, 0.5),
+                false,
+            )],
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        };
+        m.update(0.05, &world, &c, &mut Rng::new(1), &mut Vec::new());
+        assert!((before - m.health - 0.4).abs() < 1e-6, "{}", before - m.health);
     }
 }
 
@@ -4320,5 +4919,212 @@ impl super::Entities {
                 m.hurt_by_target(player);
             }
         }
+    }
+}
+
+/// v1.0 gap Track 7: the motion Java's client draws mobs with, through the
+/// mob's own tick ([`super::motion`] tests the formulas themselves).
+#[cfg(test)]
+mod motion_tests {
+    use super::*;
+    use crate::entity::{PlayerId, Target, motion};
+    use crate::physics::test_util::Grid;
+
+    fn ctx(player: DVec3) -> Ctx {
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![Target::new(PlayerId::HOST, player, false)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        }
+    }
+
+    fn close(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-5
+    }
+
+    /// `calculateEntityAnimation`: the walk speed eases toward four times
+    /// the distance moved in the tick (vertical distance only for bees and
+    /// parrots); babies' legs cycle three times as fast; dead or riding
+    /// mobs stop.
+    #[test]
+    fn the_walk_follows_the_distance_moved_each_tick() {
+        let mut pig = Mob::new(MobKind::Pig, DVec3::ZERO, 0.0);
+        pig.advance_walk(DVec3::new(0.1, 0.5, 0.0));
+        assert!(close(pig.limb_amp, 0.16) && close(pig.limb_phase, 0.16), "{} {}", pig.limb_amp, pig.limb_phase);
+        pig.previous_pose = pig.pose_values();
+        pig.advance_walk(DVec3::new(0.0, 0.0, 0.1));
+        assert!(close(pig.limb_amp, 0.256) && close(pig.limb_phase, 0.416));
+        // Drawn half way through the tick, a step behind by half its speed.
+        let half = pig.render_pose(0.5);
+        assert!(close(half[3], 0.416 - 0.128) && close(half[4], 0.208), "{half:?}");
+        pig.baby = true;
+        assert!(close(pig.render_pose(1.0)[3], 0.416 * motion::BABY_WALK_SCALE));
+
+        let mut bee = Mob::new(MobKind::Bee, DVec3::ZERO, 0.0);
+        bee.advance_walk(DVec3::new(0.0, 0.1, 0.0));
+        assert!(close(bee.limb_amp, 0.16), "a bee counts its climb");
+
+        pig.dying = Some(0.0);
+        pig.health = 0.0;
+        pig.advance_walk(DVec3::new(0.1, 0.0, 0.0));
+        assert_eq!((pig.limb_phase, pig.limb_amp), (0.0, 0.0), "`walkAnimation.stop()`");
+        let mut rider = Mob::new(MobKind::Skeleton, DVec3::ZERO, 0.0);
+        rider.limb_amp = 0.5;
+        rider.riding = Some(7);
+        rider.advance_walk(DVec3::new(0.1, 0.0, 0.0));
+        assert_eq!(rider.limb_amp, 0.0);
+    }
+
+    /// `handleDamageEvent`: a hit sets the walk speed to 1.5, which the
+    /// legs show capped at 1 and which eases back over the next ticks.
+    #[test]
+    fn a_hit_kicks_the_legs() {
+        let mut rng = Rng::new(3);
+        let mut m = Mob::new(MobKind::Cow, DVec3::ZERO, 0.0);
+        assert!(!m.damage(1.0, None, &mut rng), "not killed");
+        assert_eq!(m.limb_amp, motion::HURT_KICK);
+        m.previous_pose = m.pose_values();
+        assert_eq!(m.render_pose(0.5)[4], 1.0);
+        m.advance_walk(DVec3::ZERO);
+        assert!(close(m.limb_amp, 0.9) && close(m.limb_phase, 0.9));
+    }
+
+    /// An attack (here set between ticks, as a raid's or a mount's code
+    /// does) starts Java's 6-tick swing on the next tick: 0, 1/6, ... 1.
+    #[test]
+    fn an_attack_swings_the_arm_over_six_ticks() {
+        let world = Grid::flat(10);
+        let c = ctx(DVec3::new(60.5, 10.0, 0.5));
+        let (mut rng, mut events) = (Rng::new(5), Vec::new());
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        m.update(0.05, &world, &c, &mut rng, &mut events);
+        assert!(!m.swing.swinging());
+        m.attack_anim = 0.35;
+        let mut seen = Vec::new();
+        for _ in 0..9 {
+            m.update(0.05, &world, &c, &mut rng, &mut events);
+            seen.push(m.swing.anim);
+        }
+        let want = [0.0, 1.0 / 6.0, 2.0 / 6.0, 0.5, 4.0 / 6.0, 5.0 / 6.0, 1.0, 0.0, 0.0];
+        assert!(seen.iter().zip(want).all(|(a, b)| close(*a, b)), "{seen:?}");
+    }
+
+    /// `deathTime` counts the ticks since death; the overlay is red from
+    /// the hit through the death, and off ten ticks after a hit.
+    #[test]
+    fn death_time_counts_ticks_with_the_partial_tick() {
+        let mut m = Mob::new(MobKind::Zombie, DVec3::ZERO, 0.0);
+        assert_eq!(m.death_ticks(0.7), 0.0);
+        m.dying = Some(0.0);
+        assert_eq!(m.death_ticks(0.7), 0.0, "drawn upright in the tick it died");
+        m.dying = Some(3.0 * motion::TICK);
+        assert!(close(m.death_ticks(0.25), 3.25));
+        // Removed between its 19th and 20th tick of `dying`.
+        let ticks = std::hint::black_box(DEATH_TIME) / motion::TICK;
+        assert!(ticks > 18.0 && ticks < 19.0, "{ticks}");
+    }
+}
+
+/// v1.0 gap Track 8d: `LivingEntity.hurtServer`'s hurt cooldown
+/// (`damageCooldownTime`, `lastHurt`) on mobs.
+#[cfg(test)]
+mod hurt_cooldown_tests {
+    use super::*;
+    use crate::entity::{PlayerId, Target};
+    use crate::physics::test_util::Grid;
+
+    fn ctx() -> Ctx {
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(60.5, 10.0, 0.5), false)],
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        }
+    }
+
+    /// A hit sets the cooldown to 20; until it has run down to 10 a hit no
+    /// harder than the last is refused outright, and a harder one deals
+    /// only its excess, with no flash, sound, leg kick or knockback; the
+    /// tenth tick after a full hit takes a full hit again.
+    #[test]
+    fn hits_inside_the_cooldown_land_only_by_their_excess() {
+        let world = Grid::flat(10);
+        let c = ctx();
+        let (mut rng, mut events) = (Rng::new(5), Vec::new());
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        m.update(0.05, &world, &c, &mut rng, &mut events);
+        assert!(!m.damage(4.0, Some(DVec3::new(4.0, 2.0, 0.0)), &mut rng));
+        assert_eq!((m.health, m.damage_cooldown, m.last_hurt), (16.0, COOLDOWN, 4.0));
+        assert_eq!(m.vel.x, 4.0, "a full hit takes its knockback");
+        assert!(matches!(m.cry.take(), Some(MobSound::Hurt(MobKind::Zombie))));
+        // As hard, or softer: refused (and an arrow would bounce).
+        assert!(m.refuses_hit(4.0) && m.refuses_hit(1.0) && !m.refuses_hit(5.0));
+        m.vel = DVec3::ZERO;
+        m.hurt = 0.0;
+        m.damage(3.0, Some(DVec3::new(4.0, 2.0, 0.0)), &mut rng);
+        assert_eq!(m.health, 16.0);
+        // Harder: the excess, quietly, with no push.
+        m.damage(6.0, Some(DVec3::new(4.0, 2.0, 0.0)), &mut rng);
+        assert_eq!((m.health, m.last_hurt), (14.0, 6.0));
+        assert_eq!((m.vel.x, m.hurt), (0.0, 0.0), "no knockback, no red flash");
+        assert!(m.cry.is_none(), "no hurt sound");
+        // Nine ticks on, still cooling (11 left); the tenth makes it 10.
+        for _ in 0..9 {
+            m.update(0.05, &world, &c, &mut rng, &mut events);
+        }
+        assert!(m.refuses_hit(1.0));
+        m.update(0.05, &world, &c, &mut rng, &mut events);
+        assert!(m.full_hit() && !m.refuses_hit(1.0));
+        m.damage(1.0, None, &mut rng);
+        assert_eq!((m.health, m.damage_cooldown), (13.0, COOLDOWN));
+    }
+
+    /// Lava hurts every tick it is touched (`lavaHurt`), so the cooldown
+    /// is what spaces it: 4 a half second, not every tick.
+    #[test]
+    fn lava_hurts_once_per_half_cooldown() {
+        let mut world = Grid::flat(10);
+        world.set(glam::IVec3::new(0, 10, 0), crate::world::block::Block::LAVA);
+        let c = ctx();
+        let (mut rng, mut events) = (Rng::new(5), Vec::new());
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        for _ in 0..20 {
+            m.update(0.05, &world, &c, &mut rng, &mut events);
+            m.pos = DVec3::new(0.5, 10.0, 0.5);
+        }
+        assert_eq!(m.health, 20.0 - 8.0, "two lava hits in twenty ticks");
+    }
+
+    /// The guardian's beam on a mob: `indirectMagic` then the attack in
+    /// the same tick, the second landing only by what it adds.
+    #[test]
+    fn a_second_hit_in_the_same_tick_adds_only_its_excess() {
+        let mut rng = Rng::new(1);
+        let mut m = Mob::new(MobKind::Squid, DVec3::ZERO, 0.0);
+        m.damage(1.0, Some(DVec3::ZERO), &mut rng);
+        m.damage(6.0, Some(DVec3::ZERO), &mut rng);
+        assert_eq!(m.health, 10.0 - 6.0);
+    }
+
+    /// Snow golems in water take `hurtServer(drown, 1)` a tick, which the
+    /// cooldown spaces to 1 a half second (it was 20 a second).
+    #[test]
+    fn a_snow_golem_in_water_takes_one_a_half_second() {
+        let mut world = Grid::flat(10);
+        world.set(glam::IVec3::new(0, 10, 0), crate::world::block::Block::WATER);
+        world.set(glam::IVec3::new(0, 11, 0), crate::world::block::Block::WATER);
+        let c = ctx();
+        let (mut rng, mut events) = (Rng::new(5), Vec::new());
+        let mut m = Mob::new(MobKind::SnowGolem, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        for _ in 0..20 {
+            m.update(0.05, &world, &c, &mut rng, &mut events);
+            m.pos = DVec3::new(0.5, 10.0, 0.5);
+        }
+        assert_eq!(m.health, 4.0 - 2.0);
     }
 }

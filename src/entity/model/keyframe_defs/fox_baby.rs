@@ -1,0 +1,27 @@
+// v1.0 gap Track 7c: `FoxBabyAnimation`'s keyframes from the Java 26.3 client (numbers only),
+// turned into tables by the record's converter. Included into the model's module,
+// which names the bones.
+pub(super) const FOX_BABY_WALK: Anim = Anim {
+    length: 0.5,
+    looping: true,
+    channels: &[
+        ch(BODY, Rot, &[l(0.0, [0.0, 0.0, 0.0])]),
+        ch(BODY, Pos, &[l(0.0, [0.0, 0.0, 0.0])]),
+        ch(HEAD, Rot, &[l(0.0, [0.0, 0.0, 0.0])]),
+        ch(HEAD, Pos, &[l(0.0, [0.0, -1.025, 0.0])]),
+        ch(RIGHT_HIND_LEG, Rot, &[c(0.0, [-35.0, 0.0, 0.0]), l(0.25, [35.0, 0.0, 0.0]), c(0.5, [-35.0, 0.0, 0.0])]),
+        ch(RIGHT_HIND_LEG, Pos, &[l(0.0, [0.05, 0.6, -0.02]), l(0.25, [0.05, 0.6, -0.02]), l(0.5, [0.05, 0.6, -0.02])]),
+        ch(RIGHT_HIND_LEG, Scale, &[l(0.0, [1.0, 1.15, 1.0])]),
+        ch(LEFT_HIND_LEG, Rot, &[c(0.0, [35.0, 0.0, 0.0]), l(0.25, [-35.0, 0.0, 0.0]), c(0.5, [35.0, 0.0, 0.0])]),
+        ch(LEFT_HIND_LEG, Pos, &[l(0.0, [-0.05, 0.6, -0.02]), l(0.25, [-0.05, 0.6, -0.02]), l(0.5, [-0.05, 0.6, -0.02])]),
+        ch(LEFT_HIND_LEG, Scale, &[l(0.0, [1.0, 1.15, 1.0])]),
+        ch(RIGHT_FRONT_LEG, Rot, &[c(0.0, [35.0, 0.0, 0.0]), l(0.25, [-35.0, 0.0, 0.0]), c(0.5, [35.0, 0.0, 0.0])]),
+        ch(RIGHT_FRONT_LEG, Pos, &[l(0.0, [0.05, 0.6, -0.4])]),
+        ch(RIGHT_FRONT_LEG, Scale, &[l(0.0, [1.0, 1.15, 1.0])]),
+        ch(LEFT_FRONT_LEG, Rot, &[c(0.0, [-35.0, 0.0, 0.0]), l(0.25, [35.0, 0.0, 0.0]), c(0.5, [-35.0, 0.0, 0.0])]),
+        ch(LEFT_FRONT_LEG, Pos, &[l(0.0, [-0.05, 0.6, -0.4])]),
+        ch(LEFT_FRONT_LEG, Scale, &[l(0.0, [1.0, 1.15, 1.0])]),
+        ch(TAIL, Rot, &[c(0.0, [-2.5, 0.0, 0.0])]),
+        ch(TAIL, Pos, &[c(0.0, [0.0, -0.05, 0.0])]),
+    ],
+};

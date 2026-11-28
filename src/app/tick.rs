@@ -4,11 +4,28 @@ impl Game {
     /// One fixed gameplay step. Rendering and worker polling never
     /// change the amount of simulation time advanced here.
     pub(super) fn tick(&mut self) {
-        self.world.set_simulation_players(
-            std::iter::once(self.session.player.pos)
-                .chain(self.agents.players.values().filter(|b| b.active).map(|b| b.agent.session.player.pos)),
-        );
-        self.world.set_simulation_spectators(
+        // v1.0 final F11: every level ticks each game tick, in Java's order
+        // (the Overworld, the Nether, the End): first those before the
+        // host's, then the host's, then those after it ([`super::levels`]).
+        self.tick_levels(true);
+        self.tick_attended();
+        self.tick_levels(false);
+        self.take_pearl_trip();
+        self.open_waiting_levels();
+    }
+
+    /// The host's level's tick, with the host's own.
+    fn tick_attended(&mut self) {
+        // v1.0 final F11: its tickets (portals, pearls far away) load and
+        // tick chunks beyond the players' own.
+        self.update_level_tickets();
+        // v1.0 gap Track 8f: a host watching the End credits has left the
+        // level with their chunk tickets (`showEndCredits`), so only the
+        // other players keep chunks ticking.
+        let host = self.credits.is_none().then_some(self.session.player.pos);
+        self.world.set_simulation_players_with_host(
+            host,
+            self.agents.players.values().filter(|b| b.active).map(|b| b.agent.session.player.pos),
             std::iter::once(self.session.mode == voxelcraft::rules::GameMode::Spectator).chain(
                 self.agents
                     .players
@@ -17,6 +34,8 @@ impl Game {
                     .map(|b| b.agent.session.mode == voxelcraft::rules::GameMode::Spectator),
             ),
         );
+        // v1.0 gap Track 8f: pearls leave and come back with their owners.
+        self.sync_owned_pearls();
         self.world.set_tile_drops(self.gamerules.bool("block_drops"));
         // Before any interaction this tick: breaking a cart or lighting a TNT
         // cart reads these rules directly in Java.
@@ -26,13 +45,20 @@ impl Game {
             crate::world::WorldRules { difficulty: self.difficulty.id(), ..self.gamerules.world_rules() };
         let dt = crate::simulation::TICK_SECONDS;
         self.session.settle_wake(&self.world);
-        let arriving = self.update_arrival();
-        let input = self.movement_input(arriving);
+        // v1.0 gap Track 8b: `handlePortal` comes before the player moves,
+        // and a trip it sets off holds them until they arrive.
+        // v1.0 final Track F2: a ridden vehicle's portal marks the host's count.
+        self.update_vehicle_portal();
+        let arriving = self.update_arrival() || self.process_portal();
+        // v1.0 gap Track 8e: a player watching the End credits has left the
+        // level (`showEndCredits`) and doesn't move; their own tick
+        // (`ServerPlayer.doTick`: effects, hunger, burning) runs on.
+        let away = self.credits.is_some();
+        let input = self.movement_input(arriving || away);
         self.jump_pressed = false;
         self.previous_eye = self.session.player.eye();
         let before = self.session.player.pos;
-        let portal_before = self.portal_time;
-        if !arriving {
+        if !arriving && !away {
             let on_cushion = self
                 .session
                 .player
@@ -74,7 +100,7 @@ impl Game {
                     self.session.mode == GameMode::Spectator,
                     self.session.mode.is_creative(),
                 );
-                self.update_portal(dt);
+                self.update_portal();
             } else {
                 self.session.player.vel = DVec3::ZERO;
                 self.session.player.on_ground = true;
@@ -82,7 +108,8 @@ impl Game {
             }
         }
         let nausea = self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Nausea).map(|e| e.ticks);
-        self.distortion.tick(nausea, self.portal_time > portal_before);
+        let in_portal = self.portal_effect();
+        self.distortion.tick(nausea, in_portal);
         // Damage, death and armor changes as game events.
         self.world.player_vitals(
             self.session.id,
@@ -168,6 +195,7 @@ impl Game {
             (hurts.drown, Cause::DROWN),
             (hurts.lava, Cause::LAVA),
             (hurts.stalactite, Cause::FALLING_STALACTITE),
+            (hurts.stalagmite, Cause::STALAGMITE),
             (hurts.kinetic, Cause::FLY_INTO_WALL),
             (hurts.fire, Cause::IN_FIRE),
             (hurts.hot_floor, Cause::HOT_FLOOR),
@@ -353,10 +381,12 @@ impl Game {
         self.tick_trial();
         self.tick_beacons();
         self.play_crafter_events();
+        self.play_composter_events();
         self.tick_conduits();
         self.tick_potent_sulfur();
         self.tick_raid_omens();
         self.update_mobs(dt);
+        self.take_pearl_tickets();
         self.apply_raid_outcomes();
         self.update_items();
         self.tick_particles();

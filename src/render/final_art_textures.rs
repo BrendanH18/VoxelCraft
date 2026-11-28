@@ -16,6 +16,11 @@ use crate::world::block::tex;
 #[path = "final_art_b_textures.rs"]
 mod round_b;
 
+/// v1.0 gap Track 7: the amethyst buds, the bamboo's leaves for its crossed
+/// planes and the potted bamboo.
+#[path = "final_art_c_textures.rs"]
+mod round_c;
+
 type Px = [u8; 3];
 /// Four shades of one colour: dark, mid, light, highlight.
 type Shades = [Px; 4];
@@ -1909,12 +1914,20 @@ pub(super) fn build(put: &mut impl FnMut(u16, Tile)) {
     crops(put);
     other_plants(put);
     round_b::build(put);
+    // After round B: the bamboo's leaf tiles are redrawn for the planes.
+    round_c::build(put);
 }
 
 /// Track 10b's layers, in review order.
 #[cfg(test)]
 pub(super) fn round_b_layers() -> Vec<u16> {
     round_b::layers()
+}
+
+/// Gap Track 7's layers, in review order.
+#[cfg(test)]
+pub(super) fn round_c_layers() -> Vec<u16> {
+    round_c::layers()
 }
 
 /// The layers this round draws, in review order (tests pin each one).
@@ -1984,7 +1997,13 @@ mod tests {
         let unique: std::collections::BTreeSet<u16> = layers.iter().copied().collect();
         assert_eq!(unique.len(), layers.len(), "a layer is listed twice");
         assert!(layers.iter().all(|&l| (l as u32) < tex::COUNT), "a layer past the block array");
-        assert_eq!(tex::COUNT, 4066, "the block array grew");
+        // Only gap Track 7 (its potted bamboo leaf, 4066), gap track 6b
+        // (the item models' plant layers, 4080-4083) and gap track 6d (the
+        // in-hand models' layers, 4084-4085), gap track 6f (the hopper's
+        // top and inside, 4086-4087), final track F3 (fire's second
+        // texture, 4088-4090) and final F10 (the repeater's and
+        // comparator's tops, 4092-4095) have grown the array since.
+        assert_eq!(tex::COUNT, 4096, "the block array grew");
         for &l in &layers {
             tile(l);
         }

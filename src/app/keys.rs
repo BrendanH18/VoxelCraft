@@ -90,9 +90,16 @@ pub(super) enum Action {
     /// `keyLoadHotbarActivator`), appended so saved bindings keep their order.
     SaveHotbar,
     LoadHotbar,
+    /// v1.0 gap track 6b: Java's `keyDebugShowAdvancedTooltips` (H, with
+    /// the debug modifier held), appended so saved bindings keep their order.
+    AdvancedTooltips,
+    /// v1.0 gap track 6c: Java's `keyDebugModifier` (F3, like the overlay
+    /// key, but bindable apart from it), appended so saved bindings keep
+    /// their order.
+    DebugModifier,
 }
 
-pub(super) const COUNT: usize = Action::LoadHotbar as usize + 1;
+pub(super) const COUNT: usize = Action::DebugModifier as usize + 1;
 
 /// One row of the table: save name, label, category and default.
 struct Spec {
@@ -100,7 +107,8 @@ struct Spec {
     label: &'static str,
     category: Category,
     default: Input,
-    /// Java's `order` within a category (only the debug overlay has one).
+    /// Java's `order` within a category (the debug overlay's -2 and the
+    /// debug modifier's -1).
     order: i8,
 }
 
@@ -154,6 +162,8 @@ const SPECS: [Spec; COUNT] = [
     // `Options`: HID usage 6 (C) and 27 (X), `KeyMapping.Category.CREATIVE`.
     spec("key.saveToolbarActivator", "Save Hotbar Activator", C::Creative, key(KeyCode::KeyC)),
     spec("key.loadToolbarActivator", "Load Hotbar Activator", C::Creative, key(KeyCode::KeyX)),
+    spec("key.debug.showAdvancedTooltips", "Show Advanced Tooltips", C::Debug, key(KeyCode::KeyH)),
+    Spec { order: -1, ..spec("key.debug.modifier", "Debug Modifier Key", C::Debug, key(KeyCode::F3)) },
 ];
 
 impl Action {
@@ -197,6 +207,8 @@ impl Action {
             SwapHands,
             SaveHotbar,
             LoadHotbar,
+            AdvancedTooltips,
+            DebugModifier,
         ]
     };
 
@@ -597,6 +609,22 @@ mod tests {
         assert!(b.actions(Input::Unbound).next().is_none(), "nothing fires on an unbound key");
         b.reset(Action::Drop);
         assert!(b.is_default(Action::Drop) && !b.all_default());
+    }
+
+    /// v1.0 gap track 6c: the debug modifier is its own binding on F3, as
+    /// Java's `key.debug.modifier` is, listed after the overlay key.
+    #[test]
+    fn the_debug_modifier_is_bound_apart_from_the_overlay() {
+        let mut b = Bindings::default();
+        assert_eq!(b.get(Action::DebugModifier), b.get(Action::DebugOverlay));
+        assert!(b.conflicts(Action::DebugModifier).next().is_none(), "Java's defaults share F3");
+        let debug: Vec<_> =
+            Action::sorted().into_iter().filter(|a| a.category() == Category::Debug).map(|a| a.label()).collect();
+        assert_eq!(&debug[..2], ["Toggle Overlay", "Debug Modifier Key"]);
+        b.set(Action::DebugModifier, Input::Key(KeyCode::F4));
+        let mut text = String::new();
+        b.serialize(&mut text);
+        assert!(text.contains("key_key.debug.modifier=key.keyboard.f4"), "{text}");
     }
 
     #[test]

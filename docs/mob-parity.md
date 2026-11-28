@@ -165,3 +165,302 @@ Membranes now brew Slow Falling. Natural size is zero; size/anchor persist.
 Original blue ray geometry has animated wings. See the
 [hostiles record](verification/2026-11-04-v0.15-hostiles.md) for source classes,
 AI scheduling/equipment differences, checks and missing graphical evidence.
+
+## Hostile goal scheduling, door breaking and spears (v1.0 gap Track 2, implemented, unverified)
+
+The [gap-closing record](verification/2026-11-27-v1.0-gap-track-02-hostile-ai.md)
+has the Java sources and checks. Code: `src/entity/mob/chase.rs` and
+`src/entity/mob/door_break.rs`.
+
+- **Targets** in the shared hostile chase (zombies, spiders, creepers,
+  slimes, silverfish, witches and the rest of `think`'s chase) follow
+  `NearestAttackableTargetGoal` and `TargetGoal`: a search only on the goal
+  selector's full update (every other tick, staggered by entity id) and
+  then one time in five (`reducedTickDelay(10)`), for the nearest player
+  in sight within the follow range; the target is kept, even when a nearer
+  player turns up, until it dies, leaves the follow range, stops being
+  targetable or has been out of sight for 30 full updates (about 62
+  ticks). Reinforcements and hits set the target at once, as `setTarget`
+  and `HurtByTargetGoal` do. Spiders let go one full update in 100 in
+  daylight (`SpiderAttackGoal`).
+- **`MeleeAttackGoal`** (zombies, drowned without a trident, spiders, cave
+  spiders, silverfish and wither skeletons in the chase):
+  `canUse` at most every 20 ticks with a path to the target; the goal ends
+  when the path runs out (spiders keep following); a start may hit at
+  once, then one hit per 20 ticks when the attack box (the mob's box
+  widened by `sqrt(2.04) − 0.6`) meets the target's and it is in sight.
+- **Zombies' goal table**: the door goal (flagless), `SpearUseGoal`
+  (priority 2, zombified piglins 1) and `ZombieAttackGoal` (3, or 2) run
+  through the shared `GoalSelector` port (`mob::selector`), so a held
+  spear takes the move and look flags from the melee goal.
+- **Door breaking** (`BreakDoorGoal`): zombies, husks, drowned, zombie
+  villagers and zombified piglins with `CanBreakDoors`, on Hard only and
+  with `mobGriefing`, path through closed wooden doors
+  (`setCanOpenDoors`) and, pressed against one, hammer it for 240 ticks:
+  `zombie.attack_wooden_door` and an arm swing one tick in 20, the block
+  crack stage `breakTime / 240 × 10` (drawn like a player's), then the
+  door goes: the half above the path node silently, the other half with
+  its break particles and sound and, for a lower half, the door item;
+  then `zombie.break_wooden_door`. Vindicators in raids share the goal
+  (Normal or Hard) and now drop the door too. The two zombie door sounds
+  are original procedural stand-ins.
+- **Spears** (`SpearUseGoal`): a zombie, husk, zombie villager or
+  zombified piglin holding a spear walks at its target until within 10
+  blocks, lowers the spear for `reducedTickDelay(delay + damage window)`
+  full updates (119 for iron), charges, runs on 6–7 blocks past the
+  target within 2 blocks of it, charges again, and when the time is up
+  retreats 9–11 blocks (`LandRandomPos.getPosAway`). A lowered spear stabs
+  players along the mob's look with the mob range (1–2.25 blocks): the
+  base attack damage plus `floor(relative speed × multiplier)`, the 0.2
+  mob factor on every speed threshold, one contact per player per 10
+  ticks. Zombie horsemen and husks on camel husks steer their mounts there
+  at the mount's `chargeSpeedModifier` (1.4 and 4).
+
+## Mob spears: stabs, look and piglins (v1.0 gap Track 2b, implemented, unverified)
+
+The [Track 2b record](verification/2026-11-27-v1.0-gap-track-02b-spears.md)
+has the Java sources and checks. Code: `src/entity/mob/spear.rs`.
+
+- **Stabs** (`KineticWeapon.damageEntities`, `LivingEntity.stabAttack`) run
+  for every lowered mob spear each tick, before the mobs move: the ray from
+  the eye along the head's look stabs every player and mob whose box
+  (grown by 0.125) it crosses between 1 and 2.25 blocks plus the mob's own
+  forward motion, short of the first block, never the spear's own mount or
+  its fellow passengers. Each target is remembered for 10 ticks. Speeds are
+  taken along the body's look, the mob's from its root vehicle. A contact
+  deals the base attack damage plus `floor(relative speed × multiplier)`
+  and Sharpness (Smite and Bane against mobs sensitive to them); one that
+  knocks back pushes 0.4 along the mob's facing, plus its attack knockback,
+  with or without damage, and slows the mob; one that dismounts takes the
+  target off its vehicle (players too). Mob stabs never wear the spear, as
+  in Java, where only the player's attacks call `postHurtEnemy`.
+- **Look** (`LookControl`): while aiming, a mob keeps Java's head yaw and
+  pitch: `SpearUseGoal` turns the body 30° per update (`Mob.lookAt`) and the
+  head 30° a tick, a piglin's head turns 10° a tick with 40° of pitch, the
+  pitch is held to its limit from level each tick, and the head stays
+  within 75° of the body while walking.
+- **Piglins** spawn with a golden spear in one melee roll in ten
+  (`createSpawnWeapon`) and zombified piglins in one in twenty; the spear is
+  drawn in the hand (an original stand-in), saved as the `golden_spear`
+  weapon and dropped at the default 8.5% on a player kill (a zombified
+  piglin's sword now drops the same way). Piglins fight with it through
+  `SpearApproach`, `SpearAttack` and `SpearRetreat` (approach to 10 blocks,
+  lower it for 289 ticks while charging and running on past the target,
+  retreat 9–11 blocks for up to 100 ticks) and never swing it in melee;
+  zombified piglins use `SpearUseGoal`.
+
+## Heads, bodies and idle looks (v1.0 gap Track 2c, implemented, unverified)
+
+The [Track 2c record](verification/2026-11-27-v1.0-gap-track-02c-looks.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/head.rs`.
+
+- **Every mob keeps Java's `yHeadRot` and `xRot`** and turns them with its
+  `LookControl` a tick after its goals ran: a request turns the head by
+  the asking goal's speed for two ticks (attack goals 30°, Breed and
+  FollowOwner 10°, Tempt the head limit plus 20°, the brain's sink the
+  mob's own speed, 10° unless Java overrides it: breeze 25°, frog 35°),
+  the pitch from level by its limit; without one the head turns back 10°
+  a tick, and it stays within `getMaxHeadYRot` of the body while a path
+  runs (ravager 45°, breeze and camels 30°, goat 15°, frog 5°, sniffer
+  50°, armadillo 32° or 0 rolled up, axolotl and dolphin 1°). Dolphins,
+  tadpoles, nautiluses and axolotls use `SmoothSwimmingLookControl`.
+  The game's own eased head code is gone; since Track 2d only the
+  phantom keeps its own head (below).
+- **`BodyRotationControl`** turns a separate drawn body (`Mob::body_yaw`,
+  Java's `yBodyRot`) apart from the heading movement follows (`yRot`): a
+  moving body faces its travel with the head held within the limit; a
+  still one follows a head that moved over 15°, and after ten still ticks
+  turns to face it over ten more. A mob carrying a mob passenger doesn't
+  turn while still. The move control turns the heading 90° a tick.
+- **Idle look goals** in each kind's `registerGoals` priorities and flags:
+  `LookAtPlayerGoal` (players, `Mob.class`, striders, guardians; 2% a full
+  update, 20 to 39 full updates), `InteractGoal` and
+  `LookAtTradingPlayerGoal` (wandering trader) and `RandomLookAroundGoal`
+  (2% a full update, 20 to 39 ticks, only while nothing better holds
+  MOVE). Attack, tempt, breed and follow-owner goals hold LOOK; a mob
+  steered by a mob passenger loses MOVE and LOOK (`updateControlFlags`).
+- **Brain looks**: `LookAtTargetSink(45, 90)` with each activity's
+  writers: villagers' full and minimal look behaviours by their schedule
+  and the trading player within 4 blocks; piglins' idle, avoid, celebrate
+  and ride looks; brutes', hoglins', zoglins', creakings', allays', copper
+  golems', armadillos', goats', frogs', axolotls', tadpoles' and sniffers'.
+  `NEAREST_VISIBLE_LIVING_ENTITIES` is sensed every 20 ticks for the kinds
+  whose looks pick mobs.
+- **Spears**: the margin hit's block check toward the box's centre (for
+  players' stabs too); mob stabs on minecarts and boats, decorations and
+  End crystals; the body turns at the move control's 90° a tick.
+
+## Eyes, look priorities and own look controls (v1.0 gap Track 2d, implemented, unverified)
+
+The [Track 2d record](verification/2026-11-27-v1.0-gap-track-02d-look-details.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/eyes.rs` and `src/entity/mob/head.rs`.
+
+- **Eyes**: every mob looks, sees and is looked at from its own
+  `getEyeHeight` (`EntityTypes`' `eyeHeight`, each kind's
+  `BABY_DIMENSIONS`, sleeping villagers, sitting camels, a digging sniffer
+  or warden, phantoms and cubes by size, a floor shulker's lid), and
+  players from their pose's (1.62, 1.27 crouching, 0.4 swimming).
+- **Goal priorities**: an idle look goal takes `MOVE` and `LOOK` only from
+  goals of a strictly worse priority and stops them (`GoalSelector`), so
+  the parrot's `LookAtPlayerGoal` (1) holds off `FollowOwnerGoal` (2), the
+  witch's random look (3) its patrol and village goals (4), the panda's
+  (10) its stroll (14), and the shulker's (1) its attack (4).
+- **Brain writers**: merchants follow their actual customer; villagers'
+  `SetLookAndInteract`, `ShowTradesToPlayer` (40 ticks, 900 while the
+  player holds an offer's cost) and `WorkAtPoi` looks; the piglin's
+  `SetLookAndInteract`; brain `AnimalMakeLove`, `FollowTemptation` and
+  `BabyFollowAdult` set `LOOK_TARGET`; brain attacks go through the sink;
+  a look `RunOne` starts its `DoNothing` while a target is set.
+- **Kinds' own rules**: the pollinating bee keeps its pitch and looks at
+  its flower; the panda's `setTarget` after a failed breed and its
+  unhappy turn; the llama's `RangedAttackGoal` aims 40 ticks at its target
+  before it spits; the warden's `LOOK_TARGET` (`SetWardenLookTarget`,
+  roar, fight, disturbances) and the sonic boom's look; the shulker's
+  `ShulkerLookControl` in its shell's frame with no pitch and a still body;
+  the bat's random head and plain controls; the phantom's head a tick
+  behind its body; the ghast's and happy ghast's controls.
+- **Spears** reach the dragon's parts: a mob's stab lands and does nothing
+  (only players and explosions hurt the dragon); a player's jab or charge
+  deals the part damage.
+
+## Brain idle movement, the fox's hunting, baby boxes and shown trades (v1.0 gap Track 2e, implemented, unverified)
+
+The [Track 2e record](verification/2026-11-27-v1.0-gap-track-02e-behaviours.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/brain_walk.rs`, `src/entity/fox.rs`,
+`src/entity/mob/fox.rs`, `src/entity/mob/eyes.rs` and
+`src/entity/mob/head.rs`.
+
+- **Brains walk `WALK_TARGET`** with `MoveToTargetSink` (150 to 250 ticks,
+  babies at play 80 to 120, sniffers 500 to 700) instead of wandering.
+  Villagers run the idle package's movement `RunOne` (`InteractWith` a
+  villager, a breedable villager or a cat within 8, `VillageBoundRandomStroll`,
+  `SetWalkTargetFromLookTarget`, `JumpOnBed`, `DoNothing`), the babies' play
+  `RunOne`, the meet gate at the bell (`StrollAroundPoi`, `SocializeAtBell`)
+  and, without a home at night, the rest `RunOne`
+  (`SetClosestHomeAsWalkTarget`, `InsideBrownianWalk`, `GoToClosestVillage`);
+  work without a job site and meeting without a bell fall back to idle.
+  Piglins run their idle movement `RunOne` (stroll, `InteractWith` a
+  piglin, follow the look target unless a loved item is in sight) and,
+  celebrating, a look, a 2-block stroll or nothing. The sniffer's idle
+  `RunOne` starts its scent (also during the sniff cooldown) and sniff and
+  walks and looks.
+- **Baby boxes** are each kind's `BABY_DIMENSIONS` (villagers and zombie
+  kinds and piglins 0.49 by 0.98, chickens 0.3 by 0.4, rabbits 0.24 by
+  0.4, hoglins and zoglins 0.75 by 0.85, squid 0.5 by 0.5, foxes and
+  armadillos 0.6 of the adult, horses 0.7, turtles 0.3), for collision,
+  hits and navigation.
+- **Shown trades**: a villager showing its trades holds up the results of
+  the offers the player's item pays for, cycling every 40 ticks, and keeps
+  looking for 900 ticks.
+- **Foxes** hunt, sleep, perch and eat berries by Java's goals; see
+  [Animals](animals.md#foxes-v10-gap-tracks-2e-2f-and-2g-implemented-unverified).
+
+## Work strolls, play tag, trading walks, the brute's idle, the fox's defence and the goat's long-jump pose (v1.0 gap Track 2f, implemented, unverified)
+
+The [Track 2f record](verification/2026-11-28-v1.0-gap-track-02f-behaviours.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/brain_walk.rs`, `src/entity/mob/head.rs`,
+`src/entity/villager.rs`, `src/entity/fox.rs`, `src/entity/mob/fox.rs`,
+`src/audio/fox.rs` and `src/entity/animals/lifecycle.rs`.
+
+- **Working villagers** no longer walk onto their job site and stand
+  there. `SetWalkTargetFromBlockMemory(JOB_SITE, 0.5, 9, 100, 1200)` walks
+  one more than 9 blocks (`distManhattan`) away back within 9, heads 15
+  blocks toward it from beyond 100 and gives up a job site it can't reach
+  for 1200 ticks; then the work package's `RunOne` picks `WorkAtPoi` (or
+  the farmer's `WorkAtComposter`: within 1.73 of the job site, every 300
+  ticks on a coin flip, it looks at it for 60 ticks and restocks),
+  `StrollAroundPoi` (within 4, every 180 ticks), `StrollToPoi` (within
+  10, every 80), `StrollToPoiList` (a farmer's farmland within 4 across
+  and 2 up or down, every 100), `HarvestFarmland` (a farmer breaks a ripe
+  crop within a block of it, with `mobGriefing`) and `UseBonemeal`, by
+  Java's weights.
+- **Playing babies** play tag (`PlayTagWithOtherKids`): with other babies
+  in sight they chase the least-chased one (or the closest), and a chased
+  one runs off to a spot in the village; the play `RunOne` waits while
+  babies are in sight.
+- **Trading villagers** walk to each other: `TradeWithVillager` locks both
+  villagers' looks and walks on each other (0.5, 2 short) when it starts
+  and while they're within `sqrt(5)`, for its 60 ticks, then the gate
+  erases the interaction target.
+- **Piglin brutes** run their idle movement `RunOne` (strolls,
+  `InteractWith` a piglin or a brute, `StrollToPoi` and `StrollAroundPoi`
+  on the bastion spot they spawned at, `DoNothing`) instead of wandering
+  and the 12-block walk home.
+- **Foxes** defend players they trust (`DefendTrustedTargetGoal`), stroll
+  through villages at night, wake and take cover in thunderstorms, have
+  their own sounds and kick up snow when faceplanted; see
+  [Animals](animals.md#foxes-v10-gap-tracks-2e-2f-and-2g-implemented-unverified).
+- **Goats** take Java's `LONG_JUMPING` pose for the flight of their jump:
+  the box at 0.7 of its size (`Mob::goat_long_jumping`).
+
+## Farmers' inventories, the brute's home, the fox's defence, item particles and the goat's long jump (v1.0 gap Track 2g, implemented, unverified)
+
+The [Track 2g record](verification/2026-11-28-v1.0-gap-track-02g-farmers-goats.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/villager_breeding.rs`, `src/entity/mob/brain_walk.rs`,
+`src/entity/fox.rs`, `src/entity/mob/fox.rs`, `src/particles/`,
+`src/entity/animals/long_jump.rs` and `src/audio/goat.rs`.
+
+- **Villagers** carry Java's 8-slot inventory (saved as before under
+  `food`) and pick up, each tick with `mobGriefing`, what
+  `Villager.wantsToPickUp` wants: seeds, potatoes, carrots, beetroots,
+  bread and wheat, and a farmer's bone meal. Breeding eats only food.
+- **Farmers** break ripe crops and leave the drops to pick up, then plant
+  seeds from their inventory on empty farmland (`HarvestFarmland`); at
+  their composter they bake up to three bread from wheat and compost the
+  wheat and beetroot seeds beyond ten of each, emptying a full composter
+  first (`WorkAtComposter`); with bone meal they use it on growing crops
+  round them, 40 ticks apart (`UseBonemeal`).
+- **Trading villagers** throw each other half their excess food, a
+  farmer's spare wheat and the seeds and bone meal a farmer partner
+  requests (`TradeWithVillager`), in place of the game's direct sharing.
+- **Piglin brutes** get their home where they spawn (`finalizeSpawn`),
+  from spawn eggs and commands too.
+- **Foxes** defend a trusted player from another player (LAN PvP) and from
+  mobs' projectiles as well as melee; see
+  [Animals](animals.md#foxes-v10-gap-tracks-2e-2f-and-2g-implemented-unverified).
+- **Item particles** (`ItemParticleOption`): eating food, a tool breaking,
+  snowballs and eggs breaking, and a fox eating.
+- **Goats** long jump by Java's `LongJumpToRandomPos`: a spot within 5
+  blocks they can't walk to within 8, an arc at 65° to 80° that clears
+  their jumping box, 40 ticks looking at it, then the flight under Java's
+  gravity without drag, every 30 to 60 seconds, with the long-jump and
+  landing sounds; see [Animals](animals.md).
+
+## Work sounds, composters, bone meal, torchflowers, eating and fireballs (v1.0 gap Track 2h, implemented, unverified)
+
+The [Track 2h record](verification/2026-11-28-v1.0-gap-track-02h-details.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/brain_walk.rs`, `src/world/composter.rs`,
+`src/world/growth.rs`, `src/particles/`, `src/session/consumption.rs`,
+`src/entity/panda.rs`, `src/entity/fireball.rs`,
+`src/entity/animals/long_jump.rs` and `src/audio/work.rs`.
+
+- **Villagers** play their profession's work sound each time they start
+  work at their job site (`WorkAtPoi.start`'s `playWorkSound`; thirteen
+  original procedural stand-ins for `entity.villager.work_*`).
+- **Composters** play `fill` or `fill_success` and shed ten composter
+  particles at every fill, whether a player, a hopper or a farmer fills
+  them (level event 1500; a farmer's composting always ends with it),
+  `empty` when a player or farmer takes the bone meal out, and `ready`
+  when they ripen.
+- **Bone meal** sheds Java's happy-villager particles for every user
+  (players, dispensers, farmers; level event 1505) and for bees growing
+  crops (2011); dispensers now play its sound too.
+- **Farmers** bone-meal torchflower crops and never harvest them (they
+  never reach a `CropBlock`'s maximum age); while one uses bone meal it
+  holds it over its folded arms (`CrossedArmsItemLayer`).
+- **Eating** makes its sound and item particles on Java's rhythm (every
+  fourth tick after the first 21.875% of the meal) for every player:
+  the host, split-screen and LAN players and CLI agents. Pandas shed
+  particles of their snack as they chew.
+- **Blaze fireballs** and blasts a mob is behind (ghast fireballs,
+  creepers) record the mob as the player's attacker, for foxes and wolves
+  that defend them.
+- **Goats** turn their heading to their body's at a long jump's launch,
+  and Jump Boost lengthens it.
+

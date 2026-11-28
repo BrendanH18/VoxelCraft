@@ -57,14 +57,32 @@ their recorded runs. This replaces the audit's rule that every release
 records a run ([§6.1](#61-reference-configuration-and-frame-time-gate),
 [§7](#7-feature-completion-and-release-policy)).
 
+**Partial rows (owner, 2026-11-27): close them before 1.0.** Asked
+whether to tag `1.0` with the 22 Partial rows as known limitations, as
+v0.16 to v0.18 were tagged, the owner chose to close their gaps first. No
+1.0 paperwork (version bump, release notes) starts until they are closed;
+the proposed [gap-closing build](#v10-gap-plan-2026-11-27) is below the
+v1.0 plan.
+
+**1.0 prepared (2026-11-28), awaiting the owner.** The gap-closing build
+and a final wave of tracks closed every Partial row but BLD-05c (block
+models still being drawn to Java's layouts); the version is 1.0.0, the
+release notes and the [delivery record](delivery-records.md#39-v10-delivery-record--2026-11-28-prepared-awaiting-the-owner)
+are written, and [#128](https://github.com/BrendanH18/VoxelCraft/pull/128)
+carries it with CI. The owner approved every look merged overnight on
+2026-11-28 ("all looks good"), and chose to close
+[FE-05](#14-what-can-follow-10) (one running dimension) rather than
+accept it: final Track F11, merged the same day, makes the other
+dimensions run as Java's do. Before the tag: the owner's play, which
+verifies rows.
+
 **Play (owner, 2026-11-27): v1.0 plays really well.** The owner played
 the v1.0 build on `main` and reported that it plays really well. That is
 the owner's play the v1.0 rows were waiting for; no row has moved to
 Verified yet. Before the `1.0` tag, the requirement inventory and the
 [final acceptance record](#8-final-acceptance-record-for-10) still need
-refreshing, and the owner still has to decide on the rows that remain
-Partial: tag with them, as v0.16 to v0.18 were tagged, or close them
-first.
+refreshing, and the rows that remain Partial are to be closed first
+(above).
 
 **Release (owner, 2026-11-23): v0.16 is released.** The owner played
 v0.16 and asked for it to be tagged and released, then for v0.17 to be
@@ -326,6 +344,47 @@ listed under [content assigned by the audit](#content-assigned-by-the-2026-11-09
 New structures (woodland mansions in v0.15, End cities in v0.16) are drawn
 as original templates to the same contract.
 
+**Fidelity exception FE-03 — no Force Unicode Font (owner, 2026-11-27).**
+VoxelCraft's original font covers ASCII, Latin-1 and Latin Extended-A
+with Java 26.3's advances and metrics, and has no Unicode font to switch
+to, so Java's Force Unicode Font option is left out (UX-03f). Player
+impact: the option is missing from Language settings, and text outside
+those ranges is not drawn.
+
+**Fidelity exception FE-04 — overlapping Nether decoration regions
+(owner, 2026-11-27).** Java decorates each chunk over its 3 × 3
+neighbourhood, so where two neighbourhoods overlap its result depends on
+which chunk the server decorated first, that is on how the player moved.
+Generation 7 follows Java's decoration order exactly within each
+neighbourhood; where two overlap, neither sees the other's features and
+the first by z then x keeps a block both changed (GEN-04a,
+[v1.0 gap Track 5](verification/2026-11-27-v1.0-gap-track-05-nether-portals.md)).
+Following one Java load order would mean decorating about 16 chunks out
+around every chunk. Player impact: none visible beyond Java's own
+load-order variation. In the overlap a structure's block wins over a
+neighbouring chunk's feature (v1.0 gap Track 5b, the same rule). The owner extended FE-04 to the End on 2026-11-27:
+where two chunks' chorus plants meet, generation 7 decorates west to east,
+then north to south (GEN-04b,
+[v1.0 gap Track 4b](verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md);
+140 of the 148 such test chunks match Java's run, the rest of the 2,312 all
+do).
+
+**FE-05 — one running dimension (proposed 2026-11-28, closed the same
+day; not an exception).** The 1.0 build ran only the dimension the player
+(or the LAN host) was in, so anything sent to another dimension waited
+there unchanged. The owner chose to close it rather than accept it, and
+[v1.0 final Track F11](verification/2026-11-28-v1.0-final-f11-dimensions.md)
+runs every dimension on Java 26.3's chunk tickets: an arrival through a
+portal moves under its 300-tick `PORTAL` ticket, a pearl flies on under
+its `ENDER_PEARL` tickets and brings its owner across, and a level with
+nothing keeping it active stops its entities after 300 ticks, as Java's
+`ServerLevel.tick` does. Its remaining differences (asynchronous loading,
+other players' pearls, the pearl's endermite) are listed in the record.
+
+The End's islands are not covered by FE-01: the owner chose on 2026-11-27
+to port Java's `EndIslandFunction` for new worlds
+([gap-closing plan](#v10-gap-plan-2026-11-27)).
+
 Modern biomes, building materials, mobs, equipment and travel mechanics
 belong in 1.0 when they participate in the chosen core loops. Being introduced
 in a recent release does not make a feature optional.
@@ -350,6 +409,13 @@ States:
 - **Implemented, unverified:** behavior is implemented but required acceptance evidence is incomplete.
 - **Verified:** all applicable completion checks passed for the recorded commit and scope.
 - **Deferred:** explicitly outside the current milestone, with a reason and destination.
+
+How a row reaches Verified (owner, 2026-11-27): when the owner plays a
+build and reports it plays well, that play verifies every row the build
+carries whose record has its Java-reference evidence and its save/reload
+evidence for that commit, except rows the owner names as not covered. The
+integrator records the play, the commit and the rows it moved. A row with
+an open gap, or without those records, stays where it is.
 
 A shipped release is not a completion state. A passing test suite is not
 proof that all requirements are implemented. Record desktop, headless,
@@ -665,7 +731,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Released (owner, 2026-11-23): played by the owner, tagged `v0.16` at `0848508` ([#113](https://github.com/BrendanH18/VoxelCraft/pull/113)) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-21): scope approved by the owner, eight tracks in two waves, all merged and integrated: wave 1 (Outer End, flight and storage, Wither and beacons, generation 5 Overworld) on 2026-11-20, wave 2 (classic and ocean structures, dragon respawn and the M5 audit, wave 1 leftovers, the M3 exit audit) on 2026-11-21. The offscreen frame-time run remains. See the [v0.16 scope](#v016-scope-the-end-and-the-wither) |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Released (owner, 2026-11-23): played by the owner, tagged `v0.17` at `d5c1fee` after [#116](https://github.com/BrendanH18/VoxelCraft/pull/116) and [#117](https://github.com/BrendanH18/VoxelCraft/pull/117) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-23): scope approved by the owner; all ten tracks merged and integrated ([#115](https://github.com/BrendanH18/VoxelCraft/pull/115)), and every reference contraption matches Java. The offscreen frame-time run remains. See the [v0.17 scope](#v017-scope-redstone-and-automation) |
 | v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate was to be measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)). The performance runs in this scope moved to v1.0 and were dropped by the owner on 2026-11-27 | Played by the owner (2026-11-25); to be tagged and released without its frame-time runs (owner exception above), which moved to v1.0 with v0.18's unmet exit and were dropped on 2026-11-27. The tag and the published release follow this record's merge. Rows stay Implemented, unverified or Partial. Implemented, unverified (2026-11-24): the owner approved an eleven-track plan ([v0.18 plan](#v018-plan-2026-11-23)); all eleven tracks are merged and integrated, every art round's look approved by the owner and the code reviewed; the owner's play and the frame-time runs remain. Presentation scope expanded by the owner on 2026-11-05. Each release then recorded its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stayed here was the final gate (dropped with all release runs on 2026-11-27) |
-| v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | In progress (2026-11-25): the owner approved a ten-track acceptance build ([v1.0 plan](#v10-plan-2026-11-25)); Java 26.3 is still the current stable release. Implemented, unverified (2026-11-26): all ten tracks and five follow-ups merged and integrated. Played by the owner (2026-11-27), who reported that it plays really well; the frame-time runs were dropped by the owner the same day. The inventory refresh, the §8 record and the owner's decision on the remaining Partial rows come before the tag |
+| v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | In progress (2026-11-25): the owner approved a ten-track acceptance build ([v1.0 plan](#v10-plan-2026-11-25)); Java 26.3 is still the current stable release. Implemented, unverified (2026-11-26): all ten tracks and five follow-ups merged and integrated. Played by the owner (2026-11-27), who reported that it plays really well; the frame-time runs were dropped by the owner the same day. The owner chose to close the Partial rows first (2026-11-27); the gap-closing tracks and the final wave (2026-11-27 to 2026-11-28) closed them but BLD-05c, the version is 1.0.0 and the release notes are written ([gap plan](#v10-gap-plan-2026-11-27)). The owner approved the overnight looks and chose to close FE-05 (final Track F11) on 2026-11-28. F11 merged the same day. Before the tag: the owner's play, which verifies rows |
 
 Notes:
 
@@ -2217,6 +2283,104 @@ The Windows packaging timeout fix is verified in the
 [delivery record](delivery-records.md#38-v018-delivery-record--2026-11-25)
 ([#101](https://github.com/BrendanH18/VoxelCraft/issues/101)).
 
+<a id="v10-gap-plan-2026-11-27"></a>
+
+**v1.0 gap-closing plan (approved by the owner, 2026-11-27).** The owner
+chose to close the 22 Partial rows before tagging `1.0`
+([current plan](#current-plan--updated-2026-11-13)) and approved this
+plan the same day. Read against
+the [requirement inventory](requirements.md) at `ceadfc2`, they fall in
+two groups.
+
+*Partial only on paper.* Six rows have nothing left but the owner's play
+or review, or record a gap that has since closed: BLD-01b (its "missing
+stonecutter screen" shipped in v0.15), BLD-01d, MOB-04b, PRO-02, UX-02
+(nobody has listened to the sounds yet) and UX-03c. The integrator moves
+them to Implemented, unverified in the inventory refresh, with no code.
+UX-03f joins them, its Force Unicode Font recorded as
+[FE-03](#14-what-can-follow-10).
+
+*Code gaps,* in seven parallel tracks, each in its own worktree with IDs
+from the [gap-closing reservations](architecture.md#v10-gap-closing-track-reservations),
+taken from what `examples/id_map.rs` showed free at `ceadfc2`. They branch
+from and merge into `t3/prep-release-1-0`. Each track checks its
+behaviour against the Java 26.3 jar, runs its targeted checks on Boat and
+writes a verification record; the integrator applies the inventory
+changes. Generation changes go into a new world generation, so the golden
+chunk hashes of generations 3 to 6 don't move. Tracks 6 and 7 merge only
+once the owner approves their look (Track 7's and Track 6's approved on 2026-11-27; for the items Java
+draws differently, flat or 3D, the owner chose to match Java the same day).
+Follow-up looks approved by the owner on 2026-11-27: Tracks 5c (portal
+plane, Night Vision), 6b (item drawing) and 7b (mob animations). Owner
+decisions the same day, all to match Java unless noted: spectators can't
+use portals (Java's `noPhysics`); bamboo gets sub-texel terrain geometry;
+slot icons take Java's orientation; controller seats pick bundle stacks
+with the right stick (Java has no gamepad support; owner's choice).
+Track 7c's look approved by the owner on 2026-11-27, with the adult
+nautilus to be turned to Java's shell-first facing.
+Overnight (owner, 2026-11-27): the owner, unavailable until morning,
+asked for the build to be completely finished by 10:00 on 2026-11-28.
+The integrator merges the remaining tracks, including those whose look
+the owner hasn't approved (each one merge commit, recorded as awaiting
+approval and reverted if the owner rejects it; the owner approved them
+all on 2026-11-28), resolves fidelity
+questions by matching Java and approves no exception, then prepares
+1.0.0's version, notes, inventory and §8 in a pull request with CI green.
+Merging to `main`, tagging and publishing wait for the owner's play.
+On 2026-11-28 an audit of 0.18's known limitations against the merged
+build found Java differences outside the 22 rows (portal travel for
+entities, inventory drag and double-click, the off-hand item, goat horns,
+random block variants, mob voices, structure details, options); following
+the match-Java rule, the integrator started a final wave of seven tracks
+(F1–F7) for them, each due by 06:45, and F8–F10 followed for what they
+left. On 2026-11-28 the owner approved every look merged overnight and
+asked for FE-05 to be closed: final Track F11
+([record](verification/2026-11-28-v1.0-final-f11-dimensions.md)) runs the
+dimensions the player isn't in on Java's chunk tickets.
+
+1. **Effects and mob damage** (PLY-03b, MOB-02d): Darkness darkening the
+   lightmap, not only the fog; Smite and Bane of Arthropods on mobs'
+   weapons; a creeper's fall adding to its fuse; pointed dripstone's
+   doubled fall damage; mobs' fall distance saved.
+2. **Hostile AI** (MOB-04a, MOB-04c, and the spear part of MOB-02d and
+   FOO-04c): zombies breaking doors (`BreakDoorGoal`; `CanBreakDoors` is
+   already saved), mobs using spears (`SpearUseGoal`), Java's goal
+   scheduling for the shared chase; baby piglins riding baby hoglins
+   (`babySometimesRideBabyHoglin`) and the piglin stacking rule; a ridden
+   strider steered by its zombified piglin.
+3. **Mounts and water** (FOO-04c, MOB-03c): camels' own ride (dash,
+   sitting, the two seats) and horses' ride in water on Java's
+   `travelRidden`; the nautilus inventory screen; baby dolphins, guardians
+   targeting squid and axolotls, and water currents pushing swimmers, as
+   [aquatic mobs](aquatic-mobs.md) lists.
+4. **The End** (PRO-05, GEN-04b): the dragon landing on Java's scanning
+   perch, a creative player no longer ending its strafe the wrong way, and
+   its death flight to the portal; gateway cooldowns and beams; and Java's
+   `EndIslandFunction` for new worlds' End islands (owner, 2026-11-27; the
+   End isn't covered by FE-01).
+5. **Nether generation and portals** (GEN-04a, GEN-04c): Nether features
+   placed in Java's decoration order on decorated terrain, rather than
+   first write wins; the gravel and lava edges of floors by the lava sea;
+   the relative position inside the exit portal and the world border in
+   portal search; portal linking and arrival added to the generation
+   corpus.
+6. **Items and utilities** (BLD-05b, BLD-05c): bundle sounds, dropping a
+   bundle's contents and its contents tooltip; a captured review of every
+   registered item's icon, held and dropped model on Boat
+   (`scripts/boat-capture.sh`), fixing each mismatch with world geometry.
+7. **Art and motion** (UX-01, MOB-06): amethyst buds' and the potted
+   bamboo's own art, bamboo leaves as crossed planes; mob walk cycles, the
+   death topple, hurt flash and attack swings against Java's client
+   (`WalkAnimationState` and the models' animations).
+
+Owner decisions taken with the plan (2026-11-27): port Java's End island
+function; leave out Force Unicode Font ([FE-03](#14-what-can-follow-10));
+and the owner's play of the finished build verifies every row with its
+reference and save/reload records, unless the owner names exceptions
+([§2](#2-status-and-tracking-rules)). After the tracks merge and the
+owner plays the build, the integrator applies that rule, refreshes the
+inventory and §8, bumps the version to 1.0.0 and writes the release notes.
+
 **M7 exit:** all mandatory core rows are Verified; every remaining exception/
 deferral is explicit; current stable Java scope has been reconciled;
 fresh-world and long-session acceptance passes are recorded; save migration/
@@ -2368,20 +2532,20 @@ notes.
 
 ## 8. Final acceptance record for 1.0
 
-- [ ] Current stable Java reference and exact core scope recorded. (2026-11-25: Java 26.3 is still the current stable release, with 26.4 at its first pre-release; the scope is unchanged, see the [v1.0 plan](#v10-plan-2026-11-25).)
-- [ ] Every mandatory core feature individually Verified with evidence.
-- [ ] Side-feature deferrals resolved (boundary approved 2026-10-19, §1.4); fidelity exceptions explicit.
-- [ ] Fresh-world survival progression and continued post-boss play passed.
+- [x] Current stable Java reference and exact core scope recorded. (2026-11-25: Java 26.3 is still the current stable release, with 26.4 at its first pre-release; the scope is unchanged, see the [v1.0 plan](#v10-plan-2026-11-25).)
+- [ ] Every mandatory core feature individually Verified with evidence. (2026-11-28: every core row is Implemented, unverified except BLD-05c, Partial while the last block models are drawn; the owner's play of the 1.0 build verifies rows by the [§2 rule](#2-status-and-tracking-rules).)
+- [ ] Side-feature deferrals resolved (boundary approved 2026-10-19, §1.4); fidelity exceptions explicit. (2026-11-28: FE-01 to FE-04 approved; FE-05, one running dimension, proposed and then closed by final Track F11, so no exception remains open.)
+- [ ] Fresh-world survival progression and continued post-boss play passed. (The owner's play; `tests/progression_paths.rs` checks every acquisition path.)
 - [ ] Building, exploration, farming, animals, villagers, travel and automation scenarios passed.
 - [ ] Player-facing interfaces, controls, feedback and original assets reviewed in play.
-- [ ] Save/restart/unload, migration, interruption and long-session stability passed.
+- [x] Save/restart/unload, migration, interruption and long-session stability passed. (Automated: save fixtures from v0.8 to v0.18 load and resave in `save_compat`, interrupted saves recover, and the 4-hour region-storage soak stays bounded; [Track 1](verification/2026-11-25-v1.0-track-01-saves.md), [Track 3b](verification/2026-11-26-v1.0-track-03b-region-storage.md).)
 - Dropped by the owner on 2026-11-27, with frame-time runs for releases ([current plan](#current-plan--updated-2026-11-13)); performance problems come in as GitHub issues:
   - ~~M5 1080p/256-block 120 FPS gate (game's own frames) passed in every required scene, with no windowed stall.~~ (PERF-02 and PERF-03 passed on the [2026-11-16 tag gate run](verification/2026-11-16-tag-gate-run.md).)
   - ~~Streaming/hitch budgets passed; native-resolution and scaling results reported.~~
   - ~~The frame-time runs moved here by the 2026-11-25 exception passed: the offscreen and windowed suites for v0.16, v0.17 and v0.18, PERF-03's streaming budget, v0.11's menu and title run and v0.12's `materials` runs (including the render-distance slowdown the owner first reported for v0.18).~~
-- [ ] Existing supported-platform checks and installer/update smoke passed.
-- [ ] Existing controller/agent/multiplayer shared-code regressions addressed.
-- [ ] Release documentation accurately states delivered scope and remaining limitations.
+- [ ] Existing supported-platform checks and installer/update smoke passed. (CI's tests pass on Linux, macOS and Windows; the package and installer smoke tests run in the `1.0` tag build.)
+- [x] Existing controller/agent/multiplayer shared-code regressions addressed. (The controller, agent and LAN adapter tests pass in CI on the 1.0 build.)
+- [x] Release documentation accurately states delivered scope and remaining limitations. (2026-11-28: the 1.0.0 release notes, rebuilt from the tracks' records and an audit of 0.18's known limitations.)
 
 Multiplayer and additional side features receive their own roadmap after
 this single-player acceptance milestone. They are not prerequisites for 1.0.

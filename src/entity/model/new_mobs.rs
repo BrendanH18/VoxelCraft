@@ -67,56 +67,153 @@ pub(super) fn happy_ghast(m: &Mob, time: f32) -> Parts {
 const SHELL: Rgb = [222, 204, 172];
 const STRIPE: Rgb = [166, 86, 52];
 const SOFT: Rgb = [196, 132, 116];
-const NAUTILUS_EYE: Rgb = [24, 24, 30];
 const SADDLE: Rgb = [110, 66, 38];
 /// Marker for worn nautilus armor; [`colour`] picks the material.
 const NAUTILUS_ARMOR: Rgb = [3, 201, 3];
-/// The coiled shell behind, the soft head and tentacles in front (+Z).
-const NAUTILUS_SHELL: &[Cuboid] = &[
-    cube([-5., 2., -8.], [5., 15.2, 4.], SHELL, 22),
-    cube([-5.2, 6., -6.], [5.2, 7.5, 4.2], STRIPE, 10),
-    cube([-5.2, 10., -7.], [5.2, 11.5, 4.2], STRIPE, 10),
-    cube([-3., 8., -8.6], [3., 13., -8.], STRIPE, 12),
-    // v0.18 Track 6 round 4: the hood's fold over the head.
-    cube([-4.5, 12., 4.], [4.5, 13., 4.25], STRIPE, 0),
-];
-const NAUTILUS_HEAD: &[Cuboid] = &[
-    cube([-4., 0., 0.], [4., 7., 6.], SOFT, 18),
-    cube([-4.2, 4., 2.], [-3.6, 5.5, 3.5], NAUTILUS_EYE, 0),
-    cube([3.6, 4., 2.], [4.2, 5.5, 3.5], NAUTILUS_EYE, 0),
-    // v0.18 Track 6 round 4: eye glints and a beak between the tentacles.
-    cube([-4.25, 5.0, 2.6], [-4.2, 5.4, 3.0], [230, 228, 220], 0),
-    cube([4.2, 5.0, 2.6], [4.25, 5.4, 3.0], [230, 228, 220], 0),
-    cube([-1.0, 2.0, 6.0], [1.0, 3.2, 6.6], [70, 46, 40], 0),
-];
-const NAUTILUS_TENTACLES: &[Cuboid] = &[
-    cube([-3., 0., 0.], [-1.5, 2., 5.], SOFT, 16),
-    cube([-0.75, 0., 0.], [0.75, 2., 6.], SOFT, 16),
-    cube([1.5, 0., 0.], [3., 2., 5.], SOFT, 16),
-];
-const NAUTILUS_SADDLE: &[Cuboid] = &[
-    cube([-4., 15.2, -5.], [4., 16., 2.], SADDLE, 20),
-    cube([-5.3, 9., -1.], [-5., 15.2, 0.], SADDLE, 10),
-    cube([5., 9., -1.], [5.3, 15.2, 0.], SADDLE, 10),
-];
-const NAUTILUS_PLATE: &[Cuboid] = &[cube([-5.6, 4., -8.6], [5.6, 14., 4.6], NAUTILUS_ARMOR, 24)];
+
+/// v1.0 gap Track 7d: the adult nautilus and zombie nautilus on
+/// `NautilusModel.createBodyMesh`'s parts, facing as Java's do (owner,
+/// 2026-11-27): the coiled shell leads, its flat face forward, and the
+/// soft body and the mouth trail behind it, so a nautilus swims shell
+/// first, as the baby (v1.0 gap Track 7c) already did. The saddle and
+/// armor are `NautilusSaddleModel`'s and `NautilusArmorModel`'s shell
+/// boxes grown by their deformations, and a warm zombie nautilus carries
+/// `ZombieNautilusCoralModel`'s corals, hidden under armor. Colours,
+/// stripes, eyes and the corals' look are this game's own.
+mod adult {
+    use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
+
+    use super::super::keyframes::{Anim, Rot, Scale, ch, l};
+    use super::super::rig::{Bone, ROOT, Rig, bone, jbox, jboxg};
+    use super::*;
+
+    pub const SHELL_PART: usize = 1;
+    pub const BODY: usize = 2;
+    pub const UPPER_MOUTH: usize = 3;
+    pub const INNER_MOUTH: usize = 4;
+    pub const LOWER_MOUTH: usize = 5;
+    const SADDLE_PART: usize = 6;
+    const ARMOR_PART: usize = 7;
+    const CORALS: usize = 8;
+
+    include!("keyframe_defs/nautilus.rs");
+
+    const EYE: Rgb = [24, 24, 30];
+    const GLINT: Rgb = [230, 228, 220];
+    const YELLOW: Rgb = [226, 196, 64];
+    const PINK: Rgb = [214, 108, 150];
+    const BLUE: Rgb = [70, 100, 214];
+    const RED: Rgb = [188, 50, 48];
+    /// A coral fan: Java's flat `addBox` given a tenth of a pixel's depth.
+    const fn fan(o: [f32; 3], s: [f32; 3], color: Rgb) -> Cuboid {
+        let mut o = o;
+        let mut s = s;
+        let mut axis = 0;
+        while axis < 3 {
+            if s[axis] == 0.0 {
+                o[axis] -= 0.05;
+                s[axis] = 0.1;
+            }
+            axis += 1;
+        }
+        jbox(o, s, color, 0)
+    }
+    /// (Java writes the corals' quarter and eighth turns as 1.5708 and
+    /// 0.7854.)
+    static BONES: &[Bone] = &[
+        bone(&[], ROOT, [0.0, 29.0, -6.0], [0.0; 3]),
+        bone(
+            &[
+                jbox([-7.0, -10.0, -7.0], [14.0, 10.0, 16.0], SHELL, 22).with(Pattern::Mottle),
+                jbox([-7.0, 0.0, -7.0], [14.0, 8.0, 20.0], SHELL, 22).with(Pattern::Mottle),
+                // The coil's bands, as the baby's, on the shell's sides.
+                jbox([-7.1, -7.5, 1.0], [14.2, 1.6, 8.0], STRIPE, 10),
+                jbox([-7.1, -3.6, -3.0], [14.2, 1.4, 12.0], STRIPE, 10),
+                jbox([-7.1, 2.4, 1.0], [14.2, 1.6, 12.0], STRIPE, 10),
+                // The aperture's dark lip round the body, at the back.
+                jbox([-6.0, 0.4, 12.95], [12.0, 7.2, 0.1], [92, 52, 40], 0),
+            ],
+            0,
+            [0.0, -13.0, 5.0],
+            [0.0; 3],
+        ),
+        bone(
+            &[
+                // Java's body box ends at its face plane (z 7), where the
+                // mouth parts take over.
+                jbox([-5.0, -4.51, -3.0], [10.0, 8.0, 10.0], SOFT, 18),
+                jbox([-5.1, -2.6, 5.85], [0.1, 1.4, 1.0], EYE, 0),
+                jbox([5.0, -2.6, 5.85], [0.1, 1.4, 1.0], EYE, 0),
+                jbox([-5.15, -2.5, 5.95], [0.05, 0.5, 0.4], GLINT, 0),
+                jbox([5.1, -2.5, 5.95], [0.05, 0.5, 0.4], GLINT, 0),
+            ],
+            0,
+            [0.0, -8.5, 12.3],
+            [0.0; 3],
+        ),
+        bone(&[jboxg([-5.0, -2.0, 0.0], [10.0, 4.0, 4.0], -0.001, SOFT, 16)], BODY as u8, [0.0, -2.51, 7.0], [0.0; 3]),
+        bone(&[jbox([-3.0, -2.0, -0.5], [6.0, 4.0, 4.0], [150, 92, 84], 10)], BODY as u8, [0.0, -0.51, 7.5], [0.0; 3]),
+        bone(&[jboxg([-5.0, -1.98, 0.0], [10.0, 4.0, 4.0], -0.001, SOFT, 16)], BODY as u8, [0.0, 1.49, 7.0], [0.0; 3]),
+        // `NautilusSaddleModel`: the upper shell grown by 0.2, here a seat
+        // on its top with straps down its sides.
+        bone(
+            &[
+                jboxg([-5.0, -10.0, -4.5], [10.0, 0.0, 9.0], 0.2, SADDLE, 20),
+                jboxg([-7.0, -10.0, -0.75], [0.0, 10.0, 1.5], 0.2, SADDLE, 10),
+                jboxg([7.0, -10.0, -0.75], [0.0, 10.0, 1.5], 0.2, SADDLE, 10),
+            ],
+            SHELL_PART as u8,
+            [0.0; 3],
+            [0.0; 3],
+        ),
+        // `NautilusArmorModel`: the shell grown by a hundredth (here 0.15,
+        // over the bands and under the saddle); plates over the upper shell
+        // and the front of the lower.
+        bone(
+            &[
+                jboxg([-7.0, -10.0, -7.0], [14.0, 10.0, 16.0], 0.15, NAUTILUS_ARMOR, 24),
+                jboxg([-7.0, 0.5, -7.0], [14.0, 4.0, 16.0], 0.15, NAUTILUS_ARMOR, 24),
+            ],
+            SHELL_PART as u8,
+            [0.0; 3],
+            [0.0; 3],
+        ),
+        bone(&[], SHELL_PART as u8, [8.0, 4.5, -8.0], [0.0; 3]),
+        bone(&[], CORALS as u8, [0.0, -11.0, 11.0], [0.0; 3]),
+        bone(&[fan([-4.5, -3.5, 0.0], [6.0, 8.0, 0.0], YELLOW)], 9, [0.0, 0.0, 2.0], [0.0, -FRAC_PI_4, 0.0]),
+        bone(&[fan([-4.5, -3.5, 0.0], [6.0, 8.0, 0.0], YELLOW)], 9, [0.0; 3], [0.0, FRAC_PI_4, 0.0]),
+        bone(&[fan([-4.5, 4.5, 0.0], [6.0, 0.0, 8.0], PINK)], CORALS as u8, [-12.5, -18.0, 11.0], [0.0; 3]),
+        bone(&[fan([-3.0, 0.0, -4.0], [6.0, 0.0, 8.0], PINK)], 12, [-1.5, 4.5, 4.0], [0.0, 0.0, FRAC_PI_2]),
+        bone(&[], CORALS as u8, [-14.0, 0.0, 5.5], [0.0; 3]),
+        bone(&[fan([-3.5, -5.5, 0.0], [5.0, 10.0, 0.0], BLUE)], 14, [0.0, 0.0, -2.0], [0.0, FRAC_PI_4, 0.0]),
+        bone(&[fan([-3.5, -5.5, 0.0], [5.0, 10.0, 0.0], BLUE)], 14, [0.0; 3], [0.0, -FRAC_PI_4, 0.0]),
+        bone(&[], CORALS as u8, [0.0; 3], [0.0; 3]),
+        bone(&[fan([-2.5, -5.5, 0.0], [4.0, 10.0, 0.0], RED)], 17, [-0.5, -1.0, 1.5], [0.0, -0.829, 0.0]),
+        bone(&[fan([-4.5, -5.5, 0.0], [6.0, 10.0, 0.0], RED)], 17, [0.0; 3], [0.0, FRAC_PI_4, 0.0]),
+    ];
+
+    /// `NautilusModel.setupAnim`: the body turns toward the look within 10
+    /// degrees each way and `NautilusAnimation.SWIMMING` runs on the walk
+    /// position plus a fifth of `ageInTicks` (`applyWalk(.., speed + 0.2, 2,
+    /// 3)`), opening the mouth and pulsing the body (its scale keys).
+    pub fn pose(m: &Mob, time: f32) -> Parts {
+        let mut r = Rig::new(BONES);
+        r.y_rot(BODY, m.head_yaw.to_degrees().clamp(-10.0, 10.0).to_radians());
+        r.x_rot(BODY, (-m.head_pitch.to_degrees()).clamp(-10.0, 10.0).to_radians());
+        SWIMMING.apply_walk(&mut r, m.limb_phase + age_ticks(time) / 5.0, m.limb_amp + 0.2, 2.0, 3.0);
+        let s = m.mount.as_ref();
+        let armored = s.is_some_and(|s| s.slots[1].is_some());
+        r.shown[ARMOR_PART] = armored;
+        r.shown[SADDLE_PART] = s.is_some_and(|s| s.saddled());
+        // `ZombieNautilusCoralModel`: the warm variant's corals, hidden
+        // under armor.
+        r.shown[CORALS] = m.kind == MobKind::ZombieNautilus && s.is_some_and(|s| s.variant == 1) && !armored;
+        r.parts()
+    }
+}
 
 pub(super) fn nautilus(m: &Mob, time: f32) -> Parts {
-    let dash = m.nautilus.as_ref().is_some_and(|s| s.dashing);
-    let wave = (time * if dash { 14.0 } else { 5.0 }).sin() * 0.25;
-    let s = m.mount.as_ref();
-    let mut p = parts![
-        part(NAUTILUS_SHELL, [0.; 3], Quat::IDENTITY),
-        part(NAUTILUS_HEAD, [0., 0., 4.], Quat::from_rotation_y(-m.head_yaw * 0.3)),
-        part(NAUTILUS_TENTACLES, [0., 0., 10.], Quat::from_rotation_x(wave)),
-    ];
-    if s.is_some_and(|s| s.slots[1].is_some()) {
-        p.push(part(NAUTILUS_PLATE, [0.; 3], Quat::IDENTITY));
-    }
-    if s.is_some_and(|s| s.saddled()) {
-        p.push(part(NAUTILUS_SADDLE, [0.; 3], Quat::IDENTITY));
-    }
-    p
+    adult::pose(m, time)
 }
 
 // ---------------------------------------------------------------- parched
@@ -236,7 +333,7 @@ mod tests {
 
     fn mesh(m: &Mob) -> Vec<[f32; 3]> {
         let mut out = EntityMesh::flat();
-        build(std::slice::from_ref(m), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, 1.0, &mut out);
+        build(std::slice::from_ref(m), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, &mut out);
         out.iter().map(|v| v.pos).collect()
     }
 
@@ -268,12 +365,39 @@ mod tests {
         let mut z = Mob::new(MobKind::ZombieNautilus, DVec3::new(10.0, 64.0, 0.0), 0.0);
         let temperate = {
             let mut out = EntityMesh::flat();
-            build(std::slice::from_ref(&z), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, 1.0, &mut out);
+            build(std::slice::from_ref(&z), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, &mut out);
             out.iter().map(|v| v.color).collect::<Vec<_>>()
         };
         z.mount.as_mut().unwrap().variant = 1;
         let mut out = EntityMesh::flat();
-        build(std::slice::from_ref(&z), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, 1.0, &mut out);
+        build(std::slice::from_ref(&z), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, &mut out);
         assert_ne!(out.iter().map(|v| v.color).collect::<Vec<_>>(), temperate);
+    }
+
+    /// v1.0 gap Track 7d: the adult nautilus leads with its shell and
+    /// trails its body and mouth, as Java's (and the baby) do; its body
+    /// pulses with `SWIMMING`'s scale keys; a warm zombie nautilus carries
+    /// its corals unless armored.
+    #[test]
+    fn the_adult_nautilus_swims_shell_first() {
+        let mut m = Mob::new(MobKind::Nautilus, DVec3::new(10.0, 64.0, 0.0), 0.0);
+        let p = nautilus(&m, 0.0);
+        assert_eq!(p.len(), 5, "shell, body and three mouth parts");
+        // This game's models face +Z: the shell is ahead of the body.
+        assert!(p[0].pivot.z > p[1].pivot.z + 5.0, "{} vs {}", p[0].pivot, p[1].pivot);
+        // 250 ms into the swim at strength min((0 + 0.2) * 3, 1): the body
+        // is a tenth longer, times 0.6.
+        let p = nautilus(&m, 0.625);
+        assert!((p[1].stretch.z_axis.z - 1.06).abs() < 1e-3, "{}", p[1].stretch);
+        m.mount.as_mut().unwrap().slots[0] = Some(crate::inventory::Stack::new(crate::item::Item::SADDLE, 1));
+        m.mount.as_mut().unwrap().tame = true;
+        assert_eq!(nautilus(&m, 0.0).len(), 6, "the saddle");
+        let mut z = Mob::new(MobKind::ZombieNautilus, DVec3::new(10.0, 64.0, 0.0), 0.0);
+        assert_eq!(nautilus(&z, 0.0).len(), 5, "no corals on a temperate one");
+        z.mount.as_mut().unwrap().variant = 1;
+        assert_eq!(nautilus(&z, 0.0).len(), 13, "a warm one's eight coral fans");
+        z.mount.as_mut().unwrap().slots[1] =
+            Some(crate::inventory::Stack::new(crate::equipment::DIAMOND_NAUTILUS_ARMOR, 1));
+        assert_eq!(nautilus(&z, 0.0).len(), 6, "armor hides the corals");
     }
 }

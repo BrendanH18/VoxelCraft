@@ -441,10 +441,16 @@ impl World {
         } else {
             None
         };
-        if matches!(b.name(), "cave vines" | "cave vines plant") && b.emission() == 0 {
-            return self.apply_bone_meal(p);
+        let grown = if matches!(b.name(), "cave vines" | "cave vines plant") && b.emission() == 0 {
+            self.apply_bone_meal(p)
+        } else {
+            next.is_some_and(|b| self.set_block(p, b))
+        };
+        // v1.0 gap Track 2h: `BeeGrowCropGoal`'s level event 2011.
+        if grown {
+            self.particles.push(crate::particles::Request::Growth { cell: p, count: 15, bone_meal: false });
         }
-        next.is_some_and(|b| self.set_block(p, b))
+        grown
     }
 }
 

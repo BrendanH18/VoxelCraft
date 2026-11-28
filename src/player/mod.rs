@@ -83,6 +83,10 @@ pub struct Player {
     pub jumped: bool,
     /// On a ladder, vine or scaffolding (`onClimbable`): falls are broken.
     pub climbing: bool,
+    /// v1.0 final F8: `LivingEntity.lastClimbablePos`, the cell `onClimbable`
+    /// last found, forgotten once standing on the ground. Not saved (nor is
+    /// Java's).
+    pub last_climbable: Option<glam::IVec3>,
     /// Stuck in a cobweb, berry bush or powder snow (`makeStuckInBlock`): falls are broken.
     pub in_web: bool,
     /// Java HoneyBlock.entityInside reset fall distance this tick.
@@ -175,6 +179,7 @@ impl Player {
             descending: self.sneaking,
             fall_distance: self.motion.fall_distance,
             leather_boots: self.leather_boots,
+            falling_block: false,
         }
     }
     pub fn new(pos: DVec3) -> Self {
@@ -197,6 +202,7 @@ impl Player {
             eye_was_in_water: false,
             jumped: false,
             climbing: false,
+            last_climbable: None,
             in_web: false,
             honey_sliding: false,
             honey_landed: false,

@@ -373,7 +373,8 @@ impl Entities {
 
     /// Takes `chunks`' stored entities out of memory as level file entity
     /// keys ([`RECORD_KEYS`]), one batch per chunk. Arrows, thrown items,
-    /// fireballs and primed TNT were never saved, so they stay in memory.
+    /// fireballs and primed TNT stay in memory, and the level file saves
+    /// them with the dimension (v1.0 gap Track 8e; eyes of ender since 8f).
     /// Villagers' claims and heart-bound creakings stay indexed.
     fn serialize_stored(&mut self, mut chunks: Vec<IVec3>) -> Vec<(IVec3, Props)> {
         if chunks.is_empty() {
@@ -760,7 +761,7 @@ mod tests {
         e.drop_from_block(Stack::new(Item::DIAMOND, 3), IVec3::new(78, GROUND + 1, 4));
         e.spawn_xp(at(74.5, 14.5), 17);
         e.arrows.push(super::super::Arrow::shot(at(70.5, 18.5), DVec3::X, 0.0, true));
-        e.prime_tnt(IVec3::new(94, GROUND + 1, 2), false);
+        e.prime_tnt(IVec3::new(94, GROUND + 1, 2), false, None);
         e.mobs.len() + e.items.len() + e.orbs.len() + e.minecarts.len() + e.arrows.len() + e.tnt.len()
     }
 
@@ -1240,8 +1241,8 @@ mod tests {
         let mut e = Entities::new(5);
         e.load_props(&props);
         e.sync_chunk_entities(&mut w);
-        // Arrows and primed TNT were never part of the save format.
-        assert_eq!(e.stored_entities(), count - 2);
+        // v1.0 gap Track 8e: the arrow and the primed TNT are saved too.
+        assert_eq!(e.stored_entities(), count);
         assert_eq!(normalized(&e), saved);
         w.load_test_column(IVec2::new(2, 0), GROUND);
         e.sync_chunk_entities(&mut w);

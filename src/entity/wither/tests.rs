@@ -96,16 +96,16 @@ fn skulls_accelerate_like_hurting_projectiles() {
         dimension: crate::world::terrain::Dimension::Overworld,
     };
     let world = crate::physics::test_util::Grid::flat(-100);
-    k.tick(&world, &ctx, &[]);
+    k.tick(&world, &ctx, &[], &Default::default());
     assert!((k.motion.x - 0.19).abs() < 1e-6, "{}", k.motion.x);
     for _ in 0..200 {
-        k.tick(&world, &ctx, &[]);
+        k.tick(&world, &ctx, &[], &Default::default());
     }
     assert!((k.motion.x - 1.9).abs() < 1e-3, "{}", k.motion.x);
     // A dangerous skull's 0.73 inertia settles far slower: 0.27.
     let mut d = Skull::new(DVec3::ZERO, DVec3::X, true, None);
     for _ in 0..200 {
-        d.tick(&world, &ctx, &[]);
+        d.tick(&world, &ctx, &[], &Default::default());
     }
     assert!((d.motion.x - 0.073 / 0.27).abs() < 1e-3, "{}", d.motion.x);
 }
@@ -229,10 +229,17 @@ fn mobs_that_hurt_it_become_its_target_on_selection_ticks() {
     assert_eq!(e.mobs[w].wither.as_ref().unwrap().targets[0], Some(Foe::Mob(pig)), "the nearest first");
     // A friend's hit is refused: no damage, no new target.
     let health = e.mobs[w].health;
-    let mut hits = vec![EntityEvent::MobHit { target: wid, attacker: skeleton, damage: 4.0, knockback: DVec3::ZERO }];
+    let mut hits = vec![EntityEvent::MobHit {
+        target: wid,
+        attacker: skeleton,
+        damage: 4.0,
+        knockback: DVec3::ZERO,
+        melee: false,
+    }];
     e.resolve_mob_hits(&mut hits);
     assert_eq!(e.mobs[w].health, health);
-    let mut hits = vec![EntityEvent::MobHit { target: wid, attacker: golem, damage: 7.0, knockback: DVec3::ZERO }];
+    let mut hits =
+        vec![EntityEvent::MobHit { target: wid, attacker: golem, damage: 7.0, knockback: DVec3::ZERO, melee: true }];
     e.resolve_mob_hits(&mut hits);
     assert!(e.mobs[w].health < health);
     let mut switched = None;
@@ -344,11 +351,11 @@ fn restored_skulls_wait_for_their_chunk_and_unloaded_owner() {
     let mut e = Entities::new(3);
     e.wither_skulls.push(Skull::new(DVec3::new(0.5, 70.0, 0.5), DVec3::X, true, Some(42)));
     let mut events = Vec::new();
-    e.update_wither_skulls(&Streaming, &ctx(), &mut events);
+    e.update_wither_skulls(&Streaming, &ctx(), &Default::default(), &mut events);
     assert_eq!(e.wither_skulls.len(), 1, "kept while its chunk streams in");
     let world = crate::physics::test_util::Grid::flat(0);
     let before = e.wither_skulls[0].pos;
-    e.update_wither_skulls(&world, &ctx(), &mut events);
+    e.update_wither_skulls(&world, &ctx(), &Default::default(), &mut events);
     assert_eq!(e.wither_skulls.len(), 1, "an owner that isn't loaded keeps it");
     assert_ne!(e.wither_skulls[0].pos, before, "and it flies on");
 }

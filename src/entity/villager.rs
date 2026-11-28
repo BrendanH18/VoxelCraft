@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 fn hash(mut seed: u64) -> u64 {
     crate::world::noise::splitmix64(&mut seed)
 }
-use super::{Entities, EntityEvent, Mob, MobKind, MobWorld};
+use super::{Entities, Mob, MobKind, MobWorld};
 #[path = "villager_trades.rs"]
 pub mod trades;
 use trades::TradeDef;
@@ -51,6 +51,46 @@ impl Profession {
         Self::Leatherworker,
         Self::Mason,
     ];
+    /// v1.0 gap Track 2h: the professions with a job site and a work sound,
+    /// in [`Profession::ALL`]'s order.
+    pub const WORKERS: [Self; 13] = [
+        Self::Farmer,
+        Self::Fisherman,
+        Self::Shepherd,
+        Self::Fletcher,
+        Self::Librarian,
+        Self::Cartographer,
+        Self::Cleric,
+        Self::Armorer,
+        Self::Weaponsmith,
+        Self::Toolsmith,
+        Self::Butcher,
+        Self::Leatherworker,
+        Self::Mason,
+    ];
+
+    /// v1.0 gap Track 2h: `VillagerProfession.workSound`, which
+    /// `WorkAtPoi.start` plays (`Villager.playWorkSound`); none for the
+    /// unemployed and nitwits.
+    pub fn work_sound(self) -> Option<&'static str> {
+        Some(match self {
+            Self::None | Self::Nitwit => return None,
+            Self::Farmer => "entity.villager.work_farmer",
+            Self::Fisherman => "entity.villager.work_fisherman",
+            Self::Shepherd => "entity.villager.work_shepherd",
+            Self::Fletcher => "entity.villager.work_fletcher",
+            Self::Librarian => "entity.villager.work_librarian",
+            Self::Cartographer => "entity.villager.work_cartographer",
+            Self::Cleric => "entity.villager.work_cleric",
+            Self::Armorer => "entity.villager.work_armorer",
+            Self::Weaponsmith => "entity.villager.work_weaponsmith",
+            Self::Toolsmith => "entity.villager.work_toolsmith",
+            Self::Butcher => "entity.villager.work_butcher",
+            Self::Leatherworker => "entity.villager.work_leatherworker",
+            Self::Mason => "entity.villager.work_mason",
+        })
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Self::None => "Unemployed",
@@ -172,6 +212,9 @@ impl Offer {
         .then_some(out)
     }
 }
+/// `Villager.setUnhappy`: 40 ticks of the head shake.
+pub const UNHAPPY_TICKS: u8 = 40;
+
 #[derive(Clone, Debug)]
 pub struct Villager {
     pub id: u64,
@@ -183,6 +226,9 @@ pub struct Villager {
     pub offers: [Option<Offer>; 10],
     pub sleeping: bool,
     pub trading: bool,
+    /// v1.0 gap Track 2d: the player trading (`AbstractVillager.tradingPlayer`,
+    /// not saved), set with `trading`.
+    pub customer: Option<crate::entity::PlayerId>,
     pub goal: Option<DVec3>,
     pub fleeing: bool,
     pub(crate) growth: f32,
@@ -191,6 +237,9 @@ pub struct Villager {
     pub reputation: i16,
     pub(super) last_slept: Option<i64>,
     pub(super) golem_seen: f32,
+    /// The 8-slot inventory (`AbstractVillager.inventory`, saved as `food`:
+    /// older saves hold only food; v1.0 gap Track 2g adds seeds, wheat and
+    /// bone meal).
     pub(super) food: [Option<Stack>; 8],
     pub(super) food_level: u8,
     pub(super) courtship: u16,
@@ -198,8 +247,16 @@ pub struct Villager {
     /// v1.0 Track 6: the raid activity `SetRaidStatus` chose (never saved;
     /// Java's brain activities aren't).
     pub raid_activity: RaidActivity,
+    /// v1.0 gap Track 2c: the scheduled activity the village pass last
+    /// chose, whose look behaviours the brain runs (never saved).
+    pub(crate) activity: Activity,
     /// Ticks left of `CelebrateVillagersSurvivedRaid`; 0 when not running.
     pub celebrate: u16,
+    /// v1.0 gap Track 7f: Java's `unhappyCounter` (`DATA_UNHAPPY_COUNTER`,
+    /// synched to clients, never saved): ticks left of the head shake a
+    /// refused trade or a pestered child starts ([`UNHAPPY_TICKS`]);
+    /// `Villager.tick` counts it down.
+    pub unhappy: u8,
     pub wandering: bool,
     /// Biome variant used by Java 26.3 cartographer predicates.
     pub map_variant: Option<String>,
@@ -208,8 +265,6 @@ pub struct Villager {
     pub meeting: Option<IVec3>,
     /// Java `lastGossipTime` (absolute ticks); gossip waits 1200 ticks.
     pub(super) last_gossip: Option<i64>,
-    /// Java `WorkAtPoi.lastCheck` (absolute ticks): a work check every 300.
-    pub(super) work_check: Option<i64>,
     seed: u64,
     /// Java `lastRestockCheckDay`: the day the last restock check saw.
     restock_day: i64,
@@ -264,6 +319,7 @@ impl Villager {
             offers: [None; 10],
             sleeping: false,
             trading: false,
+            customer: None,
             goal: None,
             fleeing: false,
             seed,
@@ -277,13 +333,14 @@ impl Villager {
             courtship: 0,
             bell_hide: 0.0,
             raid_activity: RaidActivity::None,
+            activity: Activity::Idle,
             celebrate: 0,
+            unhappy: 0,
             wandering: false,
             map_variant: None,
             gossip: Default::default(),
             meeting: None,
             last_gossip: None,
-            work_check: None,
             restock_day: 0,
             restocks: 0,
             last_restock: 0,
@@ -508,8 +565,9 @@ pub const WORK_CHECK_COOLDOWN: i64 = 300;
 pub const WORK_DISTANCE: f64 = 1.73;
 
 /// The villager brain activities the schedules choose between.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Activity {
+    #[default]
     Idle,
     Work,
     Meet,
@@ -541,31 +599,6 @@ pub fn schedule_activity(tick: u32, baby: bool) -> Activity {
 
 /// `VillagerData.NEXT_LEVEL_XP_THRESHOLDS`: the XP that ends each level.
 pub const LEVEL_XP: [u16; 5] = [0, 10, 70, 150, 250];
-
-/// How close (blocks) a farmer must be to cut a crop.
-const HARVEST_REACH: f64 = 1.5;
-/// Farmers look for ripe crops this far from their job site.
-const HARVEST_RADIUS: i32 = 5;
-/// The ripe crop closest to `from` around a farmer's job site (wheat, carrots, potatoes and beetroot at their maximum age).
-fn ripe_crop<W: MobWorld + ?Sized>(world: &W, job: IVec3, from: DVec3) -> Option<IVec3> {
-    let mut best: Option<(f64, IVec3)> = None;
-    for dy in -1..=1 {
-        for dz in -HARVEST_RADIUS..=HARVEST_RADIUS {
-            for dx in -HARVEST_RADIUS..=HARVEST_RADIUS {
-                let cell = job + IVec3::new(dx, dy, dz);
-                let ripe =
-                    world.block(cell).is_some_and(|b| b.as_crop().is_some_and(|(crop, stage)| stage == crop.max_age()));
-                if ripe && world.block(cell - IVec3::Y).is_some_and(|b| b.is_farmland()) {
-                    let d = (cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)).distance_squared(from);
-                    if best.is_none_or(|(bd, _)| d < bd) {
-                        best = Some((d, cell));
-                    }
-                }
-            }
-        }
-    }
-    best.map(|(_, cell)| cell)
-}
 
 /// Where a sleeping villager lies: the head half's centre on top of the mattress, turned so
 /// the body stretches toward the foot (Java's `SLEEPING` pose; the renderer lays the head
@@ -658,6 +691,46 @@ impl Entities {
         Ok(xp)
     }
     pub fn target_merchant(&self, world: &crate::world::World, eye: DVec3, dir: DVec3, reach: f64) -> Option<u64> {
+        let m = &self.mobs[self.target_villager(world, eye, dir, reach)?];
+        let v = m.villager.as_ref()?;
+        (m.age >= 0 && !v.sleeping).then_some(v.id)
+    }
+
+    /// v1.0 gap Track 7f: `Villager.mobInteract` on a villager child (not
+    /// asleep and not trading): it shakes its head (`setUnhappy`) and the
+    /// use is spent. Returns whether a child was there.
+    pub fn pester_child(&mut self, world: &crate::world::World, eye: DVec3, dir: DVec3, reach: f64) -> bool {
+        let Some(i) = self.target_villager(world, eye, dir, reach) else { return false };
+        let m = &mut self.mobs[i];
+        let Some(v) = m.villager.as_mut().filter(|v| !v.sleeping && !v.trading) else { return false };
+        if m.kind != MobKind::Villager || m.age >= 0 {
+            return false;
+        }
+        v.unhappy = UNHAPPY_TICKS;
+        // v1.0 gap Track 8f: `setUnhappy` says no.
+        let pos = m.pos;
+        self.pending_sounds.push(super::EntityEvent::Sound { sound: super::MobSound::VillagerNo(true), pos });
+        true
+    }
+
+    /// v1.0 gap Track 7f: `Villager.mobInteract`'s refusal when it has no
+    /// offers (`setUnhappy` for the main hand): the villager shakes its
+    /// head. Wandering traders never do (their `mobInteract` doesn't).
+    pub fn refuse_trade(&mut self, id: u64) {
+        if let Some(m) =
+            self.mobs.iter_mut().find(|m| m.alive() && m.villager.as_ref().is_some_and(|v| v.id == id && !v.trading))
+            && m.kind == MobKind::Villager
+        {
+            m.villager.as_mut().unwrap().unhappy = UNHAPPY_TICKS;
+            // v1.0 gap Track 8f: `setUnhappy` says no.
+            let (pos, baby) = (m.pos, m.age < 0);
+            self.pending_sounds.push(super::EntityEvent::Sound { sound: super::MobSound::VillagerNo(baby), pos });
+        }
+    }
+
+    /// The villager or wandering trader the eye's ray reaches first, not
+    /// behind a block.
+    fn target_villager(&self, world: &crate::world::World, eye: DVec3, dir: DVec3, reach: f64) -> Option<usize> {
         let (i, t) = self.raycast(eye, dir, reach)?;
         // Use the shared voxel ray to prevent trading through walls.
         if world.raycast(eye, dir, reach).is_some_and(|h| {
@@ -671,8 +744,7 @@ impl Entities {
             return None;
         }
         let m = &self.mobs[i];
-        let v = m.villager.as_ref()?;
-        (matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && m.age >= 0 && !v.sleeping).then_some(v.id)
+        (matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && m.villager.is_some()).then_some(i)
     }
     /// v0.15 Track G: spawns each generation 4 village resident (Java's
     /// villager, cat, iron golem, animal and camel spawn pieces) once, when
@@ -893,7 +965,20 @@ impl Entities {
                     v.set_profession(prof);
                 }
             }
+            // v1.0 gap Track 2e: `NearestBedSensor` (babies' `NEAREST_BED`
+            // for `JumpOnBed`): the closest bed within 48 blocks.
+            if m.age < 0 {
+                let mut best: Option<(f64, IVec3)> = None;
+                world.village_pois(&mut |p, b| {
+                    let d = m.pos.distance_squared(p.as_dvec3() + 0.5);
+                    if b.is_bed() && d <= 48.0 * 48.0 && best.is_none_or(|(e, _)| d < e) {
+                        best = Some((d, p));
+                    }
+                });
+                m.walking.nearest_bed = best.map(|(_, p)| p);
+            }
             let activity = schedule_activity(tick, m.age < 0);
+            v.activity = activity;
             v.fleeing = threat.is_some();
             v.sleeping = false;
             v.goal = if let Some(z) = threat {
@@ -904,9 +989,11 @@ impl Entities {
             } else if v.trading {
                 None
             } else {
+                // v1.0 gap Track 2f: the work package's own walks
+                // (`SetWalkTargetFromBlockMemory(JOB_SITE, 0.5, 9, ..)` and
+                // its `RunOne`) take a working villager to its job site.
                 match activity {
                     Activity::Rest => v.home.map(|p| p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5)),
-                    Activity::Work if adult => v.job.map(|p| p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
                     // `SetWalkTargetFromBlockMemory(MEETING_POINT, .., 6, ..)`:
                     // walk until within six blocks of the bell.
                     Activity::Meet if adult => v
@@ -916,26 +1003,6 @@ impl Entities {
                     _ => None,
                 }
             };
-            // Java's `HarvestFarmland`: farmers on shift cut ripe crops near their composter.
-            if v.profession == Profession::Farmer
-                && self.villager_griefing
-                && m.age >= 0
-                && !v.fleeing
-                && !v.trading
-                && v.bell_hide <= 0.0
-                && activity == Activity::Work
-                && let Some(job) = v.job
-                && let Some(cell) = ripe_crop(world, job, m.pos)
-            {
-                let at = cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
-                if ((at - m.pos) * DVec3::new(1.0, 0.0, 1.0)).length_squared() < HARVEST_REACH * HARVEST_REACH
-                    && (at.y - m.pos.y).abs() < 2.0
-                {
-                    self.pending_sounds.push(EntityEvent::VillagerHarvest { cell });
-                } else {
-                    v.goal = Some(at);
-                }
-            }
             if activity == Activity::Rest
                 && !v.fleeing
                 && v.bell_hide <= 0.0
@@ -955,19 +1022,11 @@ impl Entities {
                     m.vel = DVec3::ZERO;
                 }
             }
-            // Java `WorkAtPoi`: while working, at most every 300 ticks and on a
-            // coin flip, a villager within 1.73 blocks of its job site's centre
-            // works it, which restocks when `shouldRestock` allows.
-            if activity == Activity::Work
-                && !v.fleeing
-                && !v.sleeping
-                && v.work_check.is_none_or(|t| now - t >= WORK_CHECK_COOLDOWN)
-                && hash(v.seed ^ now as u64).is_multiple_of(2)
-            {
-                v.work_check = Some(now);
-                if v.job.is_some_and(|p| m.pos.distance_squared(p.as_dvec3() + 0.5) < WORK_DISTANCE * WORK_DISTANCE) {
-                    v.restock(now, self.village_day);
-                }
+            // Java `WorkAtPoi.start` (the work package's `RunOne` started it,
+            // v1.0 gap Track 2f): the villager restocks when `shouldRestock`
+            // allows.
+            if std::mem::take(&mut m.walking.work_due) && activity == Activity::Work && !v.fleeing && !v.sleeping {
+                v.restock(now, self.village_day);
             }
         }
         self.breed_villagers(world);
@@ -1001,6 +1060,10 @@ impl Entities {
                     if m.uid != 0 {
                         saved["uid"] = json!(m.uid);
                     }
+                    // v1.0 gap Track 1: Java's `fall_distance`, written only mid-fall.
+                    if m.saved_fall_distance() > 0.0 {
+                        saved["fall_distance"] = json!(m.saved_fall_distance());
+                    }
                     Some(saved)
                 }
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
@@ -1027,6 +1090,10 @@ impl Entities {
                     // hearts name; written only once it has one.
                     if m.uid != 0 {
                         saved["uid"] = json!(m.uid);
+                    }
+                    // v1.0 gap Track 1: Java's `fall_distance`, written only mid-fall.
+                    if m.saved_fall_distance() > 0.0 {
+                        saved["fall_distance"] = json!(m.saved_fall_distance());
                     }
                     Some(saved)
                 }
@@ -1132,10 +1199,7 @@ impl Entities {
                 v.meeting = pos(&a["meeting"]);
                 if let Some(food) = a["food"].as_array() {
                     for (slot, s) in v.food.iter_mut().zip(food) {
-                        *slot = s
-                            .as_str()
-                            .and_then(|s| stack_from_str(s).flatten())
-                            .filter(|s| super::villager_breeding::food_points(s.item) > 0);
+                        *slot = s.as_str().and_then(|s| stack_from_str(s).flatten()).filter(|s| s.count > 0);
                     }
                 }
                 v.food_level = a["food_level"].as_u64().unwrap_or(0).min(15) as u8;
@@ -1177,6 +1241,7 @@ impl Entities {
                 m.effects = crate::simulation::effects::Effects::deserialize(a["effects"].as_str().unwrap_or(""));
                 super::leash::load(&mut m, &a["identity"]);
                 m.riding = a["riding"].as_u64().and_then(|u| u32::try_from(u).ok());
+                m.restore_fall_distance(a["fall_distance"].as_f64().unwrap_or(0.0));
                 // v1.0 Track 3b: the uid it had, unless another mob has it.
                 if let Some(uid) = a["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|&u| u != 0)
                     && !self.mobs.iter().any(|o| o.uid == uid)
@@ -1418,49 +1483,21 @@ mod tests {
         assert!(!e.mobs[0].villager.as_ref().unwrap().sleeping);
     }
     #[test]
-    fn farmers_walk_to_ripe_crops_near_their_composter_and_harvest_them() {
-        let mut w = grid();
-        let job = IVec3::new(0, 1, 0);
-        w.blocks.insert(job, Block::COMPOSTER);
-        let ripe = IVec3::new(4, 1, 1);
-        let young = IVec3::new(-3, 1, 0);
-        for (cell, stage) in [(ripe, 7), (young, 3)] {
-            w.blocks.insert(cell - IVec3::Y, Block::FARMLAND);
-            w.blocks.insert(cell, Block::wheat(stage));
-        }
-        let mut e = Entities::new(1);
-        e.spawn(MobKind::Villager, DVec3::new(0.5, 1.0, 0.5));
-        e.village_time = 0.2;
-        let events = |e: &mut Entities| {
-            step(e, &w);
-            std::mem::take(&mut e.pending_sounds)
-        };
-        assert!(events(&mut e).is_empty(), "claims the composter first; the crop is out of reach");
-        let v = e.mobs[0].villager.as_ref().unwrap();
-        assert_eq!(v.profession, Profession::Farmer);
-        assert_eq!(v.goal, Some(ripe.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)), "heads for the ripe wheat only");
-        e.mobs[0].pos = DVec3::new(3.7, 1.0, 1.5);
-        assert!(matches!(events(&mut e)[..], [EntityEvent::VillagerHarvest { cell }] if cell == ripe));
-        // Off shift or with mobGriefing off, the crops are left alone.
-        e.village_time = 0.6;
-        assert!(events(&mut e).is_empty());
-        e.village_time = 0.2;
-        e.villager_griefing = false;
-        assert!(events(&mut e).is_empty());
-    }
-    #[test]
     fn farmers_recognize_beetroot_age_three_but_do_not_harvest_stems() {
         let mut w = grid();
-        let job = IVec3::new(0, 1, 0);
         let young = IVec3::new(1, 1, 0);
         let ripe = IVec3::new(3, 1, 0);
         w.blocks.insert(young - IVec3::Y, Block::FARMLAND);
         w.blocks.insert(young, Block::crop(crate::world::block::Crop::Beetroot, 2));
         w.blocks.insert(ripe - IVec3::Y, Block::FARMLAND);
         w.blocks.insert(ripe, Block::crop(crate::world::block::Crop::Beetroot, 3));
-        assert_eq!(ripe_crop(&w, job, job.as_dvec3()), Some(ripe));
+        // v1.0 gap Track 2f: `HarvestFarmland.validPos` (a `CropBlock` at its
+        // maximum age, or air over farmland).
+        use super::super::mob::brain_walk::harvestable;
+        assert!(harvestable(&w, ripe));
+        assert!(!harvestable(&w, young));
         w.blocks.insert(ripe, crate::world::crops::stem_block(crate::world::crops::Fruit::Melon, 7));
-        assert_eq!(ripe_crop(&w, job, job.as_dvec3()), None);
+        assert!(!harvestable(&w, ripe));
     }
     #[test]
     fn sleeping_villagers_lie_on_the_head_half_with_their_head_on_the_pillow() {
@@ -1698,29 +1735,41 @@ mod tests {
         assert!(!restored.mobs[2].baby);
     }
     #[test]
-    fn villagers_share_excess_and_obey_pickup_gamerule() {
+    fn villagers_pick_up_what_java_wants_and_obey_the_gamerule() {
+        // v1.0 gap Track 2g: `Villager.wantsToPickUp`: `VILLAGER_PICKS_UP`
+        // (seeds, bread, wheat, beetroots), villager food, and the farmer's
+        // requested items (bone meal); nothing else.
         let w = grid();
         let mut e = Entities::new(8);
         e.spawn(MobKind::Villager, DVec3::ZERO);
-        e.spawn(MobKind::Villager, DVec3::X);
-        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::BREAD, 6));
-        e.breed_villagers(&w);
-        assert_eq!(e.mobs[1].villager.as_ref().unwrap().food_points(), 0, "small stacks are not shared");
-        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::CARROT, 36));
-        e.breed_villagers(&w);
-        assert_eq!(e.mobs[0].villager.as_ref().unwrap().food_points(), 18);
-        assert_eq!(e.mobs[1].villager.as_ref().unwrap().food_points(), 18);
-        e.mobs[0].villager.as_mut().unwrap().food = [None; 8];
-        e.mobs[1].villager.as_mut().unwrap().food = [None; 8];
-        e.drop_from_block(Stack::new(Item::POTATO, 12), IVec3::ZERO);
-        e.items[0].pickup_delay = 0.0;
+        for item in [Item::POTATO, Item::WHEAT_SEEDS, Item::BONE_MEAL, Item::IRON_INGOT] {
+            e.drop_from_block(Stack::new(item, 12), IVec3::ZERO);
+        }
+        for it in &mut e.items {
+            it.pickup_delay = 0.0;
+        }
         e.villager_griefing = false;
-        e.breed_villagers(&w);
-        assert_eq!(e.items[0].stack.count, 12);
+        e.villager_pickup(&w);
+        assert_eq!(e.items.len(), 4, "mobGriefing off: nothing is picked up");
         e.villager_griefing = true;
-        e.breed_villagers(&w);
-        assert!(e.items.is_empty());
-        assert_eq!(e.mobs.iter().map(|m| m.villager.as_ref().unwrap().food_points()).sum::<u16>(), 12);
+        e.villager_pickup(&w);
+        let left: Vec<Item> = e.items.iter().map(|i| i.stack.item).collect();
+        assert_eq!(left, [Item::BONE_MEAL, Item::IRON_INGOT], "an unemployed villager wants no bone meal");
+        let v = e.mobs[0].villager.as_ref().unwrap();
+        assert_eq!((v.count_item(Item::POTATO), v.count_item(Item::WHEAT_SEEDS)), (12, 12));
+        assert_eq!(v.food_points(), 12, "seeds aren't food");
+        e.mobs[0].villager.as_mut().unwrap().set_profession(Profession::Farmer);
+        e.villager_pickup(&w);
+        assert_eq!(e.items.iter().map(|i| i.stack.item).collect::<Vec<_>>(), [Item::IRON_INGOT]);
+        assert_eq!(e.mobs[0].villager.as_ref().unwrap().count_item(Item::BONE_MEAL), 12);
+        // Breeding eats only the food, and the inventory saves and loads.
+        let v = e.mobs[0].villager.as_mut().unwrap();
+        v.eat_for_breeding();
+        assert_eq!((v.count_item(Item::POTATO), v.count_item(Item::WHEAT_SEEDS)), (0, 12));
+        let mut restored = Entities::new(8);
+        restored.load_villagers(&e.villagers_to_string());
+        let v = restored.mobs[0].villager.as_ref().unwrap();
+        assert_eq!((v.count_item(Item::WHEAT_SEEDS), v.count_item(Item::BONE_MEAL)), (12, 12));
     }
     #[test]
     fn breeding_requires_food_free_bed_and_two_blocks_headroom() {

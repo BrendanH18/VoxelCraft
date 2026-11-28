@@ -4,7 +4,7 @@
 //! when in reach and in sight. Without a target it falls back to the shared
 //! stroll (`WaterAvoidingRandomStrollGoal(1.0)`, 3) and idle looking.
 use super::*;
-use crate::entity::endermite::{ATTACK_INTERVAL, EYE_HEIGHT, FOLLOW_RANGE, within_melee};
+use crate::entity::endermite::{ATTACK_INTERVAL, FOLLOW_RANGE, within_melee};
 use crate::entity::nether::Foe;
 
 impl Mob {
@@ -35,12 +35,12 @@ impl Mob {
         // A mob the endermite was hurt by comes first; otherwise the player
         // target selector (`HurtByTargetGoal` or the nearest visible player).
         let aim = match (s.foe, s.foe_at) {
-            (Some(uid), Some((pos, shape))) => Some((Foe::Mob(uid), pos, shape, None)),
+            (Some(uid), Some((pos, shape, eye))) => Some((Foe::Mob(uid), pos, shape, eye, None)),
             _ => self
                 .java_target(world, ctx, rng, FOLLOW_RANGE, full, |_| true)
-                .map(|&t| (Foe::Player(t.id), t.pos, t.shape, Some(t))),
+                .map(|&t| (Foe::Player(t.id), t.pos, t.shape, t.eye_height(), Some(t))),
         };
-        let Some((foe, pos, shape, player)) = aim else {
+        let Some((foe, pos, shape, target_eye, player)) = aim else {
             if self.ai == Ai::Chase {
                 // `MeleeAttackGoal.stop`.
                 self.ai = Ai::Idle;
@@ -56,14 +56,10 @@ impl Mob {
             self.stop_navigation();
             self.endermite.as_mut().unwrap().attack_wait = 0;
         }
-        // The model has no separate head: `Endermite.tick` keeps the body
-        // on the entity's own rotation.
-        self.head_target = (0.0, 0.0);
         let to = pos - self.pos;
         let dir = to.with_y(0.0).normalize_or(DVec3::X);
-        let eye = self.pos + DVec3::Y * EYE_HEIGHT;
-        let target_eye =
-            pos + DVec3::Y * if player.is_some() { crate::player::EYE_HEIGHT } else { shape.height * 0.85 };
+        let eye = self.look_eye();
+        let target_eye = pos + DVec3::Y * target_eye;
         let sees = line_of_sight(world, eye, target_eye);
         let in_reach = within_melee(self.pos, self.shape(), pos, shape);
         let s = self.endermite.as_mut().unwrap();
@@ -91,6 +87,7 @@ impl Mob {
                     attacker: self.uid,
                     damage,
                     knockback: dir * 4.0 + DVec3::Y * 2.0,
+                    melee: true,
                 }),
                 (Foe::Player(_), None) => {}
             }

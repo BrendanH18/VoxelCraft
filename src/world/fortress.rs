@@ -395,6 +395,9 @@ pub enum Feature {
     DungeonChest(u64),
     /// A chest filled from the abandoned mineshaft table.
     MineshaftChest(u64),
+    /// v1.0 final F5 (generation 7): a chest minecart on the rail here,
+    /// filled from the abandoned mineshaft table with this seed.
+    MineshaftCart(u64),
     BastionChest(u64, super::bastion::ChestKind),
     VillageChest(u64, super::village::Style),
     VillageHome(IVec3),
@@ -529,7 +532,13 @@ impl Fortresses {
     /// a column open (air or lava) from `top` down to `bottom`, for
     /// pillars that start above the chunk.
     pub fn paint(&self, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, open: &dyn Fn(i32, i32, i32, i32) -> bool) {
-        let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
+        self.paint_box(blocks, base, base + IVec3::splat(CHUNK_SIZE_I - 1), open);
+    }
+
+    /// [`Fortresses::paint`] into the box from `base` to `top` (inclusive),
+    /// held X fastest, then Z, then Y. Generation 7 paints each fortress
+    /// clipped to the Java chunk being decorated (v1.0 gap Track 5b).
+    pub fn paint_box(&self, blocks: &mut [Block], base: IVec3, top: IVec3, open: &dyn Fn(i32, i32, i32, i32) -> bool) {
         for fortress in self.near(IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
             for piece in &fortress.pieces {
                 let b = &piece.bounds;

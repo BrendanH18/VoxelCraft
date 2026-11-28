@@ -378,6 +378,8 @@ pub fn use_composter(
     if level == 8 {
         if let Some(stack) = world.take_compost(pos) {
             entities.drop_from_block(stack, pos + glam::IVec3::Y);
+            // v1.0 gap Track 2h: `extractProduce`'s `block.composter.empty`.
+            world.composter_cue(pos, crate::world::composter::Cue::Empty);
         }
         return true;
     }

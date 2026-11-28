@@ -45,11 +45,27 @@ may bring a gift after their owner sleeps through the night.
 
 Parrots imitate nearby hostile calls and perch on an owner's free shoulder;
 jumping or entering water releases them. Cookies kill parrots. Foxes sleep
-by day, pick up ground items and eat carried food; bred foxes trust the two
-players who fed their parents. Rabbits hop and drop rabbit meat/hide, with a
-10% rabbit-foot chance on a player kill. Goats jump, charge stationary players
-and lose one of their two horns when a ram hits stone, logs, packed ice, or
-iron/copper/emerald ore. Screaming goats have shorter ram cooldowns.
+by day under cover, hunt, pick up ground items and eat carried food
+([below](#foxes-v10-gap-tracks-2e-2f-and-2g-implemented-unverified)); bred foxes trust
+the two players who fed their parents. Rabbits hop and drop rabbit meat/hide, with a
+10% rabbit-foot chance on a player kill. Goats charge stationary players
+and lose one of their two horns when a ram hits a block in Java's
+`snaps_goat_horn` (or the block above it does): stone, packed ice, iron,
+coal, copper and emerald ore, and the overworld woods' logs; babies keep
+theirs. The horn is one of the goat's group's four instruments, and a
+player blows it as Java's `InstrumentItem`: its own call heard to 256
+blocks, `instrument_play` for sculk, and a 7-second cooldown on every horn
+([v1.0 final F4](verification/2026-11-28-v1.0-final-f4-sounds.md),
+implemented, unverified). Screaming goats have shorter ram cooldowns. Every
+30 to 60 seconds an idle goat long jumps (Java's `LongJumpToRandomPos`,
+[Track 2g](verification/2026-11-28-v1.0-gap-track-02g-farmers-goats.md),
+implemented, unverified): it picks a spot within 5 blocks it can't walk to
+within 8, over a solid block, with an arc at 65° to 80° its jumping box
+clears, looks at it for two seconds and leaps, landing with a hoof's step;
+the launch and landing sounds are original procedural stand-ins. Since
+[Track 2h](verification/2026-11-28-v1.0-gap-track-02h-details.md) its
+heading snaps to its body's at the launch (`setYRot(yBodyRot)`), and Jump
+Boost lengthens the leap by 0.1 a level (`getJumpBoostPower`).
 
 Sheep graze grass for two seconds, restoring wool and accelerating baby growth
 by sixty seconds. `mobGriefing=false` preserves the grass while still restoring
@@ -64,6 +80,48 @@ nest and drop a scute on growing up. Egg clusters have individual shell boxes.
 Sources: [Wolf](https://minecraft.wiki/w/Wolf), [Cat](https://minecraft.wiki/w/Cat),
 [Parrot](https://minecraft.wiki/w/Parrot), [Fox](https://minecraft.wiki/w/Fox),
 [Rabbit](https://minecraft.wiki/w/Rabbit), [Goat](https://minecraft.wiki/w/Goat).
+
+## Foxes (v1.0 gap Tracks 2e, 2f and 2g, implemented, unverified)
+
+Java 26.3's `Fox` goals, from the
+[Track 2e record](verification/2026-11-27-v1.0-gap-track-02e-behaviours.md)
+(code: `src/entity/fox.rs`, `src/entity/mob/fox.rs`). Red foxes target the
+nearest chicken, rabbit or baby turtle on land within 32 blocks, then
+schooling fish; snow foxes fish first. Farther than 6 blocks from a chicken
+or rabbit a fox stalks it at 1.5, then crouches with its head tilted; fully
+crouched with a clear path it pounces, biting within 2 blocks, and a pounce
+landing nose down in snow leaves it faceplanted for 40 ticks. Other prey it
+chases and bites (`FoxMeleeAttackGoal`), or leaps at within 4 blocks. By
+day a fox under open sky looks for a dark covered spot, and sleeps under
+cover once nothing alerts it within 12 blocks (prey, monsters, untamed pets,
+untrusted players who aren't sneaking, other mobs awake); at night with
+nothing around it sometimes sits and looks around. It walks to ripe sweet
+berry bushes and glow berries within 12 blocks and, with `mobGriefing`,
+picks them, keeping one in its mouth. It doesn't look at players while
+faceplanted or interested, and keeps its head's pitch while crouching or
+pouncing. Sleeping, sitting and crouching are saved.
+
+Since [Track 2f](verification/2026-11-28-v1.0-gap-track-02f-behaviours.md):
+a fox goes for the mob that last hurt the first player it trusts who is in
+the world (`DefendTrustedTargetGoal`, before its prey), with an aggro call
+when it starts and now and then after; while defending it doesn't flee,
+panic or follow its parent. At night within six sections of a village it
+sometimes strolls toward the village (`FoxStrollThroughVillageGoal`).
+Thunder wakes it, and in a storm under open sky it looks for cover at once.
+It has its own bite, sniff (on the way to berries), spit (dropping what it
+held for food), chewing, sleeping and night screech sounds, and a
+faceplanted fox kicks up the snow it is in. The aggro, bite, eat, screech,
+sleep, sniff and spit sounds are original procedural stand-ins.
+
+Since [Track 2g](verification/2026-11-28-v1.0-gap-track-02g-farmers-goats.md):
+the trusted player's attacker can be a mob's projectile (arrows, tridents,
+wind charges, llama spit, shulker bullets, Wither skulls) or, over LAN with
+PvP, another player, whom the fox bites unless it trusts that player too
+or the player is in Creative or spectating. A chewing fox sheds item
+particles of what it eats. Since
+[Track 2h](verification/2026-11-28-v1.0-gap-track-02h-details.md) a blaze's
+fireball and a blast a mob is behind (a ghast's fireball, a creeper) record
+it as the hurt player's attacker too.
 
 ## Leads and name tags
 
@@ -174,7 +232,10 @@ cubs; one nearby bamboo stalk permits breeding. Pandas sit and snack on
 bamboo or dropped cake, cubs sneeze with rare slimeball gifts, playful
 pandas roll and lazy ones lie on their backs. Worried pandas fear thunder
 and avoid players/monsters; ordinary pandas retaliate once, aggressive ones
-keep fighting, and bamboo calms them. Genes, age and carried food persist;
+keep fighting, and bamboo calms them. A snacking panda chews every fifth
+tick with six item particles of its food ahead of its face
+(`addEatingParticles`, [Track 2h](verification/2026-11-28-v1.0-gap-track-02h-details.md);
+the chewing sound is the game's stand-in for `PANDA_EAT`). Genes, age and carried food persist;
 actions replicate with original cuboid models. See the
 [record](verification/2026-11-04-v0.15-passive-mobs.md) for the exact gene
 pool, timers, source data, focused checks and shared-engine differences.
@@ -259,3 +320,15 @@ replicates the model state. Shared actor use covers controller and CLI-agent
 paths. Jukebox playback/music discs and woodland mansions do not exist;
 survival dancing/duplication and mansion allays remain gaps. Sources and
 remaining differences are in the [allay record](verification/2026-11-05-v0.15-allays.md).
+
+## Voices and steps (v1.0 final F4, implemented, unverified)
+
+Llamas and trader llamas, camels, turtles (a hatchling has its own hurt and
+death cries and no call; an adult calls only on land), iron golems (no
+ambient call, as in Java), snow golems, skeleton and zombie horses, donkeys,
+mules, glow squid and wandering traders have their own original voices
+instead of a cow's, slime's, fish's, horse's, squid's or villager's.
+Iron golems, llamas, camels (`step_sand` on sand, red sand, suspicious sand
+and concrete powder), silverfish and turtles (`shamble`, `shamble_baby`)
+play their own footsteps every 1.67 blocks walked, as Java's
+`Entity.move` does. [Record](verification/2026-11-28-v1.0-final-f4-sounds.md).

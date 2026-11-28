@@ -14,7 +14,8 @@ struct Globals {
     params: vec4<f32>,
     clouds: vec4<f32>,
     environment: vec4<f32>,
-    // x: night vision strength 0..1.
+    // x: night vision strength 0..1, y: Brightness (less Darkness's blend),
+    // z: Darkness's pulsing lightmap scale.
     effects: vec4<f32>,
     // rgb: visual/ambient_light_color; w: use the skyless dimension lightmap.
     ambient: vec4<f32>,
@@ -66,11 +67,20 @@ fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
     return from_srgb(mix(to_srgb(color), g.fog_srgb.rgb, f));
 }
 
-// Night vision (Java's lightmap): brightens every light level toward full,
-// keeping its hue; g.effects.x is its strength. Brightness follows.
-fn night_vision(lit: vec3<f32>) -> vec3<f32> {
-    let peak = max(max(lit.r, lit.g), max(lit.b, 1e-3));
-    return brightness(mix(lit, lit / peak, g.effects.x));
+// v1.0 gap Track 5c: lightmap.fsh's ambient term, added before sky and
+// block light: the dimension's `visual/ambient_light_color`, or Night
+// Vision's `visual/night_vision_color` (#999999, in every dimension) times
+// its strength (g.effects.x), whichever is brighter.
+const NIGHT_VISION_COLOR: f32 = 153.0 / 255.0;
+fn ambient_light() -> vec3<f32> {
+    return max(g.ambient.rgb, vec3<f32>(NIGHT_VISION_COLOR * g.effects.x));
+}
+// The lightmap of an unclamped light sum, as lightmap.fsh finishes it:
+// Darkness's pulsing `DarknessScale` (g.effects.z) comes off before the
+// clamp, then the Brightness option (lowered by Darkness's blend on the
+// CPU) clamps and curves it.
+fn lightmap(raw: vec3<f32>) -> vec3<f32> {
+    return brightness(raw - vec3<f32>(g.effects.z));
 }
 
 // The Brightness option (Java's gamma, g.effects.y): lightmap.fsh moves each
@@ -111,6 +121,20 @@ fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
     }
 }
 
+fn sample_block_grad(uv: vec2<f32>, layer: u32, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
+    if !BLOCK_PAGING { return textureSampleGrad(blocks, blocks_sampler, uv, layer, dx, dy); }
+    let local = layer & ((1u << PAGE_SHIFT) - 1u);
+    switch layer >> PAGE_SHIFT {
+        case 1u: { return textureSampleGrad(blocks_1, blocks_sampler, uv, local, dx, dy); }
+        case 2u: { return textureSampleGrad(blocks_2, blocks_sampler, uv, local, dx, dy); }
+        case 3u: { return textureSampleGrad(blocks_3, blocks_sampler, uv, local, dx, dy); }
+        case 4u: { return textureSampleGrad(blocks_4, blocks_sampler, uv, local, dx, dy); }
+        case 5u: { return textureSampleGrad(blocks_5, blocks_sampler, uv, local, dx, dy); }
+        case 6u: { return textureSampleGrad(blocks_6, blocks_sampler, uv, local, dx, dy); }
+        case 7u: { return textureSampleGrad(blocks_7, blocks_sampler, uv, local, dx, dy); }
+        default: { return textureSampleGrad(blocks, blocks_sampler, uv, local, dx, dy); }
+    }
+}
 
 @group(2) @binding(0) var<storage, read> quads: array<u32>;
 
@@ -132,6 +156,11 @@ struct VsOut {
     // interpolated light.
     @location(7) @interpolate(flat) lightmap: vec4<f32>,
     @location(8) @interpolate(flat) sun_tint: vec3<f32>,
+    // v1.0 final track F3: a normal quad's chunk origin in world blocks and,
+    // in w, its random variant group (bits 0-3) and face (bits 4-6); `local`
+    // is the chunk-local position, so the fragment finds its cell.
+    @location(9) @interpolate(flat) variant: vec4<i32>,
+    @location(10) local: vec3<f32>,
 };
 
 // Reserved detail coordinate 31 is the half-sixteenth frogspawn height.
@@ -139,32 +168,246 @@ fn detail_coord(value:u32)->f32 {
     return select(f32(value),1.5,value==31u)/16.0;
 }
 
+// v1.0 gap track 6f: a model face's depth code (plane code 29, its AO
+// bits 0-4): 0-16 sixteenths, 17 Java's inset plane at 0.001 and 18 at
+// 15.999.
+fn model_depth(code: u32) -> f32 {
+    if code == 17u {
+        return 0.001 / 16.0;
+    }
+    if code == 18u {
+        return 15.999 / 16.0;
+    }
+    return f32(code) / 16.0;
+}
+
+// v1.0 gap track 6c: a fine quad's coordinate codes (bamboo): bounds 0-7
+// and, for the plane, 8 more (8/16), in sixteenths.
+fn fine_coord(code: u32) -> f32 {
+    var table = array<f32, 9>(0.0, 0.8, 6.5, 7.0, 9.0, 9.5, 15.2, 16.0, 8.0);
+    return table[min(code, 8u)] / 16.0;
+}
+
+// v1.0 gap track 6c: Java's model offset (`BlockBehaviour.OffsetType`,
+// see src/world/offset.rs) of a block in world column (x, z), for offset
+// kind 1 (XZ, up to 1/4), 2 (XZ, up to 1/8), 3 (XYZ, down to 1/5) or 4
+// (XYZ, down to 1/10). Only bits 16-27 of `Mth.getSeed`'s 64-bit result
+// are read, and the low bits of a product depend only on the low bits of
+// its factors, so 32-bit arithmetic gives Java's exact seed.
+fn block_offset(kind: u32, x: i32, z: i32) -> vec3<f32> {
+    if kind == 0u {
+        return vec3<f32>(0.0);
+    }
+    let s = (bitcast<u32>(x) * 3129871u) ^ (bitcast<u32>(z) * 116129781u);
+    let seed = (s * s * 42317861u + s * 11u) >> 16u;
+    let max_h = select(0.25, 0.125, kind == 2u);
+    let ox = clamp((f32(seed & 15u) / 15.0 - 0.5) * 0.5, -max_h, max_h);
+    let oz = clamp((f32((seed >> 8u) & 15u) / 15.0 - 0.5) * 0.5, -max_h, max_h);
+    var oy = 0.0;
+    if kind >= 3u {
+        oy = (f32((seed >> 4u) & 15u) / 15.0 - 1.0) * select(0.2, 0.1, kind == 4u);
+    }
+    return vec3<f32>(ox, oy, oz);
+}
+
+// v1.0 gap track 6d: Java's default face UVs (`FaceBakery`, a face's
+// texture upright and unmirrored seen from outside) as planar coordinates,
+// so merged quads tile: east (1 - z, 1 - y), west (z, 1 - y), up (x, z),
+// down (x, 1 - z), south (x, 1 - y), north (1 - x, 1 - y).
+fn face_uv(face: u32, p: vec3<f32>) -> vec2<f32> {
+    switch face {
+        case 0u: { return vec2<f32>(-p.z, -p.y); }
+        case 1u: { return vec2<f32>(p.z, -p.y); }
+        case 2u: { return p.xz; }
+        case 3u: { return vec2<f32>(p.x, -p.z); }
+        case 4u: { return vec2<f32>(p.x, -p.y); }
+        default: { return vec2<f32>(-p.x, -p.y); }
+    }
+}
+
+// v1.0 gap track 6e: Java's explicit face UVs (src/mesh/java_uv.rs): the
+// planar UVs under one of the square's eight symmetries, as (u, v) rows
+// (identity, mirror u, mirror v, half turn, transpose, the quarter turns,
+// anti-transpose), then offset by whole texels.
+fn java_uv(uv: vec2<f32>, m: u32, offset: u32) -> vec2<f32> {
+    var rows = array<vec4<f32>, 8>(
+        vec4<f32>(1.0, 0.0, 0.0, 1.0), vec4<f32>(-1.0, 0.0, 0.0, 1.0),
+        vec4<f32>(1.0, 0.0, 0.0, -1.0), vec4<f32>(-1.0, 0.0, 0.0, -1.0),
+        vec4<f32>(0.0, 1.0, 1.0, 0.0), vec4<f32>(0.0, -1.0, 1.0, 0.0),
+        vec4<f32>(0.0, 1.0, -1.0, 0.0), vec4<f32>(0.0, -1.0, -1.0, 0.0));
+    var offsets = array<vec2<f32>, 8>(
+        vec2<f32>(0.0, 0.0), vec2<f32>(3.0, 0.0), vec2<f32>(13.0, 0.0), vec2<f32>(0.0, 3.0),
+        vec2<f32>(0.0, 13.0), vec2<f32>(0.0, 7.0), vec2<f32>(0.0, 9.0), vec2<f32>(1.0, 0.0));
+    let r = rows[m & 7u];
+    return vec2<f32>(r.x * uv.x + r.y * uv.y, r.z * uv.x + r.w * uv.y) + offsets[offset & 7u] / 16.0;
+}
+
+// v1.0 final track F3: Java's random block model variants
+// (src/mesh/variants.rs). 64-bit integers as (low, high) words.
+fn mul_wide(a: u32, b: u32) -> vec2<u32> {
+    let a0 = a & 0xFFFFu;
+    let a1 = a >> 16u;
+    let b0 = b & 0xFFFFu;
+    let b1 = b >> 16u;
+    let p00 = a0 * b0;
+    let p01 = a0 * b1;
+    let p10 = a1 * b0;
+    let mid = (p00 >> 16u) + (p01 & 0xFFFFu) + (p10 & 0xFFFFu);
+    return vec2<u32>((p00 & 0xFFFFu) | (mid << 16u), a1 * b1 + (p01 >> 16u) + (p10 >> 16u) + (mid >> 16u));
+}
+fn mul64(a: vec2<u32>, b: vec2<u32>) -> vec2<u32> {
+    let p = mul_wide(a.x, b.x);
+    return vec2<u32>(p.x, p.y + a.x * b.y + a.y * b.x);
+}
+fn add64(a: vec2<u32>, b: vec2<u32>) -> vec2<u32> {
+    let lo = a.x + b.x;
+    return vec2<u32>(lo, a.y + b.y + select(0u, 1u, lo < a.x));
+}
+fn widen(i: i32) -> vec2<u32> {
+    return vec2<u32>(bitcast<u32>(i), select(0u, 0xFFFFFFFFu, i < 0));
+}
+// Java's pick out of 2^bits equal variants at `cell`: `Mth.getSeed`, a
+// `SingleThreadedRandomSource` seeded with it (the 48-bit LCG) and
+// `nextInt`, whose power-of-two bound takes the top bits of one step.
+fn java_seeded(cell: vec3<i32>) -> vec2<u32> {
+    let s = widen(bitcast<i32>(bitcast<u32>(cell.x) * 3129871u)) ^ mul64(widen(cell.z), vec2<u32>(116129781u, 0u))
+        ^ widen(cell.y);
+    let t = add64(mul64(mul64(s, s), vec2<u32>(42317861u, 0u)), mul64(s, vec2<u32>(11u, 0u)));
+    // The seed's low 48 bits (t >> 16), xor the multiplier 0x5DEECE66D.
+    return vec2<u32>(((t.x >> 16u) | (t.y << 16u)) ^ 0xDEECE66Du, ((t.y >> 16u) & 0xFFFFu) ^ 5u);
+}
+// One step of the LCG (48 bits, the high word's low 16).
+fn java_step(state: vec2<u32>) -> vec2<u32> {
+    let n = add64(mul64(state, vec2<u32>(0xDEECE66Du, 5u)), vec2<u32>(11u, 0u));
+    return vec2<u32>(n.x, n.y & 0xFFFFu);
+}
+fn java_variant(cell: vec3<i32>, bits: u32) -> u32 {
+    return java_step(java_seeded(cell)).y >> (16u - bits);
+}
+// Fire's floor model out of two (`fire_floor0` with `fire_0`, `fire_floor1`
+// with `fire_1`): `MultiPartModel` draws a `nextLong` and reseeds with it.
+fn java_fire_floor(cell: vec3<i32>) -> u32 {
+    let s1 = java_step(java_seeded(cell));
+    let s2 = java_step(s1);
+    let upper = (s1.x >> 16u) | (s1.y << 16u);
+    let lower = (s2.x >> 16u) | (s2.y << 16u);
+    let part = add64(vec2<u32>(0u, upper), widen(bitcast<i32>(lower)));
+    return java_step(vec2<u32>(part.x ^ 0xDEECE66Du, (part.y ^ 5u) & 0xFFFFu)).y >> 15u;
+}
+// v1.0 final track F3: fire's second texture (src/render/fire_1_textures.rs):
+// frame f is channel f % 3 of layer FIRE_1 + f / 3, its sRGB byte 0 where
+// see-through, else 128 + heat * 127, coloured by fire's or soul fire's ramp.
+const FIRE_1: u32 = 4088u;
+fn fire_1_color(texel: vec4<f32>, channel: u32, soul: bool) -> vec4<f32> {
+    let v = clamp(texel[channel], 0.0, 1.0);
+    let e = select(1.055 * pow(v, 1.0 / 2.4) - 0.055, v * 12.92, v <= 0.0031308) * 255.0;
+    if e < 127.5 {
+        return vec4<f32>(0.0);
+    }
+    let h = clamp((round(e) - 128.0) / 127.0, 0.0, 1.0);
+    var c = vec3<f32>(255.0, 75.0 + 180.0 * h, 15.0 + 105.0 * h * h);
+    if soul {
+        c = vec3<f32>(40.0 + 120.0 * h * h, 170.0 + 85.0 * h, 215.0 + 40.0 * h);
+    }
+    return vec4<f32>(from_srgb(round(c) / 255.0), 1.0);
+}
+// Each group's variants (src/mesh/variants.rs's `GROUPS`): per face (+X,
+// -X, +Y, -Y, +Z, -Z) the symmetry of `java_uv`, 3 bits each.
+fn variant_symmetry(group: u32, index: u32, face: u32) -> u32 {
+    var turned = array<u32, 4>(0x0u, 0xB80u, 0x6C0u, 0xD40u);
+    var mirrored = array<u32, 4>(0x0u, 0x9249u, 0x6C0u, 0x9489u);
+    var netherrack = array<u32, 16>(
+        0x0u, 0x1862Eu, 0x1B01Bu, 0x180F5u, 0xB80u, 0x2ED83u, 0x1BB9Bu, 0x35B43u,
+        0x6C0u, 0x30F5u, 0x1B6DBu, 0x362Eu, 0xD40u, 0x35B58u, 0x1BD5Bu, 0x2ED98u);
+    var packed = netherrack[index & 15u];
+    if group == 1u {
+        packed = turned[index & 3u];
+    } else if group == 2u {
+        packed = mirrored[index & 3u];
+    }
+    return (packed >> (3u * face)) & 7u;
+}
+
 @vertex
-fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> VsOut {
+fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @location(2) origin: vec3<i32>) -> VsOut {
     let q = (vi >> 2u) * 3u;
     let w0 = quads[q];
     let w1 = quads[q + 1u];
     let w2 = quads[q + 2u];
     let face = (w0 >> 18u) & 7u;
     let size = vec2<u32>(((w0 >> 21u) & 31u) + 1u, ((w0 >> 26u) & 31u) + 1u);
+    let detail = (w1 & 0x80000000u) != 0u;
+    // v1.0 gap track 6c: a detail quad with a cross's face code is a fine
+    // quad (bamboo), its own face in bits 21-23.
+    let fine = face >= 6u && detail;
+    let real_face = select(face, (w0 >> 21u) & 7u, fine);
+    let leaf = fine && ((w0 >> 28u) & 1u) == 1u;
 
     // Corners are (0,0), (w,0), (w,h), (0,h) in the face's (u, v) plane.
     // Negative faces run in reverse for winding; `flip` rotates by one so
     // the index pattern's diagonal becomes the other one.
     var order = array<u32, 4>(0u, 1u, 2u, 3u);
-    if (face & 1u) == 1u {
+    if (real_face & 1u) == 1u && real_face < 6u {
         order = array<u32, 4>(0u, 3u, 2u, 1u);
     }
     let c = order[((vi & 3u) + (w0 >> 31u)) & 3u];
-    let ao = (w1 >> (8u + 2u * c)) & 3u;
-    let light = (w2 >> (8u * c)) & 255u;
-    let detail = (w1 & 0x80000000u) != 0u;
+    var ao = (w1 >> (8u + 2u * c)) & 3u;
+    var light = (w2 >> (8u * c)) & 255u;
     let coord_mask = select(63u, 31u, detail);
     let base = vec3<u32>(w0 & coord_mask, (w0 >> 6u) & coord_mask, (w0 >> 12u) & coord_mask);
+    let column = vec2<i32>(origin.x + i32(base.x), origin.z + i32(base.z));
 
     var local: vec3<f32>;
     var uv: vec2<f32>;
-    if face >= 6u {
+    var uv_m = 0u;
+    var uv_offset = 0u;
+    // v1.0 gap track 6f: a model face (plane code 29) is lit flat, its one
+    // light in w2's low byte and its UV offset in texels in bits 8-15.
+    var model_face = false;
+    var model_shift = vec2<f32>(0.0);
+    if fine {
+        // Fine quad: bounds and plane as codes ([`fine_coord`]), moved by
+        // the stalk's offset. A leaf plane stretches its whole texture over
+        // its 0.8 to 15.2 (Java's UVs 0 to 16).
+        let d = real_face >> 1u;
+        let u = (d + 1u) % 3u;
+        let v = (d + 2u) % 3u;
+        let lo = vec2<f32>(fine_coord((w1 >> 16u) & 7u), fine_coord((w1 >> 22u) & 7u));
+        let hi = vec2<f32>(fine_coord((w1 >> 19u) & 7u), fine_coord((w1 >> 25u) & 7u));
+        let at_u = c == 1u || c == 2u;
+        let at_v = c >= 2u;
+        var p = vec3<f32>(base);
+        p[d] += fine_coord((w0 >> 24u) & 15u);
+        var t = p;
+        p[u] += select(lo.x, hi.x, at_u);
+        p[v] += select(lo.y, hi.y, at_v);
+        t[u] += select(select(lo.x, hi.x, at_u), select(0.0, 1.0, at_u), leaf);
+        t[v] += select(select(lo.y, hi.y, at_v), select(0.0, 1.0, at_v), leaf);
+        local = p + block_offset(1u, column.x, column.y);
+        uv = face_uv(real_face, t);
+        if !leaf {
+            // v1.0 gap track 6d: a stalk face samples Java's stalk model's
+            // part of the texture (`bamboo1_age0` to `bamboo4_age1`): the
+            // sides a column 3 texels apart by the model (bits 29-30), as
+            // wide as the stalk; the top the square at (13, 0), the bottom
+            // the one at (13, 4). Each starts at the face's lowest UV.
+            var c0 = vec3<f32>(0.0);
+            var c1 = vec3<f32>(0.0);
+            c0[u] = lo.x;
+            c0[v] = lo.y;
+            c1[u] = hi.x;
+            c1[v] = hi.y;
+            let low = min(face_uv(real_face, c0), face_uv(real_face, c1));
+            let at = vec3<f32>(t) - vec3<f32>(base);
+            var start = vec2<f32>(f32((w0 >> 29u) & 3u) * 3.0 / 16.0, 0.0);
+            if real_face == 2u {
+                start = vec2<f32>(13.0 / 16.0, 0.0);
+            } else if real_face == 3u {
+                start = vec2<f32>(13.0 / 16.0, 4.0 / 16.0);
+            }
+            uv = start + face_uv(real_face, at) - low;
+        }
+    } else if face >= 6u {
         // Cross-shaped block: a unit diagonal plane through the cell, (0,0)
         // to (1,1) in xz for face 6 and (1,0) to (0,1) for face 7.
         let t = select(0u, 1u, c == 1u || c == 2u);
@@ -180,7 +423,8 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         } else if axis == 2u {
             corner = base + vec3<u32>(across, t, along);
         }
-        local = vec3<f32>(corner);
+        // v1.0 gap track 6c: word 0 bits 24-26 name the plant's offset kind.
+        local = vec3<f32>(corner) + block_offset((w0 >> 24u) & 7u, column.x, column.y);
         uv = vec2<f32>(f32(t), f32(1u - up));
     } else {
         let d = face >> 1u;
@@ -188,13 +432,43 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         let v = (d + 2u) % 3u;
         if (w1 >> 31u) == 1u {
             // Detail quad (shaped blocks): part of the cell `base`, bounds
-            // and plane offset in 1/16 block.
-            let tag = (w0 >> 21u) & 31u;
-            let slope = face >= 2u && face <= 3u && tag >= 17u && tag <= 20u;
-            let lo = vec2<u32>(select(tag, 0u, slope), (w0 >> 26u) & 15u);
-            let hi = vec2<u32>((w1 >> 16u) & 31u, (w1 >> 21u) & 31u);
+            // and plane offset in 1/16 block. Upper bounds of 16 are stored
+            // as 0.
+            let lo = vec2<u32>((w0 >> 21u) & 15u, (w0 >> 26u) & 15u);
+            let hi_raw = vec2<u32>((w1 >> 16u) & 15u, (w1 >> 21u) & 15u);
+            let hi = select(hi_raw, vec2<u32>(16u), hi_raw == vec2<u32>(0u));
+            // v1.0 gap track 6e: plane codes 17-24 put the face on the
+            // cell's edge with Java's UV symmetry (code - 17), 25-28 are a
+            // rail sloping at 1/16; the bounds' three spare bits hold the
+            // edge face's offset or another face's symmetry (and a model
+            // face's, code 29).
+            let code = (w1 >> 26u) & 31u;
+            let spare = ((w0 >> 25u) & 1u) | (((w1 >> 20u) & 1u) << 1u) | (((w1 >> 25u) & 1u) << 2u);
+            let edge_op = code >= 17u && code <= 24u;
+            let slope = code >= 25u && code <= 28u;
+            // v1.0 gap track 6f: plane code 29 is a face of a Java model
+            // drawn without ambient occlusion (bars, hoppers, end rods): its
+            // AO bits hold the depth code, the spare bits its symmetry and
+            // w2 its light and texel offset.
+            let model = code == 29u;
+            let model_bits = (w1 >> 8u) & 31u;
+            let tag = code - 8u;
+            uv_m = select(spare, code - 17u, edge_op);
+            uv_offset = select(0u, spare, edge_op);
+            var depth = detail_coord(code);
+            if edge_op {
+                depth = select(0.0, 1.0, (face & 1u) == 0u);
+            } else if slope {
+                depth = 1.0 / 16.0;
+            } else if model {
+                depth = model_depth(model_bits);
+                ao = 3u;
+                light = w2 & 255u;
+                model_face = true;
+                model_shift = vec2<f32>(f32((w2 >> 8u) & 15u), f32((w2 >> 12u) & 15u)) / 16.0;
+            }
             var p = vec3<f32>(base);
-            p[d] += detail_coord((w1 >> 26u) & 31u);
+            p[d] += depth;
             p[u] += detail_coord(select(lo.x, hi.x, c == 1u || c == 2u));
             p[v] += detail_coord(select(lo.y, hi.y, c >= 2u));
             if slope {
@@ -230,13 +504,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         }
 
         // Planar UVs from the chunk-local position: merged quads tile the texture.
-        if face < 2u {
-            uv = vec2<f32>(local.z, -local.y);
-        } else if face < 4u {
-            uv = local.xz;
-        } else {
-            uv = vec2<f32>(local.x, -local.y);
-        }
+        uv = java_uv(face_uv(face, local), uv_m, uv_offset) + model_shift;
     }
 
     var face_shade = array<f32, 8>(0.8, 0.8, 1.0, 0.55, 0.68, 0.68, 0.9, 0.9);
@@ -249,8 +517,11 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
     let layer_high = select((w1 >> 21u) & 15u,
         ((w0 >> 5u) & 1u) | (((w0 >> 11u) & 1u) << 1u) | (((w0 >> 17u) & 1u) << 2u) | (((w0 >> 30u) & 1u) << 3u),
         detail);
-    out.layer = (w1 & 255u) | (layer_high << 8u);
-    out.shade = face_shade[face] * ao_curve[ao];
+    let fine_high = ((w0 >> 5u) & 1u) | (((w0 >> 11u) & 1u) << 1u) | (((w0 >> 17u) & 1u) << 2u) | (((w0 >> 18u) & 1u) << 3u);
+    out.layer = (w1 & 255u) | (select(layer_high, fine_high, fine) << 8u);
+    // A bamboo leaf is shaded as a face up (`shade_direction_override`).
+    let shade_face = select(real_face, 2u, leaf);
+    out.shade = face_shade[shade_face] * ao_curve[ao];
     out.dist = fog_distances(rel);
     out.rel = rel;
     var normals = array<vec3<f32>, 8>(
@@ -258,10 +529,20 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, -1.0, 0.0),
         vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0),
         vec3<f32>(-0.707, 0.0, 0.707), vec3<f32>(0.707, 0.0, 0.707));
-    out.normal = normals[face];
+    out.normal = normals[shade_face];
+    // v1.0 final track F3: a normal quad's variant group (word 1 bits 25-26).
+    let group = select((w1 >> 25u) & 3u, 0u, detail || face >= 6u);
+    // A fire cross's texture: bit 8 picks `fire_1` (Java's floor model).
+    let is_fire = face >= 6u && !detail && (out.layer == 89u || out.layer == 1300u);
+    var second = 0u;
+    if is_fire {
+        second = java_fire_floor(origin + vec3<i32>(base)) << 8u;
+    }
+    out.variant = vec4<i32>(origin, i32(group | (face << 4u) | second));
+    out.local = local;
     out.light = vec2<f32>(f32(light & 15u), f32(light >> 4u)) / 15.0;
     // Four equal corner bytes: the light is constant across the quad.
-    let uniform_light = w2 == (w2 & 255u) * 0x01010101u;
+    let uniform_light = model_face || w2 == (w2 & 255u) * 0x01010101u;
     out.lightmap = vec4<f32>(0.0);
     out.sun_tint = vec3<f32>(1.0);
     if uniform_light && g.ambient.w <= 0.0 {
@@ -285,7 +566,7 @@ fn lighting(in: VsOut) -> vec3<f32> {
     let sky = l.x * g.params.z * daylight_tint(in.normal);
     if g.ambient.w > 0.0 {
         let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
-        return night_vision(dimension_light(sky, torch)) * in.shade;
+        return lightmap(dimension_light(sky, torch)) * in.shade;
     }
     return overworld_light(in.light.x, in.light.y, in.normal, in.shade);
 }
@@ -336,21 +617,23 @@ fn overworld_parts(sky_level: f32, block_level: f32, normal: vec3<f32>) -> Overw
     let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
     let hue = mix(vec3<f32>(1.0, 0.847, 0.549), vec3<f32>(1.0), 0.9 * p);
     let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;
-    let java = clamp(g.ambient.rgb + sky + block, vec3<f32>(0.0), vec3<f32>(1.0));
+    let raw = ambient_light() + sky + block;
     let s = max(max(sky.r, sky.g), sky.b);
     let b = max(max(block.r, block.g), block.b);
     let share = clamp(s / max(s + b, 1e-4), 0.0, 1.0);
     let sun = mix(vec3<f32>(1.0), daylight_tint(normal), share);
-    return OverworldLight(from_srgb(night_vision(java)), sun);
+    return OverworldLight(from_srgb(lightmap(raw)), sun);
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.
 // The Overworld retains its existing daylight presentation in this scoped fix.
 fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     if g.ambient.w > 0.0 {
-        return clamp(g.ambient.rgb + sky + torch, vec3<f32>(0.0), vec3<f32>(1.0));
+        // Unclamped: `lightmap` clamps it after Darkness, as Java does.
+        return ambient_light() + sky + torch;
     }
-    return max(sky, torch) * 0.96 + 0.04;
+    // The Overworld's ambient #0a0a0a (about 0.04), or night vision's.
+    return max(sky, torch) * 0.96 + max(ambient_light(), vec3<f32>(0.04));
 }
 
 // The sky's colour in direction `dir`, as sky.wgsl draws it: Java's sky
@@ -367,28 +650,82 @@ fn sky_at(dir: vec3<f32>) -> vec3<f32> {
     return from_srgb(mix(to_srgb(g.zenith_color.rgb), to_srgb(g.fog_color.rgb), fogged));
 }
 
+// v1.0 final track F3: the texture of an opaque face, its cell's UVs
+// turned or mirrored by Java's random model variant (`java_variant`).
+// Sampled with the planar UVs' gradients, turned alike, so the mip level
+// stays smooth across the cells' edges.
+fn sample_opaque(in: VsOut) -> vec4<f32> {
+    let dx = dpdx(in.uv);
+    let dy = dpdy(in.uv);
+    let group = u32(in.variant.w) & 15u;
+    var m = 0u;
+    if group != 0u {
+        let face = (u32(in.variant.w) >> 4u) & 7u;
+        var normals = array<vec3<f32>, 6>(
+            vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(-1.0, 0.0, 0.0),
+            vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, -1.0, 0.0),
+            vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0));
+        let cell = in.variant.xyz + vec3<i32>(floor(in.local - normals[face] * 0.5));
+        m = variant_symmetry(group, java_variant(cell, select(2u, 4u, group == 3u)), face);
+    }
+    var rows = array<vec4<f32>, 8>(
+        vec4<f32>(1.0, 0.0, 0.0, 1.0), vec4<f32>(-1.0, 0.0, 0.0, 1.0),
+        vec4<f32>(1.0, 0.0, 0.0, -1.0), vec4<f32>(-1.0, 0.0, 0.0, -1.0),
+        vec4<f32>(0.0, 1.0, 1.0, 0.0), vec4<f32>(0.0, -1.0, 1.0, 0.0),
+        vec4<f32>(0.0, 1.0, -1.0, 0.0), vec4<f32>(0.0, -1.0, -1.0, 0.0));
+    let r = rows[m];
+    let turn = mat2x2<f32>(vec2<f32>(r.x, r.z), vec2<f32>(r.y, r.w));
+    return sample_block_grad(turn * in.uv, in.layer, turn * dx, turn * dy);
+}
+
 @fragment
 fn fs_opaque(in: VsOut) -> @location(0) vec4<f32> {
-    let tex = sample_block(in.uv, in.layer);
+    let tex = sample_opaque(in);
     return vec4<f32>(apply_fog(tex.rgb * lighting(in), in.dist), 1.0);
 }
 
 @fragment
 fn fs_cutout(in: VsOut) -> @location(0) vec4<f32> {
     // Fire occupies layers 89..95 (soul fire 1300..1306) and animates entirely on the GPU.
+    // v1.0 final track F3: or Java's second texture, packed in FIRE_1.
     let soul = in.layer == 1300u;
     let fire = in.layer == 89u || soul;
-    let layer = select(in.layer, select(89u, 1300u, soul) + u32(g.sun.w * 10.0) % 7u, fire);
-    let tex = sample_block(in.uv, layer);
+    let frame = u32(g.sun.w * 10.0) % 7u;
+    let second = fire && ((u32(in.variant.w) >> 8u) & 1u) == 1u;
+    let fire_layer = select(select(89u, 1300u, soul) + frame, FIRE_1 + frame / 3u, second);
+    let layer = select(in.layer, fire_layer, fire);
+    var tex = sample_block(in.uv, layer);
+    if second {
+        tex = fire_1_color(tex, frame % 3u, soul);
+    }
     if tex.a < 0.5 {
         discard;
     }
     return vec4<f32>(apply_fog(tex.rgb * select(lighting(in), vec3<f32>(1.0), fire), in.dist), 1.0);
 }
 
+// v1.0 gap Track 5c: the Nether portal's animated texture. Java's
+// `nether_portal.png` runs 32 frames of one tick each (its `.mcmeta` sets no
+// frame time); the game's single original layer moves on the same clock as
+// two copies scrolled diagonally opposite ways, a texel every second frame,
+// so the swirl churns and repeats every 32 ticks. The layer is on the first
+// texture page with or without paging, so the second copy samples it there.
+const PORTAL_LAYER: u32 = 81u;
+fn portal_step() -> f32 {
+    return f32((u32(g.sun.w * 20.0) % 32u) / 2u) / 16.0;
+}
+
 @fragment
 fn fs_translucent(in: VsOut) -> @location(0) vec4<f32> {
-    let tex = sample_block(in.uv, in.layer);
+    let portal = in.layer == PORTAL_LAYER;
+    let step = portal_step();
+    let dx = dpdx(in.uv);
+    let dy = dpdy(in.uv);
+    var tex = sample_block(in.uv + select(vec2<f32>(0.0), vec2<f32>(step, step), portal), in.layer);
+    if portal {
+        let other = textureSampleGrad(blocks, blocks_sampler, in.uv + vec2<f32>(-step, step), PORTAL_LAYER, dx, dy);
+        tex = (tex + other) * 0.5;
+    }
     var color = tex.rgb * lighting(in);
     var alpha = tex.a;
     if g.environment.y > 0.5 && in.layer == 5u && in.normal.y > 0.5 && in.rel.y < 0.0 {

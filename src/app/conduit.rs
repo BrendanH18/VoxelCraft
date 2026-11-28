@@ -37,6 +37,8 @@ impl Game {
         self.world.tick_conduits(time, roll);
         for event in self.world.take_conduit_events() {
             match event {
+                // v1.0 final F11: nobody is in a background level.
+                Event::Power { .. } if self.unattended => {}
                 Event::Power { pos, range } => {
                     give_power(&mut self.session, &self.world, pos, range);
                     for bot in self.agents.players.values_mut().filter(|b| b.active) {

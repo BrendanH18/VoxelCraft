@@ -3,10 +3,12 @@
 //! to a row in Java's order.
 //!
 //! v0.18 Track 9: Closed Captions sits where Java's does, after the output
-//! device, alone in its row. Left out, on purpose: Directional Audio and the
-//! output device (the mixer has no HRTF and opens the system default), Music
-//! Frequency and the Now Playing toast, and Java's Narrator/Voice slider
-//! (nothing speaks).
+//! device, alone in its row. v1.0 final F6 adds Java's Narrator/Voice slider
+//! between Ambient/Environment and UI (`soundCategory_voice`; only Java's
+//! narrator plays in it, and VoxelCraft has none). Left out: the output
+//! Device (the audio thread opens the system default once, for the whole
+//! run), Directional Audio (the mixer pans in stereo and has no HRTF), Music
+//! Frequency and the Now Playing toast.
 
 use super::{OptionsHost, change, close, percent_label};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -15,6 +17,7 @@ use crate::audio::SoundSource;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::app) enum Id {
     Volume(SoundSource),
+    Voice,
     Subtitles,
     Done,
 }
@@ -40,10 +43,14 @@ impl<H: OptionsHost> Screen<H> for MusicAndSounds {
         };
         let mut list = OptionList::new(size);
         list.wide(slider(SoundSource::Master));
-        let others = &SoundSource::ALL[1..];
-        for row in others.chunks(2) {
-            list.pair(slider(row[0]), row.get(1).map(|&source| slider(source)));
-        }
+        // Java's `SoundSource` order puts Voice before UI.
+        let mut others: Vec<_> = SoundSource::ALL[1..].iter().map(|&source| slider(source)).collect();
+        let voice = s.voice_volume;
+        others.insert(
+            others.len() - 1,
+            Widget::slider(Id::Voice, [0.0; 4], percent_label("Narrator/Voice", voice), voice, 100),
+        );
+        list.pairs(others);
         list.pair(
             Widget::button(Id::Subtitles, [0.0; 4], format!("Closed Captions: {}", on_off(s.show_subtitles)))
                 .tooltip("Enables captions for sounds played in the game."),
@@ -59,14 +66,16 @@ impl<H: OptionsHost> Screen<H> for MusicAndSounds {
                 change(host, |s| s.show_subtitles = !s.show_subtitles);
                 Step::Stay
             }
-            Id::Volume(_) => Step::Stay,
+            Id::Volume(_) | Id::Voice => Step::Stay,
         }
     }
 
     fn slide(&mut self, host: &mut H, id: Id, t: f32) {
-        if let Id::Volume(source) = id {
-            let t = (t * 100.0).round() / 100.0;
-            change(host, |s| s.set_sound_volume(source, t));
+        let t = (t * 100.0).round() / 100.0;
+        match id {
+            Id::Volume(source) => change(host, |s| s.set_sound_volume(source, t)),
+            Id::Voice => change(host, |s| s.voice_volume = t),
+            _ => {}
         }
     }
 

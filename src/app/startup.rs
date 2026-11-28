@@ -80,7 +80,18 @@ impl Game {
                 .or_else(|| root_props.get("difficulty").and_then(|d| Difficulty::from_name(d)))
                 .unwrap_or_default()
         };
-        let gamerules = starting_rules(root_props.get("gamerules").map(String::as_str), args);
+        // A world made on the create screen starts with its More tab's rules.
+        let mut gamerules = starting_rules(root_props.get("gamerules").map(String::as_str), args);
+        if existing.is_none()
+            && let Some(new) = &new
+        {
+            gamerules = (*new.rules).clone();
+            for (name, value) in &args.gamerules {
+                if let Err(e) = gamerules.set(name, value) {
+                    log::warn!("--gamerule {name}={value}: {e}");
+                }
+            }
+        }
         let inventory = existing
             .as_ref()
             .and_then(|l| l.props.get("inventory"))
@@ -93,6 +104,9 @@ impl Game {
         let mut inventory = inventory;
         for &(item, count) in &args.give {
             inventory.add(item, count);
+        }
+        if let Some(item) = args.offhand {
+            inventory.offhand = Some(Stack::new(item, 1));
         }
         for &item in &args.wear {
             if let Some((piece, _)) = item.as_armor() {
@@ -125,6 +139,9 @@ impl Game {
         }
         if let Some(a) = args.air {
             vitals.air = a.clamp(0.0, survival::MAX_AIR);
+        }
+        if args.burning {
+            vitals.ignite(600.0);
         }
         if let Some(text) = prop("hunger") {
             let n: Vec<f32> = text.split(',').filter_map(|v| v.parse().ok()).collect();
@@ -172,11 +189,13 @@ impl Game {
         // player had walked through one where they stood.
         let arrival = (dimension != saved_dimension && args.pose.is_none()).then(|| {
             if dimension == Dimension::End {
-                return dimension::Arrival::EndSpawn;
+                return dimension::Arrival::EndSpawn { vel: DVec3::ZERO };
             }
             let scale = if dimension == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
             let p = (player.pos * DVec3::new(scale, 0.0, scale)).floor().as_ivec3();
-            dimension::Arrival::Portal(p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }), true)
+            dimension::Arrival::Portal(crate::world::portal::PortalTrip::without_portal(
+                p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }),
+            ))
         });
         if let Some([x, y, z, yaw, pitch]) = args.pose {
             player.pos = DVec3::new(x, y, z);
@@ -286,6 +305,9 @@ impl Game {
             sprint_toggled: false,
             respawn_due: false,
             scroll: 0.0,
+            bundle_selection: None,
+            bundle_scroll: 0.0,
+            screen_mouse: Default::default(),
             frame_limit: Default::default(),
             distortion: Default::default(),
             modifiers: Default::default(),
@@ -326,6 +348,7 @@ impl Game {
             day_count: root_props.get("day_count").and_then(|value| value.parse().ok()).unwrap_or(0),
             credits_seen: root_props.get("credits_seen").is_some_and(|v| v == "1"),
             credits: None,
+            owned_pearls: Default::default(),
             world_spawn: root_props
                 .get("world_spawn")
                 .and_then(|text| {
@@ -349,6 +372,7 @@ impl Game {
             fps: 0.0,
             cpu_ms: 0.0,
             show_debug: args.debug_overlay,
+            debug_key_used: false,
             popup: (String::new(), now - Duration::from_secs(10)),
             save_error: None,
             screenshot: args.screenshot.clone(),
@@ -357,6 +381,7 @@ impl Game {
             world_icon: (args.join.is_none() && (settings_path.is_some() || args.world_icon))
                 .then(|| world_icon::WorldIcon::new(saves_dir.join(world_dir))),
             panorama_out: args.panorama.clone(),
+            item_review: args.item_review.clone().map(|dir| item_review::ItemReview::new(dir, &args.item_review_range)),
             panorama_face: None,
             screenshot_state: 0,
             screenshot_settled: None,
@@ -367,6 +392,7 @@ impl Game {
             cart_sound_tick: 0,
             decor_scene: args.decor.clone(),
             brush_scene: args.brush.clone(),
+            projectile_scene: args.projectiles.clone(),
             open_block: args.open_block,
             drop: args.drop.clone(),
             orbs: args.orbs.clone(),
@@ -377,7 +403,10 @@ impl Game {
             audio,
             mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait)
                 .holding(args.spawn_held.clone())
-                .still(args.still_mobs),
+                .babies(args.spawn_baby.clone())
+                .villagers(args.spawn_villager.clone())
+                .still(args.still_mobs)
+                .burning(args.burning),
             particles: crate::particles::System::new(seed),
             menu: menu::startup_menu(args.open_menu.as_deref()),
             menu_action: None,
@@ -391,8 +420,22 @@ impl Game {
             dimension,
             overworld_props: if dimension != Dimension::Overworld { overworld_props } else { Default::default() },
             arrival,
-            portal_time: 0.0,
+            portal: Default::default(),
+            portal_seen: false,
             portal_locked: false,
+            portal_cooldown: 0.0,
+            owed_portals: root_props
+                .get(super::dimension::OWED_PORTALS_KEY)
+                .map_or_else(Vec::new, |t| super::dimension::parse_owed_portals(t)),
+            portal_arrivals: root_props
+                .get(super::portal_travel::PORTAL_ARRIVALS_KEY)
+                .map_or_else(Vec::new, |t| super::portal_travel::parse_arrivals(t)),
+            carried_vehicle: None,
+            levels: Vec::new(),
+            tickets: Default::default(),
+            empty_time: Default::default(),
+            unattended: false,
+            pearl_trip: None,
             terrain_version: existing
                 .as_ref()
                 .map_or(2, |l| l.props.get("terrain").and_then(|v| v.parse().ok()).unwrap_or(1)),
@@ -413,6 +456,12 @@ impl Game {
         game.world.maps =
             root_props.get("maps").and_then(|s| crate::world::maps::MapStorage::load(s)).unwrap_or_default();
         game.restore_dimension(&dimension_props);
+        game.load_owned_pearls(&root_props);
+        // v1.0 final F11: the other dimensions whose tickets are still
+        // running, or that something waits for, run in the background.
+        if args.join.is_none() {
+            game.open_ticketed_levels();
+        }
         // v0.18 Track 0's capture flags: `--open-recipe-book` opens the
         // crafting book (Track 5), `--creative-tab` selects a creative tab
         // (Track 4; the operator tab isn't shown, so it stays on the default).
@@ -425,7 +474,7 @@ impl Game {
             game.creative_select(tab);
         }
         if game.session.vitals.is_dead() {
-            game.on_death();
+            game.enter_death();
         } else if game.screenshot.is_none()
             && game.bench_render.is_none()
             && game.benchmark.is_none()
@@ -587,22 +636,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let storage = Storage::new(&dir);
 
-        // A new world: the latest generation (6 since v1.0 Track 8), written as `worldgen=6`.
+        // A new world: the latest generation (7 since the v1.0 gap Tracks 4 and 5), written as `worldgen=7`.
         let generation = world_generation(None);
-        assert_eq!(generation, Generation::V6);
+        assert_eq!(generation, Generation::V7);
         let generator = Generator::with_generation(7, Dimension::Overworld, generation);
         let mut props = std::collections::BTreeMap::new();
         super::super::save::record_generation(&mut props, generator.generation);
         storage.save(&LevelInfo { seed: 7, player: None, props }, &[]).unwrap();
         let text = std::fs::read_to_string(dir.join("level.txt")).unwrap();
-        assert!(text.lines().any(|line| line == "worldgen=6"), "{text}");
+        assert!(text.lines().any(|line| line == "worldgen=7"), "{text}");
 
-        // Reloaded, it stays generation 6.
+        // Reloaded, it stays generation 7.
         let saved = storage.load_level().unwrap();
-        assert_eq!(world_generation(Some(&saved)), Generation::V6);
-        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V6).generation.number(), 6);
+        assert_eq!(world_generation(Some(&saved)), Generation::V7);
+        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V7).generation.number(), 7);
 
         // Older worlds keep theirs.
+        storage.set_props(&[(Generation::KEY, "6")]).unwrap();
+        assert_eq!(world_generation(Some(&storage.load_level().unwrap())), Generation::V6);
         storage.set_props(&[(Generation::KEY, "5")]).unwrap();
         assert_eq!(world_generation(Some(&storage.load_level().unwrap())), Generation::V5);
         storage.set_props(&[(Generation::KEY, "2")]).unwrap();

@@ -19,11 +19,15 @@ impl Game {
             let (pos, radius) = match request {
                 Request::Particle(p) => (p.pos, 128.0),
                 Request::Break { cell, .. } | Request::Hit { cell, .. } => (cell.as_dvec3(), 128.0),
+                // v1.0 gap Track 2h: level events' ordinary particles.
+                Request::Composter { cell } | Request::Growth { cell, .. } => (cell.as_dvec3(), 32.0),
                 Request::Burst(b) | Request::Tracking(b) => (b.pos, if b.forced { 128.0 } else { 32.0 }),
                 Request::Explosion { pos, .. } => (*pos, 128.0),
                 // v0.16 Track B: `ClientLevel.createFireworks` adds the burst whatever the distance.
                 Request::Firework { pos, .. } => (*pos, 256.0),
                 Request::EyeBreak { pos } | Request::Honey { pos, .. } => (*pos, 48.0),
+                // v1.0 gap Track 2g: an ordinary particle's 32 blocks.
+                Request::Item { pos, .. } => (*pos, 32.0),
             };
             centers.iter().any(|center| pos.distance_squared(*center) <= radius * radius)
         };
@@ -63,6 +67,16 @@ impl Game {
                     self.settings.enhanced_graphics,
                 );
             }
+        }
+        // `NetherPortalBlock.animateTick`: `PORTAL_AMBIENT` at volume 0.5,
+        // pitch 0.8 to 1.2.
+        for pos in std::mem::take(&mut self.particles.portal_sounds) {
+            let ambient = crate::audio::sounds::Sound::Portal(crate::audio::sounds::PortalCue::Ambient);
+            self.audio.play(ambient, Some(pos), 0.5, (0.8, 1.2));
+        }
+        // v1.0 gap track 6e: `DripstoneFallAndLandParticle`'s landing sound.
+        for (pos, lava, volume) in std::mem::take(&mut self.particles.drip_sounds) {
+            self.audio.play(crate::audio::Sound::DripstoneDrip(lava), Some(pos), volume, (1.0, 1.0));
         }
         for pos in std::mem::take(&mut self.particles.gas_sounds) {
             let cue = voxelcraft::world::potent_sulfur::Cue::NoxiousGas;

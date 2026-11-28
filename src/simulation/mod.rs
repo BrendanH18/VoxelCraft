@@ -2,6 +2,7 @@
 //! and headless callers. Input and presentation stay with the caller.
 
 pub mod damage;
+pub mod death_message;
 pub mod difficulty;
 pub mod effects;
 pub mod experience;
@@ -126,6 +127,7 @@ pub fn tick_world_rules_marked(
     world.clear_removed_shulker_boxes();
     world.tick_shulker_boxes();
     world.tick_lids();
+    world.tick_bells();
     // `ServerLevel.tick`: scheduled block ticks, fluid ticks, then the
     // chunk tick (random ticks), then block events; entities and block
     // entities follow in the caller (docs/redstone.md "Tick phases").
@@ -159,6 +161,48 @@ pub fn tick_world_rules_marked(
     // follow in the caller.
     world.update_block_light_within(LIGHT_TICK_BUDGET);
     mark(7);
+}
+
+/// v1.0 final F11: the world part of one `ServerLevel.tick` of a level
+/// nobody is in, its activity set by its tickets
+/// ([`World::set_tickets`]) with no players registered
+/// ([`World::set_simulation_players_with_host`] with no host). Scheduled
+/// block and fluid ticks, random ticks and block events run every tick
+/// where the tickets reach; with `entities` false (`emptyTime` has reached
+/// 300) block entities, moving pistons and falling blocks wait. The game
+/// clock (`maps.game_ticks`) is the current level's to count.
+pub fn tick_unattended_world_rules(world: &mut World, fire_tick: bool, random_tick_speed: u32, entities: bool) {
+    // Nobody is here: the host refreshes these calls make are ignored.
+    let nowhere = DVec3::ZERO;
+    world.clear_removed_banners();
+    world.clear_removed_shulker_boxes();
+    if entities {
+        world.tick_shulker_boxes();
+        world.tick_lids();
+        world.tick_bells();
+    }
+    world.tick_block_ticks();
+    world.tick_sculk();
+    world.tick_fluids(TICK_SECONDS);
+    if entities {
+        world.tick_falling(TICK_SECONDS);
+        world.tick_furnaces(TICK_SECONDS);
+        world.tick_brewing(TICK_SECONDS);
+        world.tick_utilities();
+        world.tick_jukeboxes();
+    }
+    if fire_tick {
+        world.tick_fire(TICK_SECONDS, nowhere);
+    }
+    world.update_block_light_within(LIGHT_TICK_BUDGET);
+    world.tick_precipitation(random_tick_speed);
+    world.tick_random_rules(TICK_SECONDS, nowhere, random_tick_speed, fire_tick);
+    world.tick_leaf_decay(TICK_SECONDS);
+    world.run_block_events();
+    if entities {
+        world.tick_moving_pistons();
+    }
+    world.update_block_light_within(LIGHT_TICK_BUDGET);
 }
 
 pub struct PlayerStep {
@@ -231,6 +275,11 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
         } else {
             0.0
         },
+        // `Entity.checkFallDamage` hands `fallOn` the block at `getOnPosLegacy`.
+        on_stalagmite: player.on_ground
+            && world
+                .get_block((player.pos - DVec3::Y * 0.2).floor().as_ivec3())
+                .is_some_and(crate::world::speleothem::stalagmite_tip),
         on_hay: player.on_ground
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3()).map(|b| b.base())
                 == Some(crate::world::block::Block::HAY_BALE),
@@ -251,6 +300,12 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
         fall_flying: player.fall_flying,
         fall_speed: player.vel.y / 20.0,
         kinetic: player.kinetic_damage,
+        // v1.0 final F8: `FallLocation.getCurrentFallLocation`, the block in
+        // the last climbable cell as it is now.
+        fall_location: match player.last_climbable {
+            Some(cell) => Some(death_message::FallLocation::of_block(world.get_block(cell))),
+            None => player.in_water.then_some(death_message::FallLocation::Water),
+        },
     }
 }
 

@@ -28,19 +28,19 @@ Sprint can be set to Toggle there.
 | Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
 | Right click with an off-hand item | When the main hand does nothing with the click (an empty hand, a sword, a block with no place to go), the off-hand item is used: torches and blocks place, food is eaten, a shield is raised |
 | Hold right click with a shield | Raise it (blocks after 0.25 s; slows walking like eating) |
-| Right click with flint and steel | Start a fire, light an obsidian portal frame or prime TNT |
+| Right click with flint and steel | Start a fire, light an obsidian portal frame or prime TNT (a fire charge primes TNT too) |
 | Right click with a bucket | Scoop up a water or lava source / pour it out again |
 | Right click with a hoe | Till grass or dirt (with air above) into farmland |
 | Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
 | G | Toggle survival / creative |
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
-| /, T | Open the slash command console (Enter runs, Esc closes, Up/Down history, Tab completion); T opens it without the slash when chatting with LAN players |
+| /, T | Open the chat (Java's chat screen: Enter sends or runs a command, Esc closes, Up/Down history, Tab completion, the mouse wheel scrolls back seven lines a notch (one with Shift) and Page Up/Page Down a page, with a scroll bar); T opens it without the slash when chatting with LAN players |
 | Tab | List players (LAN) |
 | M | Mute / unmute sound (`--mute` starts muted, `--volume 0..1` sets the master volume) |
 | V | Toggle vsync |
 | F1 | Toggle HUD |
-| F3 | Debug screen |
+| F3 | Debug screen (on release; F3 + H toggles advanced item tooltips: durability, id and component count) |
 | F5 | Cycle first-person, behind and front views |
 | F11 | Toggle fullscreen; Options → Fullscreen chooses Borderless (macOS native fullscreen Space) or Exclusive (native resolution), and it is remembered |
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
@@ -64,9 +64,29 @@ Saved Hotbars shows the nine hotbars saved with C + a number key (X + the
 number loads one); they are kept per install in `saves/hotbars.txt`.
 Controllers page through the item tabs and Saved Hotbars with LB/RB (Y
 loads a saved row, X saves it); the CLI agent's `catalog tabs`,
-`catalog tab:<id>` and `hotbar save|load 1..9` do the same. The survival
+`catalog tab:<id>` and `hotbar save|load 1..9` do the same. Over a bundle
+the mouse wheel picks one of its stacks to take out with a right click; on
+a controller the right stick picks it (down the next, up the previous) for
+X, and the CLI's `bundle <slot> [stack]` takes one out. A stack held on the
+cursor hides other items' tooltips, as in Java; a bundle's still shows. The survival
 inventory now uses Java's layout too: armour down the left, the player
 beside it, the off-hand under the player and the 2 x 2 grid to the right.
+
+Every container screen takes Java's other clicks
+([v1.0 final F1 record](verification/2026-11-28-v1.0-final-f1-inventory.md)):
+hold a stack and drag across slots with the left button to share it out
+evenly, with the right button to put one in each, or (creative) with the
+middle button to fill each with a full stack; double-click to gather
+matching items onto the cursor; Shift + double-click to move every
+matching stack of that part of the screen across. Over a slot, a number
+key swaps it with that hotbar slot, F with the off-hand and Q throws one
+(Ctrl+Q the stack), on every screen, with nothing held. The middle button
+clones a slot's stack in creative on any screen. LAN guests do all of
+these; a controller player holds A (shared evenly) or X (one each) with
+a stack held and moves the cursor to drag, and double-presses A to gather
+or Y to move every matching stack. A bow or crossbow in the off-hand draws when the main
+hand's item doesn't use the click, and the off-hand item is drawn in your
+left hand, in first and third person.
 
 The world autosaves every two minutes and on exit. Switching away from
 the window also pauses offline play. See [save backups and version compatibility](releases.md#player-data-and-old-saves)
@@ -75,19 +95,28 @@ A host started with `--agent-listen` keeps
 simulating while menus are open. See [hosted agent CLI and console commands](agents.md).
 
 **Options** (Esc → Options..., or Options... on the title screen) follows
-Java 26.3's screens with the options VoxelCraft can honour: FOV and, in a
-world, Difficulty with Java's lock; Music & Sounds (Master Volume and a
-slider per sound category); Video Settings
+Java 26.3's screens with the options VoxelCraft can honour: FOV; Music &
+Sounds (Master Volume, a slider per sound category, Narrator/Voice, Closed
+Captions); Video Settings
 (Max Framerate, VSync, GUI Scale, Fullscreen, Brightness, Graphics, Render
-and Simulation Distance, Particles, Menu Background Blur, FPS Counter);
+and Simulation Distance, Clouds, Particles, Mipmap Levels, Entity Shadows,
+Entity Distance, Menu Background Blur, Cloud Distance, Weather Effect
+Radius, Attack Indicator, FPS Counter);
 Controls (Mouse Settings
 with Sensitivity, Scroll Sensitivity, Discrete Scrolling and Invert Mouse;
-Key Binds; Sneak and Sprint Hold/Toggle); Accessibility Settings (Closed
+Key Binds; Sneak and Sprint Hold/Toggle); Chat Settings (Chat: Shown,
+Commands Only or Hidden, Colors, Chat Text Opacity, Text Background
+Opacity, Chat Text Size, Line Spacing, Chat Delay, Width and the Focused
+and Unfocused Heights); Accessibility Settings (Closed
 Captions, Menu Background Blur, Text Background Opacity and Text
-Background, View Bobbing, Distortion Effects, FOV Effects, Damage Tilt);
-Credits &
+Background, Chat Text Opacity, Line Spacing, Chat Delay, View Bobbing,
+Distortion Effects, FOV Effects, Darkness Pulsing, Damage Tilt, Hide Sky
+Flashes, Panorama Scroll Speed); Credits &
 Attribution; and Check for Updates. Render Distance is shown in Java's
-16-block chunks. Changes apply immediately and are saved to
+16-block chunks. As in Java 26.3, Difficulty and its lock are on the pause
+menu's **World Options...** screen, where a change waits for Apply Changes
+and locking asks first (Cancel drops the change); a LAN guest sees no
+difficulty there. Changes apply immediately and are saved to
 `saves/options.txt` inside the
 [per-user data folder](releases.md#player-data-and-old-saves) when you
 leave the screen; `[`/`]` and V adjust render distance and vsync in game.
@@ -178,7 +207,11 @@ compact counter.
   blended around the eye, the day timeline, rain and thunder, the lava,
   powder snow, water, Blindness and Darkness fogs, and Java's flat (Fast)
   and block-shaped (Fancy) clouds drifting east, with the Clouds, Cloud
-  Distance and Hide Sky Flashes options ([atmosphere record](verification/2026-11-23-v0.18-atmosphere.md))
+  Distance and Hide Sky Flashes options ([atmosphere record](verification/2026-11-23-v0.18-atmosphere.md)).
+  Darkness also darkens the lightmap as Java's client does: it fades in and
+  out over 22 ticks, lowers the Brightness option by its blend and takes a
+  pulse of up to 0.45 off every light level every four seconds, so dim
+  places go black while daylight and torchlight stay lit ([v1.0 gap Track 1](verification/2026-11-27-v1.0-gap-track-01-effects-damage.md))
 - Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
   dries up without a source, and forms infinite sources; lowered surfaces
 - Lava: flows like water but six times slower and only 3 blocks, glows
@@ -282,11 +315,36 @@ compact counter.
 - Ladders (7 sticks in an H: 3) hang on the side of a solid block and fall
   off when it's removed. Walk into one or hold Space to climb, hold Shift
   to hold on; ladders break falls
+- Scaffolding and powder snow treat mobs, dropped items, experience orbs,
+  primed TNT and armor stands as Java's `EntityCollisionContext` does
+  (v1.0 final F7): anything whose feet are above a scaffolding block
+  stands on it, and inside one it sinks to the top of the block below (or
+  an unstable bottom block's rim), so an item dropped in a scaffolding
+  tower settles a level down instead of popping out of the top. Powder
+  snow holds up only rabbits, endermites, silverfish and foxes
+  (`powder_snow_walkable_mobs`), mobs and armor stands wearing leather
+  boots, falling blocks, and anything that has fallen more than 2.5 blocks
+  (for a moment, on a 0.9-high shape); other mobs and items sink through
+  it. Items track their fall distance for this (not saved); orbs, TNT and
+  armor stands count it as zero, so they sink straight in after a long
+  fall where Java first rests them a tick on the 0.9 shape
+- Walls saved before posts were stored (v0.8 and older loaded every wall
+  with its post up) get the post Java's `WallBlock` gives them as their
+  chunk is first read from an old world's `chunks.bin`, without waiting
+  for a neighbour to change (v1.0 final F7). A wall beside a never-edited
+  chunk that hasn't loaded yet keeps its post until a neighbour changes
 - TNT (5 gunpowder and 4 sand in a checkerboard): light it with flint and
   steel and it hops out of its block, flashing white and swelling for 4
   seconds before a blast stronger than a creeper's (power 4). TNT caught in
   a blast goes off within a second and a half, so stacks chain. Explosions
-  hurt through armor, knock you back and drop some of what they destroy
+  hurt through armor, knock you back and drop some of what they destroy.
+  As in Java, TNT remembers who lit it (with flint and steel, a fire charge
+  or a burning projectile, or by a blast they were behind): a death in its
+  blast reads "was blown up by" them, and the mobs it kills count as that
+  player's; TNT lit by fire, redstone or a dispenser "blew up"
+  ([gap Track 8e](verification/2026-11-28-v1.0-gap-track-08e-fire-tnt-credits.md)).
+  Flying projectiles and primed TNT are saved with the world, burning ones
+  still burning
 - Buckets (3 iron ingots in a V, stack to 16): right-click a water or lava
   source to fill one and right-click a block to pour it out next to it.
   Creative keeps its empty bucket. A lava bucket smelts for 1000 s and
@@ -315,7 +373,8 @@ compact counter.
   and swords in five tiers with durability bars. Coal and diamond ore drop
   their items
 - Survival health: 10 hearts, fall damage (1 per block beyond 3; water
-  breaks falls), 15 s of air then drowning, a red hurt flash and shaking
+  breaks falls; landing on an upward pointed dripstone tip adds 2.5 blocks
+  and doubles it, "impaled on a stalagmite"), 15 s of air then drowning, a red hurt flash and shaking
   hearts. Dying shows
   Java's death screen ("You Died!", the cause and your score); everything
   you carried drops where you died. After a second its Respawn button
@@ -394,7 +453,8 @@ compact counter.
   long), aqua affinity, thorns (15% a level to hit back for 1-5 damage,
   using mainhand Looting), depth strider (half the bonus off the ground),
   sharpness (+0.5 a level + 0.5), smite and bane of arthropods
-  (+2.5 a level against undead / spiders and silverfish), knockback, fire
+  (+2.5 a level against undead / spiders and silverfish, from a mob's
+  weapon too, with Bane's slowness), knockback, fire
   aspect (4 s of fire a level; melee kills cook meat even in water, and fire
   kills within five seconds of a player hit award XP), looting (up to one
   more of each eligible drop a level; sheep still drop one wool), sweeping
@@ -513,12 +573,51 @@ Build a frame of obsidian (pour a water bucket over lava source blocks,
 then mine the obsidian with a diamond pickaxe) at least 4 wide and 5 tall around an
 empty inside of 2x3 up to 21x21; the corners can be left out. Light it
 with flint and steel (iron ingot and flint, shapeless; 64 uses) to fill it
-with a swirling portal. Stand in it for 4 seconds (half a second in
-creative) to travel to the Nether, and the same way back. Each block in
+with a swirling portal. Stand in it for 4 seconds (the 81st tick; at once
+in creative) to travel to the Nether, and the same way back; stepping out
+lets the count run down four times as fast, and you can't go back until
+you have been out of the exit portal for half a second, as in Java
+([gap Track 8b](verification/2026-11-27-v1.0-gap-track-08b-details.md)).
+Each block in
 the Nether is eight in the overworld: the game looks for a portal within
-16 blocks of the matching spot on the other side, and builds one (on an
-obsidian ledge if there's nowhere to stand) if there isn't. Breaking any
-part of a frame puts its portal out.
+16 blocks of the matching spot on the other side (128 coming back), and
+builds one (on an obsidian ledge if there's nowhere to stand) if there
+isn't. You come out where you stood in the portal you entered (across it,
+up it and in front of it, scaled to the exit portal's size), nudged clear
+of any block in the way, still looking and moving the way you were, and
+turned a quarter, your momentum with you, if the two portals face
+different ways. Nothing is placed or found beyond the world border,
+29,999,984 blocks out. Spectators pass through Nether portals, End
+portals and End gateways without travelling, as in Java
+([gap Track 8](verification/2026-11-27-v1.0-gap-track-08-leftovers.md)).
+With the `allow_entering_nether_using_portals` rule off, a portal refuses
+the trip into the Nether once its count is up, but as in Java the trip
+still owes the Nether its exit portal, built (if none is found within 16
+blocks) when the Nether next loads; a sign being edited or a lectern's book
+closes as you stand in a Nether portal, as the inventory does
+([gap Track 8c](verification/2026-11-27-v1.0-gap-track-08c-details.md)).
+Each portal block remembers which way its
+portal stands (Java's `axis`), and breaking the frame along that way (or
+above or below) puts the portal out; portals from saves made before
+remember it from their frames when their chunk loads.
+
+Mobs, dropped items, experience orbs, arrows, tridents, snowballs, eggs,
+thrown potions, minecarts and boats go through Nether portals, End portals
+and End gateways too, as in Java
+([final Track F2](verification/2026-11-28-v1.0-final-f2-portals.md)): on
+the tick after they touch one (no 4-second wait), taking any mob riding
+them along, and then they can't use a portal for 15 seconds, a wait that
+standing in a portal keeps restarting, so they don't bounce straight back.
+The Wither, the Ender Dragon, a heart-bound creaking, a sleeping
+villager and anything being ridden by another mob stay; a leash comes off
+(no lead drops). Riding a minecart, boat, horse or other mount, you go with
+it, at once, through a Nether portal: the vehicle comes out where it stood
+in the portal, with you aboard. Only the dimension you're in runs, so an
+entity sent to another dimension waits, out of the world, until you next
+go there; it then arrives where Java would have put it at the moment it
+left, in the exit portal the game finds or builds then (the same one, as
+nothing there has changed), or on the End's platform, or on top of the
+world spawn coming out of the End. Nothing happens to it in the meantime.
 
 The Nether is a cavern world between a bedrock floor and roof: netherrack
 cliffs and islands over a lava sea at y = 31, soul sand shores that drag
@@ -565,10 +664,10 @@ session there, as if you had just come through a portal.
 | Chicken | 4 | like pigs; flutters down instead of falling | 1 raw chicken, 0–2 feathers |
 | Zombie | 20 | chases within 24 blocks, hits for 3 every second; burns in sunlight | 0–2 rotten flesh |
 | Skeleton | 20 | keeps 5–10 blocks away, strafes, and shoots arrows (about 3 damage) when it can see you; burns in sunlight | 0–2 bones, 0–2 arrows |
-| Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
+| Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); a fall adds 1.5 ticks a block to the fuse (to 0.25 s short of going off), which then burns down; explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
 | Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
 | Zombified piglin | 20 | Nether only, in packs; ignores you until you hit one, then the whole pack within 32 blocks chases you for 30 s and strikes with gold swords for 5 | 0–1 rotten flesh, 0–1 gold nuggets |
-| Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows by teleporting, is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
+| Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows and tridents by teleporting (they fly on, and a burning arrow sets it alight), is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
 | Blaze | 20 | Nether fortresses: from spawner cages and inside fortress pieces in groups of 2-3. Hovers, glows while charging, then fires bursts of three fireballs (5 damage, setting you alight) and hits for 6 up close; hurt by water and rain, immune to fire and lava | 0–1 blaze rods |
 | Silverfish | 8 | strongholds: from the portal room's spawner; small and quick, chases and nibbles for 1 | nothing |
 | Piglin | 16 | Nether packs of 4 and bastions; a fifth are babies. Adults attack players without golden armor with a golden sword (8) or a crossbow. Opening chests or breaking gold nearby angers them for 30 s, and a hit piglin alerts the others. Throw gold ingots to barter: one is admired for about 6 s, then traded for a roll of Java's table. They hunt baby hoglins and zombify after 15 s outside the Nether | what they carried; their gear sometimes |
@@ -594,7 +693,15 @@ once it has stood more than 32 blocks from everyone for 30 seconds; hostile mobs
 chase the nearest survival player. Every mob burns
 in lava. Player hits deal damage based on the held item, with knockback, at most
 every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
-Hostile mobs ignore creative players.
+Hostile mobs ignore creative players. A mob, like a player, shrugs off a
+hit no harder than the one it took within the last half second, and a
+harder one lands only by what it adds, with no knockback; arrows bounce
+off a mob or player that shrugs them off, and off creative players
+([gap Track 8d](verification/2026-11-28-v1.0-gap-track-08d-combat-fire.md)).
+Burning mobs and players are drawn in Java's flame, and snowballs, eggs,
+pearls, potions, rockets and fishing hooks catch fire in fire or lava
+and then light candles and campfires and prime TNT they hit, as burning
+arrows do.
 
 Ender pearls (stack of 16) are thrown with **right click**, at most once a
 second (a pale veil drains from the hotbar slot): they fly like Java's
@@ -608,8 +715,13 @@ hovers for four seconds, then drops back as an item four times in five and
 shatters otherwise. Right click an empty End portal frame to put an eye in
 it; when twelve frames with eyes ring a 3x3 hole, all facing in, the portal
 opens with a deep rumble. Falling into an End portal takes you to the End's
-obsidian platform at once; one in the End takes you back to your bed or
-the world spawn. Agents use eyes with `place`.
+obsidian platform on the next tick, as Java's `PortalProcessor` does
+(rebuilt as you arrive: whatever stands in it breaks and drops, as Java's
+`createEndPlatform` does); one in the End takes you back to your bed or the
+world spawn. Arriving, you can't use a portal for half a second, and
+touching one meanwhile restarts that wait
+([gap Track 8c](verification/2026-11-27-v1.0-gap-track-08c-details.md)).
+Agents use eyes with `place`.
 
 Inventory search filters creative items by name. Type in the search field
 (automatically focused in creative), or press Ctrl+F. In survival and containers,
@@ -619,7 +731,22 @@ Esc closes the inventory. Agents can use `catalog [query]` for the same search.
 
 The End is reached through a stronghold's End portal, or with
 `/dimension end` or `--dimension end`. Return with `/dimension overworld`.
-It includes a seeded central end-stone island, ten obsidian pillars, an arrival platform, a void gap and outer islands,
+It includes a seeded central end-stone island, ten obsidian pillars, an arrival platform, a void gap and outer islands.
+In worlds made since the v1.0 gap-closing build (generation 7) the islands
+are Java 26.3's own: the same seed gives the same island shapes, End
+biomes, chorus highlands and End city spots as Java
+([gap Track 4](verification/2026-11-27-v1.0-gap-track-04-the-end.md)),
+and so is their decoration: the small floating islands among the
+`small_end_islands`, the chorus plants of the highlands and, now and then
+in the highlands, a return gateway that takes you straight back to the
+arrival platform
+([gap Track 4b](verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md)),
+with Java's End cities standing where and as high as Java's do, piece for
+piece (their blocks are VoxelCraft's own,
+[gap Track 4c](verification/2026-11-27-v1.0-gap-track-04c-end-final.md));
+older worlds keep their islands. Jumping into the End portal keeps your
+momentum: you arrive facing west, still moving as you were relative to
+where you faced. It has
 a static violet sky, no weather or natural Overworld/Nether mob spawning, and
 its own `end/` save folder. Water works; beds explode. End stone is mineable
 with a pickaxe and appears in the creative catalog.
@@ -634,13 +761,39 @@ high, above whatever stands under each, pillars included; only the inner 12
 once no crystal is left;
 [v1.0 Track 7b](verification/2026-11-25-v1.0-track-07b-end-fight-seats.md)), sometimes
 swoops at a player to spit a fireball that leaves a spreading cloud of
-harmful breath, and sometimes perches on the exit portal's pillar to breathe
-fire, roar at anyone close, then take off or charge at them. Its wings shove
+harmful breath, and sometimes lands on the exit portal's pillar. Perched, it
+looks about for a player within 20 blocks and level with it, roars at them
+(a growl every tick of the two-second roar, as Java's client plays it),
+breathes fire, and looks again; after four flames, or with no one about for
+five seconds, it takes off (or charges a player within 150). A player it has
+chosen to strafe stays its target even after switching to creative, as in
+Java. Its wings shove
 and hurt players, its head bites for 10, and it smashes through any block but
-end stone, obsidian, bedrock, iron bars and portals. Head hits do full damage,
-anywhere else a quarter (plus up to one); arrows glance off a perched dragon,
-and bed or TNT blasts hurt it. The boss bar shows within 192 blocks of the
-island's centre. On death it rises for ten seconds in beams of light,
+Java's dragon-immune ones (end stone, obsidian and crying obsidian, bedrock,
+iron bars, respawn anchors, reinforced deepslate, End portals and gateways),
+silently, in a puff of smoke, leaving the water of a waterlogged block
+(a bubble column it flies through turns to still water for a moment);
+with `mobGriefing` off it breaks nothing, and every block in its way slows
+it and its wing beat. Its wing beats set off sculk sensors. Head and neck hits do full damage, anywhere else a
+quarter (plus up to one), and only a player's hits (or a blast) take its
+health; arrows, tridents and a player's wind charges glance off a perched
+dragon (an arrow or trident comes off alight for a second), and everything glances
+off a dying one. Everything Java lets hit
+it does here
+([gap Track 4c](verification/2026-11-27-v1.0-gap-track-04c-end-final.md)):
+snowballs and eggs stop on it (and break End crystals, as llama spit does
+on its way past), an ender pearl
+takes you to where it was a moment before it hit, splash and lingering
+Harming hurt it and Healing mends it, wind charges sting it and push it,
+tridents bounce off, firework blasts within five blocks of its feet hurt
+it, a ghast's fireball explodes on it (the blast, not the fire, hurts it),
+its fireballs, and any other dragon's, burst on it harmlessly, and a fishing hook can catch on
+it. Blasts and wind push it about as in Java. Between its targets it
+flies exactly as Java's `aiStep` moves it, checked tick for tick against
+the Java server. The boss bar shows within 192 blocks of the
+island's centre. Killed in flight, it first flies to the exit portal (at
+one health, untouchable), as Java's does; then, or at once if killed while
+perched, it rises for ten seconds in beams of light,
 spilling 12,000 experience (500 for later kills), then the bedrock exit
 portal opens, with the dragon egg on its pillar after the first kill. The egg
 teleports up to 15 blocks when hit or used, and falls like sand. The fight
@@ -653,10 +806,14 @@ to go through. The first trip finds the outer islands like Java does: 1024
 blocks straight out, then the nearest chunk with land, ten blocks above the
 highest ground there (building a small island if the void goes on). An exit
 gateway is built there, linked back, and you land on the highest ground
-beside it. The links are saved with the End.
+beside it. The links are saved with the End. Like Java's, a new gateway
+shines a magenta beam the height of the world for ten seconds; once used
+(by you or a pearl) it cools down for two seconds with a shorter purple beam,
+doing nothing for anyone else meanwhile, and it flashes the same way every
+two minutes. Arriving, you can't use a gateway for half a second, and
+touching one meanwhile restarts that wait.
 
-Respawning the dragon, the gateway beam, chorus trees, cities, shulkers and
-elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
+Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
 describes the larger progression being built toward.
 
 ## Sound categories

@@ -7,7 +7,6 @@
 use glam::DVec3;
 
 use super::{Ctx, EntityEvent, Mob, MobKind, PlayerId, Rng};
-use crate::physics::BlockSource;
 use crate::potion::Potion;
 use crate::simulation::effects::Effect;
 
@@ -32,11 +31,22 @@ pub struct ThrownPotion {
     pub lingering: bool,
     /// The throwing player; witches throw with `None`.
     pub owner: Option<PlayerId>,
+    /// v1.0 gap Track 8g: the witch that threw it (`Mob::uid`), whom its
+    /// harm names. v1.0 final F8: saved as `thrower` when there is one
+    /// (Java's `Projectile` saves its `Owner`), so a reloaded witch's
+    /// potion still names her.
+    pub thrower: Option<u32>,
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
     pub vel: DVec3,
     age: f32,
+    /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
+    /// `ThrowableProjectile.tick`). Saved (v1.0 gap Track 8e), as Java's `Fire`.
+    fire: u16,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Aims `dir` twenty degrees higher, Java's throw offset for potions.
@@ -48,13 +58,81 @@ pub fn aim_up(dir: DVec3) -> DVec3 {
 }
 
 impl ThrownPotion {
+    /// v1.0 gap Track 8e: the level file's copy, with its fire.
+    pub(super) fn save(&self) -> serde_json::Value {
+        use super::saved_projectiles::v3;
+        let mut v = serde_json::json!({
+            "potion": self.potion.info().id,
+            "lingering": self.lingering,
+            "owner": self.owner.map(|p| p.0),
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "age": self.age,
+            "fire": self.fire,
+        });
+        // v1.0 final F8: written only when a witch threw it.
+        if let Some(uid) = self.thrower {
+            v["thrower"] = uid.into();
+        }
+        v
+    }
+
+    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        let pos = s::read_v3(&v["pos"])?;
+        Some(Self {
+            portal_cooldown: 0,
+            potion: Potion::from_id(v["potion"].as_str()?)?,
+            lingering: v["lingering"].as_bool().unwrap_or(false),
+            owner: v["owner"].as_u64().and_then(|u| u32::try_from(u).ok()).map(PlayerId),
+            thrower: v["thrower"].as_u64().and_then(|u| u32::try_from(u).ok()),
+            pos,
+            previous_pos: pos,
+            vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
+            age: s::read_f32(v, "age", 0.0).clamp(0.0, MAX_FLIGHT),
+            fire: s::read_fire(v),
+        })
+    }
+
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
+    /// v1.0 gap Track 8d: a LAN client's copy burns as the host says.
+    pub fn set_burning(&mut self, burning: bool) {
+        self.fire = if burning { self.fire.max(1) } else { 0 };
+    }
+
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(potion: Potion, pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { potion, lingering: false, owner: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0 }
+        Self {
+            portal_cooldown: 0,
+            potion,
+            lingering: false,
+            owner: None,
+            thrower: None,
+            pos,
+            previous_pos,
+            vel: DVec3::ZERO,
+            age: 0.0,
+            fire: 0,
+        }
     }
 
     pub fn new(potion: Potion, owner: Option<PlayerId>, pos: DVec3, vel: DVec3) -> Self {
-        Self { potion, lingering: false, owner, pos, previous_pos: pos, vel, age: 0.0 }
+        Self {
+            portal_cooldown: 0,
+            potion,
+            lingering: false,
+            owner,
+            thrower: None,
+            pos,
+            previous_pos: pos,
+            vel,
+            age: 0.0,
+            fire: 0,
+        }
     }
 
     /// A player's throw from `eye` along their look direction `dir`, adding
@@ -64,12 +142,14 @@ impl ThrownPotion {
     }
 
     /// Moves the potion; returns `false` once it has shattered.
-    pub(super) fn update<W: BlockSource + ?Sized>(
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn update<W: super::MobWorld + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
         ctx: &Ctx,
         mobs: &mut [Mob],
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -78,15 +158,30 @@ impl ThrownPotion {
         self.vel *= if water { 0.8f64 } else { 0.99 }.powf(dt * 20.0);
         self.vel.y -= GRAVITY * dt;
         let delta = self.vel * dt;
+        super::projectile::tick_fire(&mut self.fire, world, self.pos, self.pos + delta, 0.125, 0.25);
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
+                let cell = next.floor().as_ivec3();
+                events.push(super::projectile::block_hit(
+                    cell,
+                    self.pos,
+                    self.burning(),
+                    self.owner.is_none(),
+                    self.owner.map(super::trident::Owner::Player),
+                ));
                 self.pos = next;
-                self.shatter(ctx, mobs, rng, events);
+                self.shatter(ctx, mobs, boss, rng, events);
                 return false;
             }
             self.pos = next;
+            // v1.0 gap Track 4c: an End crystal or a dragon part stops it
+            // too (it has no `onHitEntity`: a crystal survives).
+            if boss.hit_at(next, true).is_some() {
+                self.shatter(ctx, mobs, boss, rng, events);
+                return false;
+            }
             let hit_player = ctx.players.iter().any(|t| t.alive && t.contains(next) && self.owner != Some(t.id));
             let hit_mob = mobs.iter().position(|m| {
                 let (min, max) = m.aabb();
@@ -102,19 +197,29 @@ impl ThrownPotion {
                         self.pos = t.pos;
                     }
                 }
-                self.shatter(ctx, mobs, rng, events);
+                self.shatter(ctx, mobs, boss, rng, events);
                 return false;
             }
         }
         !(self.age >= MAX_FLIGHT || self.pos.y < -128.0)
     }
 
-    fn shatter(&self, ctx: &Ctx, mobs: &mut [Mob], rng: &mut Rng, events: &mut Vec<EntityEvent>) {
+    fn shatter(
+        &self,
+        ctx: &Ctx,
+        mobs: &mut [Mob],
+        boss: &super::dragon::Boxes,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) {
         events.push(EntityEvent::PotionSplashed { pos: self.pos, colour: self.potion.colour() });
         if self.lingering {
             events.push(EntityEvent::LingeringCloud { pos: self.pos, potion: self.potion, owner: self.owner });
         } else {
-            splash(self.potion, self.owner, self.pos, self.age, ctx, mobs, rng, events);
+            let by = self.owner.map(super::trident::Owner::Player).or(self.thrower.map(super::trident::Owner::Mob));
+            let cause = crate::simulation::damage::Cause::potion_magic(by, false);
+            splash_by(self.potion, self.owner, cause, self.pos, self.age, ctx, mobs, rng, events);
+            splash_dragons(self.potion, self.owner, self.pos, self.age, boss, events);
         }
     }
 }
@@ -135,6 +240,37 @@ fn splash_intensity(pos: DVec3, age: f32, min: DVec3, max: DVec3) -> Option<f64>
     (distance < REACH).then_some(1.0 - distance / REACH)
 }
 
+/// v1.0 gap Track 4c: `ThrownSplashPotion.onHitAsPotion` on the dragons,
+/// each a `LivingEntity` with its own 16 × 8 box. `EnderDragon.addEffect`
+/// refuses every lasting effect, so only Harming and Healing reach it:
+/// Harming through `hurtServer` (its body; only a player's potion takes
+/// health), Healing through `heal`.
+fn splash_dragons(
+    potion: Potion,
+    owner: Option<PlayerId>,
+    pos: DVec3,
+    age: f32,
+    boss: &super::dragon::Boxes,
+    events: &mut Vec<EntityEvent>,
+) {
+    for (effect, amplifier, _) in potion.effects() {
+        for &(hit, feet) in &boss.dragons {
+            let (min, max) = super::dragon::WILD_SHAPE.aabb(feet);
+            let Some(scale) = splash_intensity(pos, age, min, max) else { continue };
+            match effect {
+                Effect::InstantDamage => {
+                    let blow = super::dragon::Blow::projectile(instant_amount(6.0, amplifier, scale), owner.is_some());
+                    events.push(EntityEvent::DragonStruck { hit, blow, by: owner });
+                }
+                Effect::InstantHealth => {
+                    events.push(EntityEvent::DragonHealed { hit, amount: instant_amount(4.0, amplifier, scale) });
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Java's instant effect amount: `base << amplifier`, scaled and rounded.
 fn instant_amount(base: f32, amplifier: u8, intensity: f64) -> f32 {
     (intensity * f64::from(base) * f64::from(1u32 << amplifier.min(20)) + 0.5).floor() as f32
@@ -146,10 +282,29 @@ fn instant_amount(base: f32, amplifier: u8, intensity: f64) -> f32 {
 /// effect is added to mobs with the attenuated duration, except Poison and
 /// Regeneration on the undead. Weakness also lands on zombie villagers so a
 /// golden apple can start a cure.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn splash(
     potion: Potion,
     owner: Option<PlayerId>,
+    pos: DVec3,
+    age: f32,
+    ctx: &Ctx,
+    mobs: &mut [Mob],
+    rng: &mut Rng,
+    events: &mut Vec<EntityEvent>,
+) {
+    let cause = crate::simulation::damage::Cause::potion_magic(owner.map(super::trident::Owner::Player), false);
+    splash_by(potion, owner, cause, pos, age, ctx, mobs, rng, events);
+}
+
+/// [`splash`], the harm to players dealt as `cause` (v1.0 gap Track 8g:
+/// `indirectMagic(potion, owner)`).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn splash_by(
+    potion: Potion,
+    owner: Option<PlayerId>,
+    cause: crate::simulation::damage::Cause,
     pos: DVec3,
     age: f32,
     ctx: &Ctx,
@@ -164,11 +319,11 @@ pub(super) fn splash(
             match effect {
                 Effect::InstantDamage => {
                     let amount = instant_amount(6.0, amplifier, scale);
-                    events.push(EntityEvent::PlayerMagic { player: t.id, amount });
+                    events.push(EntityEvent::PlayerMagic { player: t.id, amount, cause });
                 }
                 Effect::InstantHealth => {
                     let amount = instant_amount(4.0, amplifier, scale);
-                    events.push(EntityEvent::PlayerMagic { player: t.id, amount: -amount });
+                    events.push(EntityEvent::PlayerMagic { player: t.id, amount: -amount, cause });
                 }
                 _ => {
                     let ticks = (scale * f64::from(ticks) * f64::from(DURATION_SCALE) + 0.5) as u32;
@@ -245,8 +400,23 @@ pub(super) fn splash(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::entity::Target;
     use crate::physics::test_util::Grid;
+
+    /// v1.0 final F8: a witch's potion saved mid-flight keeps its thrower
+    /// (`Projectile`'s `Owner`); a player's writes no `thrower`.
+    #[test]
+    fn a_witchs_potion_keeps_its_thrower_through_a_save() {
+        let (eye, dir) = (DVec3::new(0.5, 70.0, 0.5), DVec3::X);
+        let mut potion = ThrownPotion::thrown(crate::potion::Potion::AWKWARD, PlayerId::HOST, eye, dir, DVec3::ZERO);
+        assert!(potion.save().get("thrower").is_none(), "only when there is one");
+        potion.owner = None;
+        potion.thrower = Some(12);
+        let saved = potion.save();
+        assert_eq!(saved["thrower"], 12);
+        assert_eq!(ThrownPotion::load(&saved).unwrap().thrower, Some(12));
+    }
 
     fn ctx(players: Vec<Target>) -> Ctx {
         Ctx {
@@ -272,11 +442,13 @@ mod tests {
         let mut events = Vec::new();
         let c = ctx(vec![]);
         let mut n = 0;
-        while p.update(0.05, &world, &c, &mut [], &mut Rng::new(1), &mut events) {
+        while p.update(0.05, &world, &c, &mut [], &Default::default(), &mut Rng::new(1), &mut events) {
             n += 1;
             assert!(n < 200);
         }
-        assert!(matches!(events[0], EntityEvent::PotionSplashed { pos, .. } if (4.0..14.0).contains(&pos.x)));
+        // v1.0 gap Track 8d: `onProjectileHit` (the block hit) comes first.
+        assert!(matches!(events[0], EntityEvent::ProjectileBlockHit { burning: false, .. }));
+        assert!(matches!(events[1], EntityEvent::PotionSplashed { pos, .. } if (4.0..14.0).contains(&pos.x)));
     }
 
     #[test]
@@ -291,7 +463,7 @@ mod tests {
         splash(harming, None, DVec3::new(0.0, 10.0, 0.0), 0.0, &c, &mut [], &mut Rng::new(1), &mut events);
         let amount = |id| {
             events.iter().find_map(|e| match *e {
-                EntityEvent::PlayerMagic { player, amount } if player == PlayerId(id) => Some(amount),
+                EntityEvent::PlayerMagic { player, amount, .. } if player == PlayerId(id) => Some(amount),
                 _ => None,
             })
         };

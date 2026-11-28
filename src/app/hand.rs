@@ -36,6 +36,15 @@ impl HandAnim {
         self.swing = t.filter(|t| t.is_finite() && (0.0..SWING_TIME).contains(t));
     }
 
+    /// v1.0 gap track 6: shows `item` raised at once, with no swing (the
+    /// item review's held models).
+    pub(super) fn show_now(&mut self, item: Option<Item>) {
+        self.shown = item;
+        self.height = 1.0;
+        self.previous_height = 1.0;
+        self.swing = None;
+    }
+
     pub(super) fn swing(&mut self) {
         if self.swing.is_none_or(|t| t >= SWING_TIME * 0.5) {
             self.swing = Some(0.0);
@@ -79,6 +88,7 @@ impl HandAnim {
         alpha: f64,
         worn: [Option<crate::inventory::Stack>; 4],
         held: Option<crate::inventory::Stack>,
+        offhand: Option<crate::inventory::Stack>,
     ) -> crate::entity::model::PlayerAppearance {
         crate::entity::model::PlayerAppearance {
             held: self.shown,
@@ -96,9 +106,13 @@ impl HandAnim {
             held_tint: held
                 .filter(|s| Some(s.item) == self.shown)
                 .and_then(|s| voxelcraft::inventory::components::dye_tint(&s)),
+            held_stack: held.filter(|s| Some(s.item) == self.shown),
+            off_stack: offhand,
             aim: self.aim(),
             glowing: vitals.effects.glowing() && vitals.death_time().is_none(),
             elytra: worn[1].is_some_and(|s| s.item == voxelcraft::content::elytra::ELYTRA),
+            burning: vitals.burning(),
+            view: glam::Vec3::ZERO,
         }
     }
 
@@ -112,6 +126,7 @@ impl HandAnim {
                 Aim::CrossbowCharge((ticks as f32 / voxelcraft::session::ranged::CROSSBOW_CHARGE_TICKS as f32).min(1.0))
             }
             (Some(Item::CHARGED_CROSSBOW), _) => Aim::CrossbowHold,
+            (Some(voxelcraft::weapons::TRIDENT), Some(_)) => Aim::Trident,
             _ => Aim::None,
         }
     }
@@ -132,6 +147,17 @@ impl HandAnim {
             off_map: None,
             map_small: false,
             invisible: false,
+            glint: false,
+            translucent: false,
+            mesh: None,
+            stack: None,
+            // v1.0 gap track 6e: ticks the trident has been charged, within
+            // the tick (Java's `useDuration - (remaining - partialTicks + 1)`).
+            trident_charge: self
+                .draw
+                .filter(|_| self.shown == Some(voxelcraft::weapons::TRIDENT))
+                .map(|ticks| (ticks as f32 + self.tick_time / TICK - 1.0).max(0.0)),
+            off: None,
         }
     }
 }

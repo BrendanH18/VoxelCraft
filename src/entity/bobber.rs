@@ -30,7 +30,7 @@ pub struct Bobber {
     pub owner: PlayerId,
     pub pos: DVec3,
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(super) vel: DVec3,
     state: State,
     on_ground: bool,
     ground_time: f32,
@@ -46,6 +46,14 @@ pub struct Bobber {
     luck: i32,
     /// The `uid` of the mob the hook is snagged on.
     hooked: Option<u32>,
+    /// v1.0 gap Track 4c: the End crystal or dragon part it is snagged on
+    /// (`EnderDragonPart` and `EndCrystal` are pickable).
+    hooked_boss: Option<super::dragon::Hit>,
+    /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
+    /// `FishingHook.tick`), and the block its flight hit this tick, for
+    /// `onHitBlock`'s `onProjectileHit`. Not saved.
+    fire: u16,
+    pub(super) struck: Option<glam::IVec3>,
 }
 
 /// What reeling a bobber does to the rod and what it brings back.
@@ -88,9 +96,13 @@ impl Bobber {
             lure: i32::from(lure),
             luck: i32::from(luck),
             hooked: None,
+            hooked_boss: None,
+            fire: 0,
+            struck: None,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: MobWorld + ?Sized>(
         &mut self,
         dt: f64,
@@ -99,6 +111,7 @@ impl Bobber {
         ctx: &Ctx,
         mobs: &[Mob],
         index: &MobIndex,
+        boss: &super::dragon::Boxes,
     ) -> bool {
         let owner = ctx.players.iter().find(|p| p.id == self.owner && p.alive);
         if owner.is_none_or(|p| p.pos.distance_squared(self.pos) > 1024.0) || self.pos.y < -64.0 {
@@ -110,15 +123,36 @@ impl Bobber {
                 return false;
             }
         }
+        let start = self.pos;
         match self.state {
-            State::Flying => self.fly(dt, world, mobs, index),
+            State::Flying => self.fly(dt, world, mobs, index, boss),
             State::Bobbing => self.bob(dt, world, rng),
-            State::Hooked => self.follow(mobs),
+            State::Hooked => self.follow(mobs, boss),
         }
+        // v1.0 gap Track 8d: `applyEffectsFromBlocks` after the move, then
+        // `baseTick`'s burn.
+        super::projectile::tick_fire(&mut self.fire, world, start, self.pos, 0.125, 0.25);
         true
     }
 
-    fn fly<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, mobs: &[Mob], index: &MobIndex) {
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
+    /// v1.0 gap Track 8d: a LAN client's copy burns as the host says.
+    pub fn set_burning(&mut self, burning: bool) {
+        self.fire = if burning { self.fire.max(1) } else { 0 };
+    }
+
+    fn fly<W: MobWorld + ?Sized>(
+        &mut self,
+        dt: f64,
+        world: &W,
+        mobs: &[Mob],
+        index: &MobIndex,
+        boss: &super::dragon::Boxes,
+    ) {
         let ticks = dt * 20.0;
         self.vel.y -= 12.0 * dt;
         self.vel *= 0.92_f64.powf(ticks);
@@ -131,7 +165,16 @@ impl Bobber {
                 self.hooked = Some(mob.uid);
                 self.vel = DVec3::ZERO;
                 self.state = State::Hooked;
-                self.follow(mobs);
+                self.follow(mobs, boss);
+                return;
+            }
+            if let Some(&(hit, ..)) = boss.list.iter().find(|(_, min, max)| {
+                next.cmpge(*min - DVec3::splat(0.3)).all() && next.cmple(*max + DVec3::splat(0.3)).all()
+            }) {
+                self.hooked_boss = Some(hit);
+                self.vel = DVec3::ZERO;
+                self.state = State::Hooked;
+                self.follow(mobs, boss);
                 return;
             }
             if world.block(cell).is_some_and(|b| b.holds_water()) {
@@ -145,6 +188,9 @@ impl Bobber {
             }
             if world.block(cell).is_some_and(|b| b.is_solid()) {
                 self.vel = DVec3::ZERO;
+                if !self.on_ground {
+                    self.struck = Some(cell);
+                }
                 self.on_ground = true;
                 return;
             }
@@ -172,7 +218,22 @@ impl Bobber {
     }
 
     /// Hooked: ride the mob at 80% of its height, or fall free if it is gone.
-    fn follow(&mut self, mobs: &[Mob]) {
+    /// A crystal or dragon part is ridden the same way (`getY(0.8)` of its
+    /// box), until it is gone.
+    fn follow(&mut self, mobs: &[Mob], boss: &super::dragon::Boxes) {
+        if let Some(hit) = self.hooked_boss {
+            match boss.list.iter().find(|(h, ..)| *h == hit) {
+                Some(&(_, min, max)) => {
+                    let centre = (min + max) / 2.0;
+                    self.pos = DVec3::new(centre.x, min.y + (max.y - min.y) * 0.8, centre.z);
+                }
+                None => {
+                    self.hooked_boss = None;
+                    self.state = State::Flying;
+                }
+            }
+            return;
+        }
         match self.hooked.and_then(|uid| mobs.iter().find(|m| m.uid == uid && m.alive())) {
             Some(mob) => {
                 let (min, max) = mob.aabb();
@@ -267,8 +328,9 @@ impl Bobber {
         let mut wear = 0;
         let mut catch = None;
         let mut xp = 0;
-        if self.hooked.is_some() {
-            // Java: a snagged entity costs five uses and is pulled in (no loot).
+        if self.hooked.is_some() || self.hooked_boss.is_some() {
+            // Java: a snagged entity costs five uses and is pulled in (no loot;
+            // a dragon part's pull is lost when the dragon places it again).
             wear = 5;
         } else if self.biting {
             wear = 1;
@@ -499,7 +561,7 @@ mod tests {
             Bobber::cast(PlayerId::HOST, DVec3::new(0.5, 4.0, 0.5), DVec3::new(0.0, -1.0, 0.0), 0, 0, &mut rng);
         let ctx = host_ctx();
         for _ in 0..40 {
-            assert!(bobber.update(1.0 / 20.0, &world, &mut rng, &ctx, &[], &MobIndex::default()));
+            assert!(bobber.update(1.0 / 20.0, &world, &mut rng, &ctx, &[], &MobIndex::default(), &Default::default()));
         }
         assert_eq!(bobber.state, State::Bobbing, "pos {:?}", bobber.pos);
         assert!(open_water(&world, IVec3::new(0, 1, 0)));
@@ -556,7 +618,7 @@ mod tests {
         let ctx = host_ctx();
         let mut heights = Vec::new();
         for tick in 0..400 {
-            assert!(bobber.update(0.05, &world, &mut rng, &ctx, &[], &MobIndex::default()));
+            assert!(bobber.update(0.05, &world, &mut rng, &ctx, &[], &MobIndex::default(), &Default::default()));
             if tick >= 100 && !bobber.biting {
                 heights.push(bobber.pos.y);
             }

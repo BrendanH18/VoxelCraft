@@ -25,6 +25,20 @@ pub struct Consumed {
 pub struct Step {
     pub progress: f32,
     pub completed: Option<Consumed>,
+    /// v1.0 gap Track 2h: this tick's `ItemStack.onUseTick` emits the use
+    /// effects (`Consumable.shouldEmitParticlesAndSounds`): the eating or
+    /// drinking sound, and five item particles for food.
+    pub effects: bool,
+}
+
+/// v1.0 gap Track 2h: `Consumable.shouldEmitParticlesAndSounds` on the
+/// tick whose use had `remaining` ticks left before it of `duration`: past
+/// the first 21.875% of the use (`CONSUME_EFFECTS_START_FRACTION`), every
+/// fourth tick (`CONSUME_EFFECTS_INTERVAL`).
+pub fn use_effects(duration: u32, remaining: u32) -> bool {
+    let used = duration.saturating_sub(remaining);
+    let wait = (duration as f32 * 0.21875) as u32;
+    used > wait && remaining.is_multiple_of(4)
 }
 
 impl PlayerSession {
@@ -58,11 +72,17 @@ impl PlayerSession {
     pub fn consuming(&self) -> bool {
         self.consumption.key.is_some()
     }
-    /// Java's `isUsingItem` for the movement slow-down: eating, drinking, or
-    /// drawing a bow or crossbow.
+    /// Java's `isUsingItem` for the movement slow-down: eating, drinking,
+    /// drawing a bow or crossbow, brushing, emptying a bundle, or holding up
+    /// a blown goat horn.
     pub fn using_item(&self) -> bool {
         // A spear's charge keeps full speed and the sprint (`UseEffects(true, false, 1.0)`).
-        self.consuming() || (self.drawing() && !self.charging_spear()) || self.shield_raised() || self.brushing()
+        self.consuming()
+            || (self.drawing() && !self.charging_spear())
+            || self.shield_raised()
+            || self.brushing()
+            || self.bundle_in_use()
+            || self.tooting()
     }
     pub fn consumption_progress(&self) -> f32 {
         if self.consumption.duration == 0 {
@@ -129,9 +149,11 @@ impl PlayerSession {
             self.consumption = State { key, ticks: 0, duration };
             self.use_vibration(entities, Use::ItemInteractStart);
         }
+        // `updateUsingItem`: `onUseTick` with the ticks left, then one fewer.
+        let effects = use_effects(duration, duration.saturating_sub(self.consumption.ticks));
         self.consumption.ticks += 1;
         if self.consumption.ticks < duration {
-            return Ok(Step { progress: self.consumption_progress(), completed: None });
+            return Ok(Step { progress: self.consumption_progress(), completed: None, effects });
         }
         self.cancel_consumption();
         let mut magic_damage = 0.;
@@ -200,6 +222,22 @@ impl PlayerSession {
         let event = if drink { GameEvent::Drink } else { GameEvent::Eat };
         entities.sculk.post(self.player.pos, event, source, None);
         entities.sculk.post(self.player.pos, GameEvent::ItemInteractFinish, source, None);
-        Ok(Step { progress: 0., completed: Some(Consumed { player: self.id, item: held.item, magic_damage }) })
+        Ok(Step { progress: 0., completed: Some(Consumed { player: self.id, item: held.item, magic_damage }), effects })
+    }
+}
+
+#[cfg(test)]
+mod rhythm_tests {
+    /// v1.0 gap Track 2h: `shouldEmitParticlesAndSounds` over a 32-tick
+    /// meal: past its first 7 ticks, every fourth (with 24, 20, ... 4 left),
+    /// and over a 16-tick one (dried kelp) with 12, 8 and 4 left.
+    #[test]
+    fn use_effects_follow_javas_rhythm() {
+        let left = |duration: u32| -> Vec<u32> {
+            (1..=duration).rev().filter(|&remaining| super::use_effects(duration, remaining)).collect()
+        };
+        assert_eq!(left(32), vec![24, 20, 16, 12, 8, 4]);
+        assert_eq!(left(16), vec![12, 8, 4]);
+        assert_eq!(left(40), vec![28, 24, 20, 16, 12, 8, 4]);
     }
 }

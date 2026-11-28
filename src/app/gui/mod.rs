@@ -29,7 +29,7 @@ use crate::render::ui::{Color, Ui, WHITE, rgb};
 
 pub(super) use clipboard::{Clipboard, SystemClipboard};
 pub(super) use dialog::{Confirm, Notice};
-pub(super) use layout::{FOOTER, HEADER, OptionList, centred_rows};
+pub(super) use layout::{FOOTER, HEADER, LIST_W, OptionList, centred_rows};
 pub(super) use text_field::TextField;
 
 /// x, y, width, height in UI pixels.
@@ -322,6 +322,19 @@ pub(super) trait Screen<H: Host>: 'static {
     fn blurs(&self) -> bool {
         true
     }
+    /// v1.0 gap Track 8d: Java's `Screen.isPauseScreen` (true unless a
+    /// screen says otherwise): a pause screen on top pauses an unshared
+    /// world; the sign editor and a lectern's book don't.
+    fn pauses(&self) -> bool {
+        true
+    }
+    /// v1.0 gap Track 8c: Java's `Screen.isAllowedInPortal`, which is
+    /// `isPauseScreen` unless a screen says otherwise: pause screens stay
+    /// open in a Nether portal, and the rest (the sign editor, a lectern's
+    /// book) close as the player stands in one.
+    fn allowed_in_portal(&self) -> bool {
+        self.pauses()
+    }
     /// Anything the widgets don't draw, under them. `scroll` is how far the
     /// list is scrolled, in UI pixels.
     fn draw(&self, _host: &H, _ui: &mut Ui, _size: Size, _scroll: f32) {}
@@ -378,6 +391,8 @@ pub(super) trait Dyn<H: Host> {
     fn initial_focus_at(&self, host: &H, size: Size) -> Option<usize>;
     fn draw_dyn(&self, host: &H, ui: &mut Ui, frame: &Frame);
     fn blurs_dyn(&self) -> bool;
+    fn allowed_in_portal_dyn(&self) -> bool;
+    fn pauses_dyn(&self) -> bool;
 }
 
 /// Scrolling widgets moved by `scroll` and hidden outside the list.
@@ -475,6 +490,14 @@ impl<H: Host, S: Screen<H>> Dyn<H> for S {
 
     fn blurs_dyn(&self) -> bool {
         self.blurs()
+    }
+
+    fn allowed_in_portal_dyn(&self) -> bool {
+        self.allowed_in_portal()
+    }
+
+    fn pauses_dyn(&self) -> bool {
+        self.pauses()
     }
 
     fn initial_focus_at(&self, host: &H, size: Size) -> Option<usize> {
@@ -582,6 +605,12 @@ impl<H: Host> Stack<H> {
         !self.entries.is_empty()
     }
 
+    /// v1.0 gap Track 8d: whether the top screen is a pause screen
+    /// (`Minecraft.isPaused` reads only the current screen).
+    pub fn pauses(&self) -> bool {
+        self.entries.last().is_some_and(|e| e.screen.pauses_dyn())
+    }
+
     /// Whether the top screen wants the world behind it blurred.
     pub fn blurs(&self) -> bool {
         self.entries.last().is_some_and(|e| e.screen.blurs_dyn())
@@ -605,6 +634,19 @@ impl<H: Host> Stack<H> {
     /// The top screen, with its initial focus settled.
     fn top(&mut self, host: &H, size: Size) -> Option<&mut Entry<H>> {
         top(&mut self.entries, host, size)
+    }
+
+    /// v1.0 gap Track 8c: `LocalPlayer.handlePortalTransitionEffect`'s
+    /// `setScreen(null)` for a screen that isn't
+    /// [`Screen::allowed_in_portal`]: it closes as Escape would close it
+    /// (the sign editor keeps its text, as `removed()` sends it), and
+    /// every screen with it.
+    pub fn close_for_portal(&mut self, host: &mut H) -> Option<H::Out> {
+        let entry = self.entries.last_mut().filter(|e| !e.screen.allowed_in_portal_dyn())?;
+        let step = entry.screen.back_dyn(host);
+        let out = self.apply(step);
+        self.close();
+        out
     }
 
     /// Does what a screen would ask for, from outside the stack (the app

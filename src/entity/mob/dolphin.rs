@@ -16,9 +16,10 @@
 //! | 8 | `FollowPlayerRiddenEntityGoal` (boats) | none |
 //! | 9 | `AvoidEntityGoal` (guardians, 8 blocks, 1.0) | move |
 //!
-//! The look goals only turn the head (a dolphin's head turns one degree),
-//! so only their hold on the flags is modelled: while one runs, the goals
-//! it outranks or ties can't start. `TryFindLiquidGoal` (0, no flags) sets
+//! The look goals hold their flags (while one runs, the goals it outranks
+//! or ties can't start) and, since v1.0 gap Track 2c, ask the
+//! `SmoothSwimmingLookControl` (`mob::head`), which swings the drawn body
+//! 4° a tick toward a head more than 10° off it. `TryFindLiquidGoal` (0, no flags) sets
 //! the move control's wanted position, which `SmoothSwimmingMoveControl`
 //! ignores once navigation is done and navigation overwrites while a path
 //! runs, so it has no effect and is left out. `FollowPlayerRiddenEntityGoal`
@@ -70,6 +71,17 @@ const SPECS: [Spec; 12] = [
     spec(9, MOVE),
 ];
 
+/// `AgeableMobGroupData(0.1F)` from `Dolphin.finalizeSpawn` (v1.0 gap Track 3).
+pub const BABY_SPAWN_CHANCE: f32 = 0.1;
+/// `Dolphin.BABY_SCALE`: a baby's box is the adult's times this.
+pub const BABY_SCALE: f64 = 0.65;
+
+/// v1.0 gap Track 3b: `EntityTypes.DOLPHIN`'s `eyeHeight(0.3)` and
+/// `BABY_DIMENSIONS.withEyeHeight(0.09375)`.
+pub fn eye_height(baby: bool) -> f64 {
+    if baby { f64::from(0.093_75_f32) } else { f64::from(0.3_f32) }
+}
+
 /// Air (seconds) below which `BreathAirGoal` runs: 140 ticks.
 const BREATH_AIR: f32 = 7.0;
 /// `DolphinSwimToTreasureGoal` needs 100 ticks of air.
@@ -92,6 +104,8 @@ pub(crate) struct Goals {
     treasure_stuck: bool,
     swim_with: Option<PlayerId>,
     random_look: i32,
+    /// v1.0 gap Track 2c: `RandomLookAroundGoal.relX` and `relZ`.
+    random_rel: (f64, f64),
     look_at: Option<PlayerId>,
     look_time: i32,
     breached: bool,
@@ -203,7 +217,7 @@ impl<W: MobWorld + ?Sized> Dolphin<'_, W> {
     }
 
     fn sees(&self, at: DVec3) -> bool {
-        let eye = self.m.pos + DVec3::Y * (self.m.shape().height * 0.85);
+        let eye = self.m.look_eye();
         line_of_sight(self.w, eye, at)
     }
 
@@ -248,7 +262,7 @@ impl<W: MobWorld + ?Sized> Host for Dolphin<'_, W> {
                 if self.rng.next_f32() >= 0.02 {
                     return false;
                 }
-                let eye = self.m.pos + DVec3::Y * (self.m.shape().height * 0.85);
+                let eye = self.m.look_eye();
                 self.g.look_at = self.nearest_player(6.0, eye);
                 self.g.look_at.is_some()
             }
@@ -357,7 +371,8 @@ impl<W: MobWorld + ?Sized> Host for Dolphin<'_, W> {
                 self.m.nav.move_to(self.w, path, &mover);
             }
             LOOK_AROUND => {
-                self.rng.next_f32();
+                let a = std::f64::consts::TAU * f64::from(self.rng.next_f32());
+                self.g.random_rel = (a.cos(), a.sin());
                 self.g.random_look = 20 + self.rng.next_int(20) as i32;
             }
             LOOK_AT => self.g.look_time = reduced(40 + self.rng.next_int(40) as i32),
@@ -445,8 +460,21 @@ impl<W: MobWorld + ?Sized> Host for Dolphin<'_, W> {
                     });
                 }
             }
-            LOOK_AROUND => self.g.random_look -= 1,
-            LOOK_AT => self.g.look_time -= 1,
+            // v1.0 gap Track 2c: the look goals ask the look control
+            // (`SmoothSwimmingLookControl`), at the dolphin's own speeds.
+            LOOK_AROUND => {
+                self.g.random_look -= 1;
+                let (x, z) = self.g.random_rel;
+                let eye = self.m.look_eye();
+                self.m.look_toward(DVec3::new(self.m.pos.x + x, eye.y, self.m.pos.z + z));
+            }
+            LOOK_AT => {
+                self.g.look_time -= 1;
+                if let Some(t) = self.player(self.g.look_at) {
+                    let at = t.pos + DVec3::Y * super::head::player_eye(t);
+                    self.m.look_toward(at);
+                }
+            }
             LEAP => self.leap_tick(),
             MELEE => self.melee_tick(),
             FETCH => {
@@ -543,7 +571,7 @@ impl<W: MobWorld + ?Sized> Dolphin<'_, W> {
             }
         }
         self.g.attack_in = (self.g.attack_in - 1).max(0);
-        if self.g.attack_in <= 0 && self.in_reach(&t) && self.sees(t.pos + DVec3::Y * t.shape.height * 0.85) {
+        if self.g.attack_in <= 0 && self.in_reach(&t) && self.sees(t.eye()) {
             self.g.attack_in = 20;
             self.m.attack_anim = 0.3;
             let flat = (t.pos - self.m.pos).with_y(0.0);
@@ -554,7 +582,8 @@ impl<W: MobWorld + ?Sized> Dolphin<'_, W> {
                 player: t.id,
                 damage: 3.0,
                 knockback: (flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 3.0).as_vec3(),
-                cause: crate::simulation::damage::Cause::mob("was slain by a dolphin"),
+                cause: crate::simulation::damage::Cause::mob("was slain by a dolphin")
+                    .by(Some(crate::entity::trident::Owner::Mob(self.m.uid))),
             });
         }
     }
@@ -649,7 +678,7 @@ impl<W: MobWorld + ?Sized> Dolphin<'_, W> {
         let keep = t.targetable
             && t.pos.distance_squared(self.m.pos) <= FOLLOW_RANGE * FOLLOW_RANGE
             && self.m.within_home(t.pos.floor().as_ivec3());
-        if keep && self.sees(t.pos + DVec3::Y * t.shape.height * 0.85) {
+        if keep && self.sees(t.eye()) {
             self.g.unseen = 0;
         } else if keep {
             self.g.unseen += 1;
@@ -677,7 +706,16 @@ impl Entities {
         if m.kind != MobKind::Dolphin || !m.alive() || !held.is_some_and(|s| is_fish(s.item)) {
             return None;
         }
-        m.dolphin_mut()?.got_fish = true;
+        // v1.0 gap Track 3: `Dolphin.mobInteract` grows a baby that can
+        // still age (`canAgeUp`) by a tenth of its remaining time
+        // (`ageUp(getSpeedUpSecondsWhenFeeding(-age), true)`); otherwise the
+        // fish sends it looking for treasure.
+        if m.baby && !m.age_locked {
+            // `ageUp(getSpeedUpSecondsWhenFeeding(-age), true)`: forced.
+            m.age_up(crate::entity::animals::speed_up_seconds(-m.age), true);
+        } else {
+            m.dolphin_mut()?.got_fish = true;
+        }
         Some(true)
     }
 
@@ -746,7 +784,7 @@ impl Entities {
             let steered = |c: &&super::super::minecart::Minecart| c.kind.boat().is_some() && inside(c.pos, 5.0);
             let boats: Vec<PlayerId> = self.minecarts.iter().filter(steered).filter_map(|c| c.rider).collect();
             let followed = m.dolphin().and_then(|d| d.boat).map_or((false, false), |id| (riding(id), moving(id)));
-            let eye = m.pos + DVec3::Y * (shape.height * 0.85);
+            let eye = m.look_eye();
             // `getNearestEntity` with `TargetingConditions`: the nearest of
             // the guardians it can see.
             let mut nearest: Option<(f64, usize)> = None;
@@ -758,7 +796,7 @@ impl Entities {
                     && inside(g.pos, 8.0)
                     && d2 <= 64.0
                     && nearest.is_none_or(|(bd, bj)| d2 < bd || d2 == bd && j < bj)
-                    && line_of_sight(w, eye, g.pos + DVec3::Y * (g.shape().height * 0.85))
+                    && line_of_sight(w, eye, g.look_eye())
                 {
                     nearest = Some((d2, j));
                 }
@@ -788,6 +826,22 @@ impl Entities {
                 continue;
             }
             let (pos, yrot, pitch, shape, alive) = (m.pos, m.yrot(), m.move_ctl.pitch, m.shape(), m.alive());
+            let eye = m.look_eye();
+            // v1.0 gap Track 3b: `AgeableMob.aiStep`'s happy-villager
+            // particle every fourth tick of a forced growth's 40, one at a
+            // time somewhere over the dolphin (`getRandomX(1)`,
+            // `getRandomY() + 0.5`), with the treasure goal's stand-in.
+            let sparkles = std::mem::take(&mut m.forced_sparkles);
+            for _ in 0..sparkles {
+                let mut b = crate::particles::Burst::new(
+                    crate::particles::Kind::Effect,
+                    pos + DVec3::Y * (shape.height * 0.5 + 0.5),
+                    1,
+                );
+                b.color = Some([0.35, 0.85, 0.3, 1.0]);
+                b.spread = DVec3::new(shape.half_width * 2.0, shape.height, shape.half_width * 2.0);
+                self.particles.push(crate::particles::Request::Burst(b));
+            }
             let Some(d) = m.dolphin_mut() else { continue };
             if std::mem::take(&mut d.happy) {
                 let mut b = crate::particles::Burst::new(
@@ -811,7 +865,7 @@ impl Entities {
                     (0.3 * ps * 1.5) as f64,
                     (0.3 * yc * pc + dir.sin() * pow) as f64,
                 ) / super::swim::TICK;
-                let at = pos + DVec3::Y * (shape.height * 0.85 - 0.3);
+                let at = eye - DVec3::Y * 0.3;
                 self.items.push(crate::entity::ItemEntity::new(stack, at, vel, 2.0, &mut self.rng));
             }
             let d = self.mobs[i].dolphin().unwrap();

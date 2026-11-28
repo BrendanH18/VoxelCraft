@@ -198,6 +198,15 @@ impl PlayerSession {
         self.player.vel = motion * knockback::TICK_RATE;
     }
 
+    /// v1.0 gap Track 2b: `causeExtraKnockback` pushes on this player with
+    /// no damage, or after a hit whatever it did (a mob's spear contact).
+    pub fn shoved(&mut self, pushes: [Option<knockback::Push>; 2], jitter: &mut dyn FnMut() -> f64) {
+        let hit = knockback::Hit { pushes, punch: None, throw: None };
+        let resistance = f64::from(self.inventory.knockback_resistance()).clamp(-2.0, 1.0);
+        let motion = hit.apply(self.player.vel / knockback::TICK_RATE, resistance, self.player.on_ground, jitter);
+        self.player.vel = motion * knockback::TICK_RATE;
+    }
+
     /// Restart the charge, as an attack or a swing at nothing does.
     pub fn reset_attack_strength(&mut self) {
         self.combat.ticker = 0;
@@ -330,7 +339,7 @@ impl PlayerSession {
                 eye + dir * 2.0
             }
             Target::Fireball => {
-                landed = entities.punch_fireball(eye, dir, reach);
+                landed = entities.punch_fireball(eye, dir, reach, self.id);
                 eye + dir * 2.0
             }
             Target::Decor(_) => {
@@ -511,7 +520,7 @@ impl PlayerSession {
         let range = crate::weapons::spear::player_range(self.mode.is_creative());
         let along = look.dot(self.player.vel / knockback::TICK_RATE);
         let block = self.spear_block_distance(world, eye, look, range.max + along.max(0.0));
-        let targets = entities.spear_targets(eye, look, range, along, block, None);
+        let targets = entities.spear_targets(world, eye, look, range, along, block, None);
         // `getAttributeValue(ATTACK_DAMAGE)` scaled by the charge, as an attack
         // with the hand not in use.
         let base = (mining::attack_damage(Some(stack.item)) + self.vitals.effects.attack_bonus()).max(0.0)
@@ -545,6 +554,27 @@ impl PlayerSession {
                     if self.inventory.wear(slot, mining::wear(stack.item, true)) {
                         tool_broken = Some(stack.item);
                     }
+                }
+            }
+        }
+        // v1.0 gap Track 2d: the dragon's parts in reach (`EnderDragonPart`
+        // is pickable): `stabAttack` hurts them with the spear's damage and
+        // its Sharpness (`hurtOrSimulate`, the dragon's part damage), and its
+        // knockback lands too, so a stab always counts.
+        let sharpness =
+            crate::enchant::damage_bonus(stack.active_enchants(), crate::enchant::Creature::Other) * strength;
+        for hit in entities.spear_dragon_parts(world, eye, look, range, along, block) {
+            if self.inventory.get(slot).is_none() {
+                break;
+            }
+            entities.strike_as(hit, base + sharpness, self.id, self.mode.is_creative());
+            hits = hits.saturating_add(1);
+            self.player.vel = knockback::slow_attacker(self.player.vel);
+            self.player.sprinting = false;
+            if self.mode.is_survival() {
+                self.vitals.hunger.exhaust(survival::EXHAUST_ATTACK);
+                if self.inventory.wear(slot, mining::wear(stack.item, true)) {
+                    tool_broken = Some(stack.item);
                 }
             }
         }

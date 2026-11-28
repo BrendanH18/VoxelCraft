@@ -130,6 +130,11 @@ pub mod tex {
     /// Seven flame animation frames.
     pub const FIRE_0: u16 = 89;
     pub const FIRE_FRAMES: u8 = 7;
+    /// v1.0 final track F3: Java's second fire texture (`fire_1`, and
+    /// `soul_fire_1` in soul fire's colours), seven frames packed one per
+    /// colour channel into three layers (`render::textures::fire_1`).
+    pub const FIRE_1: u16 = 4088;
+    pub const FIRE_1_END: u16 = FIRE_1 + 3;
     pub const SPRUCE_LOG_SIDE: u16 = 96;
     pub const SPRUCE_LOG_TOP: u16 = 97;
     pub const BIRCH_LOG_SIDE: u16 = 98;
@@ -381,11 +386,19 @@ pub mod tex {
         ];
         // v0.15 Track D's frosted ice (layers 4000..4004) and Track F's
         // explorer maps (4056..4066) set the count.
-        const ENDS2: [u32; 3] = [
+        const ENDS2: [u32; 7] = [
             super::super::frosted_ice::TEX_END as u32,
             super::super::explorer_maps::TEX_END as u32,
             // v0.16 Track A (layers 529..541).
             super::super::end_blocks::TEX_END as u32,
+            // v1.0 gap Track 7: the potted bamboo's leaf (4066).
+            super::super::utilities::GAP_TEX_END as u32,
+            // v1.0 gap track 6b: the item models' plant layers (4080..4084).
+            crate::content::item_models::TEX_END as u32,
+            // v1.0 final track F3: fire's second texture (4088..4091).
+            FIRE_1_END as u32,
+            // v1.0 final F10: the repeater's and comparator's tops (4092..4096).
+            crate::content::item_models::DIODE_TEX_END as u32,
         ];
         let mut max = 0;
         let mut i = 0;
@@ -1179,6 +1192,62 @@ impl Block {
             || super::wood::flat_icon(self)
             || super::colour_blocks::flat_icon(self)
             || super::cave_blocks::multiface_of(self).is_some()
+            || java_flat_block_item(self)
+            || crate::content::block_item_sprites::is_item_block(self)
+    }
+
+    /// v1.0 gap track 6b: an item of this block draws blended, as Java's
+    /// translucent chunk layer does (`ItemBlockRenderTypes`): stained glass
+    /// and stained panes, and the translucent blocks that aren't fluids
+    /// (ice, tinted glass, slime and honey blocks).
+    pub fn item_translucent(self) -> bool {
+        self.stained_glass_color().is_some()
+            || self.stained_pane_color().is_some()
+            || (self.kind() == RenderKind::Translucent && self.fluid().is_none())
+            || super::stone_blocks::translucent_solid(self.0)
+            || self == Block::HONEY_BLOCK
+    }
+
+    /// v1.0 gap track 6: the state an item of this block is drawn as. Java's
+    /// item models are the block models with their front to the north,
+    /// which a slot shows on the right (v1.0 gap track 6c: Java's GUI turn;
+    /// it was the left in the game's mirrored view); a whole-cube block with a front
+    /// (furnaces, pumpkins, dispensers, hives, observers) is turned to face
+    /// north, whatever state the item holds. Anything else draws as it is.
+    pub fn item_facing(self) -> Block {
+        use super::redstone_blocks::{self as r, Component};
+        match r::component(self) {
+            // Pistons' items point up (`piston_inventory`).
+            Some(Component::Piston { sticky, .. }) => return r::piston(4, sticky, false),
+            // Dispensers, droppers and observers face north (index 1).
+            Some(Component::Dispenser { dropper, .. }) => return r::dispenser(1, dropper),
+            Some(Component::Observer { .. }) => return r::observer(1, false),
+            _ => {}
+        }
+        // v1.0 gap track 6c: shaped blocks whose item model is a facing's
+        // block model, turned to the facing Java's blockstates give no turn:
+        // fence gates face south; the lectern, big dripleaf, dried ghast and
+        // calibrated sculk sensor north.
+        let model_facing = if self.is_gate() {
+            Some(Facing::South)
+        } else if self.base() == Block::LECTERN
+            || self.base() == super::overworld_blocks::BIG_DRIPLEAF
+            || super::dried_ghast::decode(self).is_some()
+            || super::cave_blocks::calibrated_of(self).is_some()
+        {
+            Some(Facing::North)
+        } else {
+            None
+        };
+        if let Some(facing) = model_facing {
+            let turned = self.with_facing(facing);
+            return if turned.base() == self.base() { turned } else { self };
+        }
+        if !super::shape::item_shape(self).is_empty() || self.top_drop() != 0 {
+            return self;
+        }
+        let turned = self.with_facing(Facing::North);
+        if turned.base() == self.base() { turned } else { self }
     }
 
     /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
@@ -1284,7 +1353,18 @@ impl Block {
         let c = if super::sugar_cane::owns(c.0) { Block::SUGAR_CANE } else { c };
         // Farmland of moisture 1-6 answers as dry farmland (v1.0 Track 4).
         let c = if super::farmland::owns(c.0) { Block::FARMLAND } else { c };
+        // A Nether portal along either axis answers as the portal (v1.0 gap
+        // Track 5b).
+        let c = if super::portal::owns(c.0) { Block::NETHER_PORTAL } else { c };
+        // A thin bamboo stalk answers as the thick one (v1.0 gap track 6c).
+        let c = super::overworld_blocks::thick_bamboo(c);
         (c != self).then_some(c)
+    }
+
+    /// A Nether portal block of either axis, or of a save from before
+    /// portals had one ([`super::portal::AXIS_X`]).
+    pub fn is_nether_portal(self) -> bool {
+        super::portal::is_portal(self)
     }
 
     /// Farmland of any moisture ([`super::farmland`]).
@@ -1403,6 +1483,12 @@ impl Block {
         }
         if super::farmland::owns(self.0) {
             return Block::FARMLAND;
+        }
+        if super::portal::owns(self.0) {
+            return Block::NETHER_PORTAL;
+        }
+        if super::overworld_blocks::is_thin_bamboo(self.0) {
+            return super::overworld_blocks::BAMBOO;
         }
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HEAVY_CORE;
@@ -2722,10 +2808,12 @@ impl Block {
         (84..=90).contains(&self.0).then(|| (self.0 - 84) as u8)
     }
 
-    /// Whether the crosshair can select this block (anything visible but fluids).
+    /// Whether the crosshair can select this block (anything visible but
+    /// fluids). A Nether portal is met at its thin plane (Java's
+    /// `NetherPortalBlock.getShape`, v1.0 gap Track 5c).
     #[inline(always)]
     pub fn is_targetable(self) -> bool {
-        self.kind() != RenderKind::Invisible && !self.is_fluid() && self != Block::NETHER_PORTAL
+        self.kind() != RenderKind::Invisible && !self.is_fluid()
     }
 
     /// Sand, gravel and the dragon egg fall when nothing holds them up.
@@ -2878,6 +2966,11 @@ impl Block {
         }
         if name == "white wool" {
             return Some(Block::WOOL);
+        }
+        // Java's default state, `axis=x` (state 104 is the axis-less
+        // portal of older saves).
+        if name == "nether portal" {
+            return Some(super::portal::AXIS_X);
         }
         (0..STATE_CAPACITY as u16)
             .map(Block)
@@ -3371,6 +3464,16 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         // Sugar cane ages 1-15 (13952 itself stays unregistered).
         13953..=super::sugar_cane::LAST => super::sugar_cane::registry(id),
+        // v1.0 gap track 6c: the thin bamboo stalks, named and drawn as the
+        // thick ones (their boxes differ, `mesh`).
+        super::overworld_blocks::THIN_BAMBOO_FIRST..=super::overworld_blocks::THIN_BAMBOO_LAST => {
+            match super::overworld_blocks::registry(id - super::overworld_blocks::THIN_BAMBOO_FIRST + 2022) {
+                Some(info) => info,
+                None => ("unknown", Invisible, all(0)),
+            }
+        }
+        // v1.0 gap Track 5b: the Nether portal along X and along Z.
+        super::portal::FIRST..=super::portal::LAST => ("nether portal", Translucent, all(tex::PORTAL)),
         // v1.0 Track 4: farmland moistures 1-6.
         super::farmland::FIRST..=super::farmland::LAST => {
             super::farmland::registry(id, column(tex::DIRT, tex::FARMLAND, tex::DIRT))
@@ -3737,6 +3840,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         kind,
         solid: solid && !(id >= 7936 && id <= 7968) && id != super::frog_blocks::FROGSPAWN.0,
         self_cull: matches!(id, 5 | 10 | 97 | 104 | 7968 | 8128)
+            || super::portal::owns(id)
             || stained_glass
             || super::stone_blocks::self_cull(id)
             || super::copper::self_culls(id),
@@ -3848,6 +3952,7 @@ const fn emission_of(i: usize) -> u8 {
             36 => 14,                                               // torch
             46 | 50..=52 | 913..=916 | 921..=924 => 13,             // lit furnace, every facing
             104 => 11,                                              // Nether portal
+            _ if super::portal::owns(i as u16) => 11,               // ... along X or Z
             200..=207 | 209 => 1,                                   // portal frames and dragon egg
             213 => 7,                                               // enchanting table
             1152 | 1154 | 1156 | 1158 | 1160 => 7,                  // lit redstone torches
@@ -3961,6 +4066,60 @@ static OPAQUE: [bool; STATE_CAPACITY] = {
     }
     arr
 };
+
+/// v1.0 gap track 6: block items Java 26.3 draws as a flat sprite of one of
+/// the block's own textures (`item/generated` with a `block/...` layer, from
+/// `tests/fixtures/java/26.3/item_models.json`), which drew their world
+/// shape in 3D until 2026-11-27: glass panes show their glass, bars their
+/// bars, and the lily pad, vine and frogspawn their own texture. (The
+/// lever, redstone torch and tripwire hook stay 3D: their textures are
+/// their boxes' materials, not sprites like Java's.)
+const JAVA_FLAT_BLOCK_ITEMS: &[&str] = &[
+    "glass_pane",
+    "white_stained_glass_pane",
+    "orange_stained_glass_pane",
+    "magenta_stained_glass_pane",
+    "light_blue_stained_glass_pane",
+    "yellow_stained_glass_pane",
+    "lime_stained_glass_pane",
+    "pink_stained_glass_pane",
+    "gray_stained_glass_pane",
+    "light_gray_stained_glass_pane",
+    "cyan_stained_glass_pane",
+    "purple_stained_glass_pane",
+    "blue_stained_glass_pane",
+    "brown_stained_glass_pane",
+    "green_stained_glass_pane",
+    "red_stained_glass_pane",
+    "black_stained_glass_pane",
+    "iron_bars",
+    "copper_bars",
+    "exposed_copper_bars",
+    "weathered_copper_bars",
+    "oxidized_copper_bars",
+    "waxed_copper_bars",
+    "waxed_exposed_copper_bars",
+    "waxed_weathered_copper_bars",
+    "waxed_oxidized_copper_bars",
+    "lily_pad",
+    "vine",
+    "frogspawn",
+];
+
+/// Whether `block` is the block of one of [`JAVA_FLAT_BLOCK_ITEMS`]' items.
+fn java_flat_block_item(block: Block) -> bool {
+    static BLOCKS: std::sync::OnceLock<Vec<Block>> = std::sync::OnceLock::new();
+    BLOCKS
+        .get_or_init(|| {
+            JAVA_FLAT_BLOCK_ITEMS
+                .iter()
+                // The vine's English name is plural ("Vines").
+                .filter_map(|&id| crate::java_registry::item(id, if id == "vine" { "Vines" } else { "" }))
+                .filter_map(crate::item::Item::block)
+                .collect()
+        })
+        .contains(&block)
+}
 
 #[cfg(test)]
 mod tests {

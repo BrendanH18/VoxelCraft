@@ -5,7 +5,6 @@ use super::{Mob, MobKind, villager::Profession};
 use crate::{color::DyeColor, inventory::StackName, item::Item};
 use glam::DVec3;
 use serde_json::{Value, json};
-use std::f32::consts::TAU;
 
 fn dye(v: &Value) -> Option<DyeColor> {
     DyeColor::ALL.get(usize::try_from(v.as_u64()?).ok()?).copied()
@@ -62,6 +61,13 @@ impl Mob {
         if let Some(s) = &self.copper_golem {
             v["copper_golem"] = s.look();
         }
+        if let Some(s) = &self.fox {
+            v["fox"] = s.look();
+        }
+        // v1.0 gap Track 2f: the goat's `LONG_JUMPING` pose.
+        if self.goat_long_jumping() {
+            v["goat_long_jumping"] = serde_json::json!(true);
+        }
         if let Some(s) = &self.ocelot {
             v["ocelot"] = serde_json::json!({"trusting":s.trusting,"crouching":s.crouching,"sprinting":s.sprinting});
         }
@@ -108,6 +114,11 @@ impl Mob {
         }
         if let Some(s) = self.bee {
             v["bee"] = s.save();
+            // v1.0 gap Track 7c: `shouldRoll`, which the bee's tumble
+            // (`rollAmount`) eases toward; not part of its saved state.
+            if s.rolling {
+                v["bee_roll"] = json!(true);
+            }
         }
         if let Some(a) = &self.animal {
             v["animal"] = json!({
@@ -127,18 +138,39 @@ impl Mob {
                 "chest": s.chest,
                 "saddle": s.saddled(),
                 "armor": s.slots[1].map_or(0, |a| a.item.0),
-                "sitting": s.sit_ticks > 0,
+                "sitting": s.camel_sitting,
+                "pose_time": s.pose_time,
                 "max_health": s.max_health,
                 "jump": s.jump_charge,
             });
+            // v1.0 gap Track 3b: what the camel's dash animation and head
+            // tilt, and the rearing animation, draw from.
+            if super::mounts::camel_like(self.kind) {
+                v["mount"]["dash"] = json!([s.dashing, s.dash_ticks, s.dash_cooldown]);
+            }
+            if super::mounts::rears(self.kind) {
+                v["mount"]["stand"] = json!([s.stand_anim_o, s.stand_anim]);
+                // v1.0 gap Track 2c: grazing and the open mouth, for Track
+                // 7b's horse animation (`getEatAnim`, `getMouthAnim`).
+                v["mount"]["eat"] = json!([s.eat_anim_o, s.eat_anim]);
+                v["mount"]["mouth"] = json!([s.mouth_anim_o, s.mouth_anim]);
+            }
         }
         if let Some(a) = &self.aquatic {
             v["aquatic"] = json!({"variant": a.variant, "puff": a.puff});
+            // v1.0 gap Track 7c: the squid's tentacle cycle, which its
+            // client animation (`Squid.aiStep`'s `tentacleAngle`) follows.
+            if matches!(self.kind, MobKind::Squid | MobKind::GlowSquid) {
+                v["aquatic"]["tentacle"] = json!(a.tentacle);
+            }
         }
         if let Some(villager) = &self.villager {
             v["villager"] = json!({
                 "profession": Profession::ALL.iter().position(|p| *p == villager.profession).unwrap_or(0),
                 "sleeping": villager.sleeping,
+                // v1.0 gap Track 7e: the type and level the outfit layers draw.
+                "type": villager.variant(),
+                "level": villager.level,
             });
         }
         if let Some(n) = &self.nether {
@@ -146,6 +178,19 @@ impl Mob {
             v["dancing"] = json!(n.dancing);
         }
         v
+    }
+
+    /// v1.0 gap Track 7c: a squid's tentacle cycle (`Squid.tentacleMovement`),
+    /// which LAN guests draw its tentacles from.
+    pub fn tentacle_cycle(&self) -> Option<f32> {
+        matches!(self.kind, MobKind::Squid | MobKind::GlowSquid).then(|| self.aquatic.as_ref().map(|a| a.tentacle))?
+    }
+
+    /// Sets the cycle a host sent, kept within a turn.
+    pub fn set_tentacle_cycle(&mut self, t: f32) {
+        if let Some(a) = self.aquatic.as_mut().filter(|_| t.is_finite()) {
+            a.tentacle = t.rem_euclid(std::f32::consts::TAU);
+        }
     }
 
     /// Applies [`Mob::look`] from the host; missing fields keep their previous values.
@@ -192,6 +237,14 @@ impl Mob {
         }
         if let Some(s) = &mut self.copper_golem {
             s.load_look(&v["copper_golem"]);
+        }
+        if let Some(s) = &mut self.fox {
+            s.apply_look(&v["fox"]);
+        }
+        if self.kind == MobKind::Goat
+            && let Some(a) = &mut self.animal
+        {
+            a.long_jumping = v["goat_long_jumping"] == true;
         }
         if let Some(s) = &mut self.ocelot {
             s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);
@@ -267,7 +320,9 @@ impl Mob {
             }
         });
         if self.kind == MobKind::Bee {
-            self.bee = Some(super::bee::State::load(&v["bee"]));
+            let mut bee = super::bee::State::load(&v["bee"]);
+            bee.rolling = v["bee_roll"] == true;
+            self.bee = Some(bee);
         }
         if let (Some(a), w) = (self.animal.as_mut(), &v["animal"])
             && w.is_object()
@@ -288,8 +343,21 @@ impl Mob {
             s.variant = small(&w["variant"]).unwrap_or(0).min(6);
             s.marking = small(&w["marking"]).unwrap_or(0).min(4);
             s.chest = w["chest"] == true;
-            s.sit_ticks = u32::from(w["sitting"] == true);
+            s.camel_sitting = w["sitting"] == true;
+            s.pose_time = w["pose_time"].as_u64().map_or(super::mounts::camel::FULL_STAND, |t| {
+                t.min(u64::from(super::mounts::camel::POSE_TIME_CAP)) as u32
+            });
             s.jump_charge = w["jump"].as_f64().map_or(0.0, |j| j.clamp(0.0, 1.0) as f32);
+            s.dashing = w["dash"][0] == true;
+            s.dash_ticks = w["dash"][1].as_u64().map_or(0, |t| t.min(u64::from(u16::MAX)) as u16);
+            s.dash_cooldown =
+                w["dash"][2].as_u64().map_or(0, |t| t.min(u64::from(super::mounts::DASH_COOLDOWN)) as u16);
+            let stand = |i: usize| w["stand"][i].as_f64().map_or(0.0, |a| a.clamp(0.0, 1.0) as f32);
+            (s.stand_anim_o, s.stand_anim) = (stand(0), stand(1));
+            let eat = |k: &str, i: usize| w[k][i].as_f64().map_or(0.0, |a| a.clamp(0.0, 1.0) as f32);
+            (s.eat_anim_o, s.eat_anim) = (eat("eat", 0), eat("eat", 1));
+            (s.mouth_anim_o, s.mouth_anim) = (eat("mouth", 0), eat("mouth", 1));
+            s.eating = s.eat_anim > 0.0;
             if let Some(h) = w["max_health"].as_f64().filter(|h| h.is_finite() && (1.0..=100.0).contains(h)) {
                 s.max_health = h as f32;
             }
@@ -312,6 +380,9 @@ impl Mob {
             a.variant = small(&w["variant"]).unwrap_or(a.variant);
             a.puff = small(&w["puff"]).unwrap_or(0).min(2);
         }
+        if let Some(t) = v["aquatic"]["tentacle"].as_f64() {
+            self.set_tentacle_cycle(t as f32);
+        }
         if let (Some(villager), w) = (self.villager.as_mut(), &v["villager"])
             && w.is_object()
         {
@@ -320,6 +391,12 @@ impl Mob {
                 .and_then(|i| Profession::ALL.get(i as usize).copied())
                 .unwrap_or(villager.profession);
             villager.sleeping = w["sleeping"] == true;
+            if let Some(t) = w["type"].as_str().filter(|t| t.len() <= 16) {
+                villager.map_variant = Some(t.to_owned());
+            }
+            if let Some(level) = w["level"].as_u64() {
+                villager.level = level.clamp(1, 5) as u8;
+            }
         }
         if let (Some(n), Some(w)) = (self.nether.as_mut(), v["weapon"].as_str()) {
             n.weapon = Weapon::from_name(w);
@@ -329,12 +406,16 @@ impl Mob {
 
     /// Advances the walk cycle of a replicated mob from its observed movement, as
     /// the host's physics does from velocity.
+    /// v1.0 gap Track 7: as Java's client does, from the snapshot's
+    /// movement (`calculateEntityAnimation`) and a newly replicated attack
+    /// (the swing), a tick per 50 ms.
     pub fn animate_replica(&mut self, dt: f32) {
-        let moved = (self.pos - self.previous_pos) * DVec3::new(1.0, 0.0, 1.0);
-        let hspeed = (moved.length() / dt as f64) as f32;
-        self.limb_phase = (self.limb_phase + hspeed * dt * 3.2) % (TAU * 64.0);
-        let amp = (hspeed / 2.0).min(1.0);
-        self.limb_amp += (amp - self.limb_amp) * (dt * 10.0).min(1.0);
+        let ticks = ((dt / super::motion::TICK).round() as u32).max(1);
+        let moved = (self.pos - self.previous_pos) / f64::from(ticks);
+        for _ in 0..ticks {
+            self.advance_walk(moved);
+            self.advance_swing();
+        }
     }
 }
 
@@ -342,6 +423,25 @@ impl Mob {
 mod tests {
     use super::*;
     use crate::entity::MobKind;
+
+    /// v1.0 gap Track 7c: a guest's squid draws its tentacles from the
+    /// host's cycle, and its bee tumbles while the host's rolls.
+    #[test]
+    fn squid_tentacles_and_bee_rolls_reach_lan_guests() {
+        let mut squid = Mob::new(MobKind::Squid, DVec3::ZERO, 0.0);
+        squid.set_tentacle_cycle(2.5);
+        let mut copy = Mob::new(MobKind::Squid, DVec3::ZERO, 0.0);
+        copy.apply_look(&squid.look());
+        assert_eq!(copy.tentacle_cycle(), Some(2.5));
+        let mut bee = Mob::new(MobKind::Bee, DVec3::ZERO, 0.0);
+        bee.bee.as_mut().unwrap().rolling = true;
+        let mut copy = Mob::new(MobKind::Bee, DVec3::ZERO, 0.0);
+        copy.apply_look(&bee.look());
+        assert!(copy.bee.unwrap().rolling);
+        bee.bee.as_mut().unwrap().rolling = false;
+        copy.apply_look(&bee.look());
+        assert!(!copy.bee.unwrap().rolling);
+    }
 
     #[test]
     fn look_round_trips_render_state() {
@@ -351,6 +451,7 @@ mod tests {
         s.marking = 2;
         s.slots[0] = Some(crate::inventory::Stack::new(Item::SADDLE, 1));
         s.slots[1] = Some(crate::inventory::Stack::new(Item::DIAMOND_HORSE_ARMOR, 1));
+        s.stand_anim = 0.6;
         horse.name = StackName::new("Spirit").unwrap();
         horse.leash_pos = Some(DVec3::new(1.5, 2.7, 3.5));
         horse.leash = Some(super::super::leash::Leash::Fence(glam::IVec3::new(1, 2, 3)));
@@ -361,6 +462,8 @@ mod tests {
         assert!(c.saddled());
         assert_eq!(c.slots[1].unwrap().item, Item::DIAMOND_HORSE_ARMOR);
         assert_eq!(copy.name.as_str(), Some("Spirit"));
+        // v1.0 gap Track 3b: the rearing animation's progress.
+        assert_eq!(c.stand_anim, 0.6);
         assert_eq!(copy.leash_pos, horse.leash_pos);
         assert!(matches!(copy.leash, Some(super::super::leash::Leash::Fence(_))));
 

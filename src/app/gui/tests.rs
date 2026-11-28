@@ -474,3 +474,72 @@ fn text_helpers_fit_and_wrap() {
     let lines = wrap("the quick brown fox jumps over the lazy dog", 60.0);
     assert!(lines.len() > 1 && lines.iter().all(|l| Ui::text_width(l) <= 60.0), "{lines:?}");
 }
+
+/// v1.0 gap Track 8c: a screen Java's portal closes (`isAllowedInPortal`
+/// false) closes as Escape closes it, taking the screens under it too; a
+/// pause screen stays.
+#[test]
+fn a_portal_closes_screens_not_allowed_in_it() {
+    struct Sign;
+    impl Screen<TestHost> for Sign {
+        type Id = Id;
+        fn title(&self, _: &TestHost) -> String {
+            "Sign".into()
+        }
+        fn widgets(&self, _: &TestHost, _: Size) -> Vec<Widget<Id>> {
+            Vec::new()
+        }
+        fn activate(&mut self, _: &mut TestHost, _: Id) -> Step<TestHost> {
+            Step::Stay
+        }
+        fn back(&mut self, host: &mut TestHost) -> Step<TestHost> {
+            host.log.push("kept the text".into());
+            Step::Pop
+        }
+        fn allowed_in_portal(&self) -> bool {
+            false
+        }
+    }
+    let mut host = TestHost::default();
+    let mut stack: Stack<TestHost> = Stack::with_clipboard(Box::new(Memory::default()));
+    stack.open(Test::new(0));
+    assert_eq!(stack.close_for_portal(&mut host), None);
+    assert!(stack.is_open(), "a pause screen stays");
+    stack.open(Sign);
+    stack.close_for_portal(&mut host);
+    assert_eq!(host.log, ["kept the text"]);
+    assert!(!stack.is_open(), "Java's setScreen(null) leaves nothing open");
+}
+
+/// v1.0 gap Track 8d: `Minecraft.isPaused` reads the current screen's
+/// `isPauseScreen` only, and `isAllowedInPortal` follows it: a screen that
+/// isn't a pause screen (the sign editor) on top of a pause screen doesn't
+/// pause, and closes in a portal.
+#[test]
+fn only_a_pause_screen_on_top_pauses() {
+    struct Sign;
+    impl Screen<TestHost> for Sign {
+        type Id = Id;
+        fn title(&self, _: &TestHost) -> String {
+            "Sign".into()
+        }
+        fn widgets(&self, _: &TestHost, _: Size) -> Vec<Widget<Id>> {
+            Vec::new()
+        }
+        fn activate(&mut self, _: &mut TestHost, _: Id) -> Step<TestHost> {
+            Step::Stay
+        }
+        fn pauses(&self) -> bool {
+            false
+        }
+    }
+    let mut host = TestHost::default();
+    let mut stack: Stack<TestHost> = Stack::with_clipboard(Box::new(Memory::default()));
+    assert!(!stack.pauses(), "nothing open");
+    stack.open(Test::new(0));
+    assert!(stack.pauses());
+    stack.open(Sign);
+    assert!(!stack.pauses(), "the top screen decides");
+    stack.close_for_portal(&mut host);
+    assert!(!stack.is_open());
+}

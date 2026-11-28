@@ -1,8 +1,10 @@
 //! Accessibility Settings: Java 26.3's screen with the options VoxelCraft
-//! has, in Java's order. Narrator, high contrast, chat, notification time,
-//! darkness, glint, splash and minecart options are left out until
-//! VoxelCraft has what they change; Monochrome Logo changes a loading screen
-//! VoxelCraft doesn't have. v0.18 Track 9 adds Closed Captions and the text
+//! has, in Java's order. Narrator, high contrast, notification time, glint,
+//! splash, narrator hotkey, minecart and block outline options are left out
+//! until VoxelCraft has what they change; Monochrome Logo changes a loading
+//! screen VoxelCraft doesn't have. v1.0 final F6 adds the chat options Java
+//! lists here (Chat Text Opacity, Line Spacing, Chat Delay) and Darkness
+//! Pulsing. v0.18 Track 9 adds Closed Captions and the text
 //! background pair the captions use, Track 2 Menu Background Blur, Track 8
 //! Hide Sky Flashes and Track 7 Panorama Scroll Speed with the title
 //! panorama.
@@ -17,9 +19,13 @@ pub(in crate::app) enum Id {
     MenuBlur,
     TextBackgroundOpacity,
     TextBackground,
+    ChatOpacity,
+    ChatLineSpacing,
+    ChatDelay,
     ViewBobbing,
     Distortion,
     FovEffects,
+    DarknessPulsing,
     DamageTilt,
     HideSkyFlashes,
     PanoramaSpeed,
@@ -62,6 +68,9 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
                 z,
                 format!("Text Background: {}", if s.background_for_chat_only { "Chat" } else { "Everywhere" }),
             ),
+            super::chat::opacity_slider(Id::ChatOpacity, &s.chat),
+            super::chat::line_spacing_slider(Id::ChatLineSpacing, &s.chat),
+            super::chat::delay_slider(Id::ChatDelay, &s.chat),
             Widget::button(Id::ViewBobbing, z, format!("View Bobbing: {}", on_off(s.view_bobbing))),
             Widget::slider(Id::Distortion, z, percent_label("Distortion Effects", s.distortion), s.distortion, 100)
                 .tooltip(
@@ -70,6 +79,16 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
             // Java's slider moves the square root of the value.
             Widget::slider(Id::FovEffects, z, percent_label("FOV Effects", s.fov_effects), s.fov_effects.sqrt(), 100)
                 .tooltip("Controls how much the field of view can change with gameplay effects."),
+            // `percentValueOrOffLabel`; like FOV Effects the slider moves
+            // the square root (`UnitDouble.xmap(Mth::square, Math::sqrt)`).
+            Widget::slider(
+                Id::DarknessPulsing,
+                z,
+                percent_label("Darkness Pulsing", s.darkness_effect_scale),
+                s.darkness_effect_scale.sqrt(),
+                100,
+            )
+            .tooltip("Controls how much the Darkness effect pulses when a Warden or Sculk Shrieker gives it to you."),
             Widget::slider(Id::DamageTilt, z, percent_label("Damage Tilt", s.damage_tilt), s.damage_tilt, 100)
                 .tooltip("The amount of camera shake caused by being hurt."),
             // Java's `options.hideLightningFlashes`, after Darkness Pulsing
@@ -112,10 +131,18 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
     }
 
     fn slide(&mut self, host: &mut H, id: Id, t: f32) {
+        if id == Id::ChatDelay {
+            change(host, |s| s.chat.delay = super::chat::delay_at(t));
+            return;
+        }
         let t = (t * 100.0).round() / 100.0;
         match id {
             Id::Distortion => change(host, |s| s.distortion = t),
             Id::FovEffects => change(host, |s| s.fov_effects = t * t),
+            Id::DarknessPulsing => change(host, |s| s.darkness_effect_scale = t * t),
+            Id::ChatOpacity => change(host, |s| s.chat.opacity = t),
+            Id::ChatLineSpacing => change(host, |s| s.chat.line_spacing = t),
+            Id::ChatDelay => {}
             Id::DamageTilt => change(host, |s| s.damage_tilt = t),
             Id::TextBackgroundOpacity => change(host, |s| s.text_background_opacity = t),
             Id::MenuBlur => change(host, |s| s.menu_blur = super::menu_blur_at(t)),

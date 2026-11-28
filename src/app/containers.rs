@@ -57,6 +57,34 @@ impl Game {
         }
     }
 
+    /// v1.0 final track F3: the bells shaking after a ring, drawn as
+    /// block-entity models with the body swung (their chunk mesh leaves
+    /// them out).
+    pub(super) fn bell_models(&self, alpha: f64) -> impl Iterator<Item = crate::render::BlockModel> + '_ {
+        self.world.bell_shakes().filter_map(move |(cell, shake)| {
+            let block = self.world.get_block(cell)?;
+            let centre = cell.as_dvec3() + DVec3::splat(0.5);
+            Some(crate::render::BlockModel {
+                min: cell.as_dvec3(),
+                size: 1.0,
+                block,
+                sky_light: crate::entity::sky_light(&self.world, centre),
+                block_light: self.torch_light(centre),
+                yaw: 0.0,
+                icon: None,
+                orient: None,
+                tint: [255; 4],
+                glint: false,
+                translucent: false,
+                mesh: None,
+                transform: None,
+                patterns: None,
+                lid: None,
+                swing: Some(shake.swing(alpha as f32)),
+            })
+        })
+    }
+
     /// v0.18 Track 9: the containers in use or with a lid still moving,
     /// drawn as block-entity models (their chunk mesh leaves them out).
     pub(super) fn lid_models(&self, alpha: f64) -> impl Iterator<Item = crate::render::BlockModel> + '_ {
@@ -73,8 +101,13 @@ impl Game {
                 icon: None,
                 orient: None,
                 tint: [255; 4],
+                glint: false,
+                translucent: false,
+                mesh: None,
+                transform: None,
                 patterns: None,
                 lid: Some(lid.at(alpha as f32)),
+                swing: None,
             })
         })
     }

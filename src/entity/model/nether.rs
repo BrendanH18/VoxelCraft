@@ -4,7 +4,10 @@
 
 use glam::Quat;
 
-use super::{Cuboid, DARK, GOLD, Mob, MobKind, PI, Parts, Rgb, WHITE, cube, part};
+use super::{
+    Cuboid, DARK, FRAC_PI_2, GOLD, Humanoid, Limb, Mob, MobKind, PI, Parts, Rgb, WHITE, age_ticks, cube, head_x,
+    motion, part,
+};
 use crate::entity::mob::Ai;
 use crate::entity::nether::Weapon;
 
@@ -79,6 +82,16 @@ pub(super) const AXE_ARM: &[Cuboid] = &[
     // A golden axe: handle forward from the fist, head on top.
     cube([-0.5, -10.0, -1.0], [0.5, -9.0, 10.0], [137, 103, 39], 10),
     cube([-0.6, -9.0, 6.5], [0.6, -5.0, 10.0], GOLD, 10),
+];
+
+/// v1.0 gap Track 2b: a golden spear gripped in the fist, its shaft
+/// through the hand and the gold head forward (an original stand-in for
+/// the item model).
+pub(super) const SPEAR_ARM: &[Cuboid] = &[
+    cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36),
+    cube([-0.5, -10.0, -7.0], [0.5, -9.0, 13.0], [137, 103, 39], 10),
+    cube([-1.0, -10.5, 13.0], [1.0, -8.5, 15.0], GOLD, 10),
+    cube([-0.5, -10.0, 15.0], [0.5, -9.0, 18.0], GOLD, 10),
 ];
 
 /// Hoglin and zoglin boxes in one palette each: body, mane, legs, head.
@@ -157,80 +170,153 @@ strider!(COLD_STRIDER_BODY, COLD_STRIDER_LEG, [126, 98, 126], [82, 60, 86]);
 
 const EAR: &[Cuboid] = &[cube([-0.5, -5.0, -2.0], [0.5, 0.0, 2.0], SKIN, 36)];
 
+/// v1.0 gap Track 7: `AbstractPiglinModel`'s ears: they flop with the
+/// walk and an idle drift, out from Java's 30 degrees (5 for babies).
+fn piglin_ears(m: &Mob, age: f32) -> (f32, f32) {
+    let rest = if m.is_baby() { 5.0f32 } else { 30.0 }.to_radians();
+    let freq = age * 0.1 + m.limb_phase * 0.5;
+    let amp = 0.08 + m.limb_amp * 0.4;
+    (rest + freq.cos() * amp, -rest - (freq * 1.2).cos() * amp)
+}
+
+/// A piglin's ears on its head at `head_at` turned by `head`: Java's
+/// right ear (`right_flop`, its z turn) on the head's -X and the left on
+/// its +X, z turns negated as [`super::Part::on_java_side`] sets them.
+fn push_ears(parts: &mut Parts, head_at: [f32; 3], head: Quat, (right_flop, left_flop): (f32, f32)) {
+    for (side, flop) in [(-1.0f32, right_flop), (1.0, left_flop)] {
+        let e = head * glam::Vec3::new(5.0 * side, 6.0, 0.0);
+        parts.push(part(
+            EAR,
+            [head_at[0] + e.x, head_at[1] + e.y, head_at[2] + e.z],
+            head * Quat::from_rotation_z(-flop),
+        ));
+    }
+}
+
 /// Animated parts for the mobs this module draws.
 pub(super) fn pose(m: &Mob, time: f32) -> Parts {
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.9;
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
+    let age = age_ticks(time);
+    let (hx, hy) = (head_x(m), -m.head_yaw);
     match m.kind {
         MobKind::Piglin => {
+            // `PiglinModel` over a humanoid's walk: an item held out
+            // (`ArmPose.ITEM`), a melee weapon held high while fighting and
+            // swung down to strike, a crossbow held or drawn, gold admired
+            // in the off hand, and the celebration dance.
             let n = m.nether.as_deref();
             let weapon = n.map_or(Weapon::None, |n| n.weapon);
             let admiring = n.is_some_and(|n| n.is_admiring());
             let dancing = n.is_some_and(|n| n.dancing);
             let fighting = m.ai == Ai::Chase;
-            let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.9 } else { 0.0 };
-            let (right, right_rot) = match weapon {
-                Weapon::GoldenSword if fighting => (SWORD_ARM, rx(-1.1 + chop)),
-                Weapon::GoldenSword => (SWORD_ARM, rx(-0.4 - swing * 0.5)),
-                Weapon::GoldenAxe if fighting => (AXE_ARM, rx(-1.1 + chop)),
-                Weapon::GoldenAxe => (AXE_ARM, rx(-0.4 - swing * 0.5)),
-                // Crossbow held level at the target.
-                Weapon::Crossbow if fighting => (CROSSBOW_ARM, rx(-PI / 2.0 - m.head_pitch)),
-                Weapon::Crossbow => (CROSSBOW_ARM, rx(-0.3 - swing * 0.5)),
-                Weapon::None => (ARM, rx(-swing * 0.6)),
-            };
-            let (left, left_rot) = if admiring {
-                (GOLD_ARM, rx(-1.0))
-            } else if weapon == Weapon::Crossbow && fighting {
-                (ARM, rx(-PI / 2.0 - m.head_pitch) * Quat::from_rotation_y(0.5))
-            } else {
-                (ARM, rx(swing * 0.6))
-            };
-            // Ears flop with the walk.
-            let mut flop = 0.45 + (time * 3.0 + m.limb_phase).sin() * 0.08 * (0.3 + m.limb_amp);
-            // The celebration dance: arms thrown up and out, the body bobbing, ears flapping.
-            // Java drives this from the client model (`PiglinArmPose.DANCING`), which the
-            // reference server jar lacks, so the motion is an original approximation.
-            let mut bob = 0.0;
-            let (mut left, mut left_rot, mut right, mut right_rot) = (left, left_rot, right, right_rot);
-            if dancing {
-                let beat = time * 6.0;
-                bob = beat.sin() * 0.6;
-                flop = 0.5 + (beat * 2.0).cos() * 0.25;
-                (left, right) = (ARM, ARM);
-                left_rot = Quat::from_rotation_z(1.2 + (beat * 2.0).cos() * 0.15) * rx(PI);
-                right_rot = Quat::from_rotation_z(-1.2 - (beat * 2.0).cos() * 0.15) * rx(PI);
+            let melee = matches!(weapon, Weapon::GoldenSword | Weapon::GoldenAxe);
+            let mut h = Humanoid::walk(m, 1.0);
+            if weapon != Weapon::None {
+                h.right_arm.x = h.right_arm.x * 0.5 - PI / 10.0;
+                h.right_arm.y = 0.0;
             }
+            let attacking = fighting && melee;
+            if attacking && m.swing.anim > 0.0 {
+                let (weapon_x, other_x) = motion::weapon_down(m.swing.anim, age);
+                h.right_arm = Limb { x: weapon_x, y: PI / 20.0, z: 0.0 };
+                h.left_arm = Limb { x: other_x, y: -PI / 20.0, z: 0.0 };
+            } else if weapon != Weapon::Crossbow || !fighting {
+                h.attack(m.swing.anim, hx);
+            }
+            h.bob(age);
+            let (mut right_ear, mut left_ear) = piglin_ears(m, age);
+            let mut head_rot = head;
+            let (mut head_at, mut body_y, mut arm_y) = ([0.0, 24.0, 0.0], 0.0, [0.0, 0.0]);
+            if dancing {
+                let d = age / 60.0;
+                right_ear = PI / 6.0 + (d * 30.0).sin() * 10f32.to_radians();
+                left_ear = -PI / 6.0 - (d * 30.0).cos() * 10f32.to_radians();
+                head_at = [-(d * 10.0).sin(), 24.0 - ((d * 40.0).sin() + 0.4), 0.0];
+                h.right_arm.z = (70.0f32 + (d * 40.0).cos() * 10.0).to_radians();
+                h.left_arm.z = -h.right_arm.z;
+                arm_y = [-((d * 40.0).sin() * 0.5 - 0.5), -((d * 40.0).sin() * 0.5 + 0.5)];
+                body_y = -(d * 40.0).sin() * 0.35;
+            } else if attacking && m.swing.anim == 0.0 {
+                h.right_arm.x = -1.8;
+            } else if let Some(used) = m.crossbow_draw() {
+                // v1.0 gap Track 7c: `CROSSBOW_CHARGE`
+                // (`AnimationUtils.animateCrossbowCharge`): the pulling arm
+                // draws back from 0.4 to 0.85 and up to level over the 25
+                // ticks the crossbow loads (`getTicksUsingItem`).
+                let used = (used / 25.0).clamp(0.0, 1.0);
+                h.right_arm = Limb { x: -0.970_796_35, y: -0.8, z: h.right_arm.z };
+                h.left_arm = Limb {
+                    x: -0.970_796_35 + (-FRAC_PI_2 + 0.970_796_35) * used,
+                    y: 0.4 + (0.85 - 0.4) * used,
+                    z: h.left_arm.z,
+                };
+            } else if weapon == Weapon::Crossbow && fighting {
+                // Java's `head.yRot` is the head yaw on Java's sides.
+                let hy = m.head_yaw;
+                h.right_arm = Limb { x: -FRAC_PI_2 + hx + 0.1, y: -0.3 + hy, z: h.right_arm.z };
+                h.left_arm = Limb { x: -1.5 + hx, y: 0.6 + hy, z: h.left_arm.z };
+            } else if admiring {
+                head_rot = rx(0.5);
+                h.left_arm.y = 0.5;
+                h.left_arm.x = -0.9;
+            }
+            // v1.0 gap Track 2b: a charging piglin couches its spear level
+            // under the arm, pointing where it looks.
+            if weapon == Weapon::GoldenSpear && m.spear_use.is_some() && !dancing {
+                h.right_arm = Limb { x: -0.35 - m.head_pitch * 0.5, y: 0.0, z: h.right_arm.z };
+            }
+            let right = match weapon {
+                Weapon::GoldenSword => SWORD_ARM,
+                Weapon::GoldenAxe => AXE_ARM,
+                Weapon::Crossbow => CROSSBOW_ARM,
+                Weapon::GoldenSpear => SPEAR_ARM,
+                Weapon::None => ARM,
+            };
+            let left = if admiring && !dancing { GOLD_ARM } else { ARM };
             let mut parts = Parts::new();
-            parts.push(part(BODY, [0.0, bob, 0.0], Quat::IDENTITY));
-            parts.push(part(LEG, [-2.0, 12.0, 0.0], rx(swing)));
-            parts.push(part(LEG, [2.0, 12.0, 0.0], rx(-swing)));
-            parts.push(part(left, [-6.0, 22.0 + bob, 0.0], left_rot));
-            parts.push(part(right, [6.0, 22.0 + bob, 0.0], right_rot));
-            parts.push(part(HEAD, [0.0, 24.0 + bob, 0.0], head));
-            let ear = |side: f32| head * glam::Vec3::new(5.0 * side, 6.0, 0.0);
-            let e = ear(-1.0);
-            parts.push(part(EAR, [e.x, 24.0 + bob + e.y, e.z], head * Quat::from_rotation_z(-flop)));
-            let e = ear(1.0);
-            parts.push(part(EAR, [e.x, 24.0 + bob + e.y, e.z], head * Quat::from_rotation_z(flop)));
+            parts.push(part(BODY, [0.0, body_y, 0.0], h.body()));
+            parts.push(part(LEG, [-2.0, 12.0, 0.0], rx(h.left_leg)));
+            parts.push(part(LEG, [2.0, 12.0, 0.0], rx(h.right_leg)));
+            let [lx, ly, lz] = h.arm_at([-6.0, 22.0, 0.0]);
+            parts.push(part(left, [lx, ly + arm_y[1], lz], h.left_arm.quat()));
+            let [rx_, ry_, rz_] = h.arm_at([6.0, 22.0, 0.0]);
+            parts.push(part(right, [rx_, ry_ + arm_y[0], rz_], h.right_arm.quat()));
+            // v1.0 gap Track 7b: the body and limbs on Java's sides, the
+            // dancing head's sway with them; the head keeps its own turn.
+            parts.push(part(HEAD, [-head_at[0], head_at[1], head_at[2]], head_rot));
+            parts.java_side(0..5);
+            push_ears(&mut parts, [-head_at[0], head_at[1], head_at[2]], head_rot, (right_ear, left_ear));
             parts
         }
         MobKind::PiglinBrute => {
-            let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 1.1 } else { 0.0 };
-            let axe = if m.ai == Ai::Chase { rx(-1.3 + chop) } else { rx(-0.4 - swing * 0.5) };
-            let flop = 0.4 + (time * 3.0 + m.limb_phase).sin() * 0.06 * (0.3 + m.limb_amp);
-            let mut parts = Parts::new();
-            parts.push(part(BRUTE_BODY, [0.0; 3], Quat::IDENTITY));
-            parts.push(part(BRUTE_LEG, [-2.0, 12.0, 0.0], rx(swing)));
-            parts.push(part(BRUTE_LEG, [2.0, 12.0, 0.0], rx(-swing)));
-            parts.push(part(ARM, [-6.0, 22.0, 0.0], rx(swing * 0.6)));
-            parts.push(part(AXE_ARM, [6.0, 22.0, 0.0], axe));
-            parts.push(part(HEAD, [0.0, 24.0, 0.0], head));
-            for side in [-1.0f32, 1.0] {
-                let e = head * glam::Vec3::new(5.0 * side, 6.0, 0.0);
-                parts.push(part(EAR, [e.x, 24.0 + e.y, e.z], head * Quat::from_rotation_z(flop * side)));
+            // `PiglinModel` with its axe: held out walking, held high while
+            // fighting and swung down to strike.
+            let fighting = m.ai == Ai::Chase;
+            let mut h = Humanoid::walk(m, 1.0);
+            h.right_arm.x = h.right_arm.x * 0.5 - PI / 10.0;
+            h.right_arm.y = 0.0;
+            if fighting && m.swing.anim > 0.0 {
+                let (weapon_x, other_x) = motion::weapon_down(m.swing.anim, age);
+                h.right_arm = Limb { x: weapon_x, y: PI / 20.0, z: 0.0 };
+                h.left_arm = Limb { x: other_x, y: -PI / 20.0, z: 0.0 };
+            } else {
+                h.attack(m.swing.anim, hx);
             }
+            h.bob(age);
+            if fighting && m.swing.anim == 0.0 {
+                h.right_arm.x = -1.8;
+            }
+            let (right_ear, left_ear) = piglin_ears(m, age);
+            let mut parts = Parts::new();
+            parts.push(part(BRUTE_BODY, [0.0; 3], h.body()));
+            parts.push(part(BRUTE_LEG, [-2.0, 12.0, 0.0], rx(h.left_leg)));
+            parts.push(part(BRUTE_LEG, [2.0, 12.0, 0.0], rx(h.right_leg)));
+            parts.push(part(ARM, h.arm_at([-6.0, 22.0, 0.0]), h.left_arm.quat()));
+            parts.push(part(AXE_ARM, h.arm_at([6.0, 22.0, 0.0]), h.right_arm.quat()));
+            parts.push(part(HEAD, [0.0, 24.0, 0.0], head));
+            parts.java_side(0..5);
+            push_ears(&mut parts, [0.0, 24.0, 0.0], head, (right_ear, left_ear));
             parts
         }
         MobKind::Hoglin | MobKind::Zoglin => {
@@ -240,15 +326,22 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             } else {
                 (HOGLIN_BODY, HOGLIN_FRONT, HOGLIN_BACK, HOGLIN_HEAD)
             };
-            // The head hangs low and tosses upward on an attack.
-            let toss = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 1.1 } else { 0.0 };
+            // `HoglinModel`: legs swing `cos(pos) * 1.2 * speed` (no 0.6662);
+            // the head hangs 50 degrees down and butts up to 20 degrees
+            // above level and back over the 10-tick attack. It looks
+            // round but never up or down.
+            let ticks = (m.attack_anim / motion::TICK).round();
+            let butt = 1.0 - (10.0 - 2.0 * ticks).abs() / 10.0;
+            let head_x = 0.872_664_63 + (-PI / 9.0 - 0.872_664_63) * butt;
+            let leg = m.limb_phase.cos() * 1.2 * m.limb_amp;
             let mut parts = Parts::new();
             parts.push(part(body, [0.0; 3], Quat::IDENTITY));
-            parts.push(part(front, [-4.5, 12.0, 8.0], rx(swing)));
-            parts.push(part(front, [4.5, 12.0, 8.0], rx(-swing)));
-            parts.push(part(back, [-4.5, 12.0, -9.0], rx(-swing)));
-            parts.push(part(back, [4.5, 12.0, -9.0], rx(swing)));
-            parts.push(part(head_box, [0.0, 15.0, 12.0], head * rx(0.6 - toss)));
+            // v1.0 gap Track 7c: Java's right legs on -X.
+            parts.push(part(front, [-4.5, 12.0, 8.0], rx(leg)));
+            parts.push(part(front, [4.5, 12.0, 8.0], rx(-leg)));
+            parts.push(part(back, [-4.5, 12.0, -9.0], rx(-leg)));
+            parts.push(part(back, [4.5, 12.0, -9.0], rx(leg)));
+            parts.push(part(head_box, [0.0, 15.0, 12.0], Quat::from_rotation_y(-m.head_yaw) * rx(head_x)));
             if zoglin {
                 parts.push(part(ZOGLIN_ROT, [0.0; 3], Quat::IDENTITY));
             }
@@ -257,13 +350,28 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Strider => {
             let cold = m.nether.as_ref().is_some_and(|n| n.cold);
             let (body, leg) = if cold { (COLD_STRIDER_BODY, COLD_STRIDER_LEG) } else { (STRIDER_BODY, STRIDER_LEG) };
-            // Long, slow strides; a cold strider shivers.
-            let stride = swing * 0.7;
+            // `StriderModel`: the speed it animates with is capped at 0.25;
+            // the body rocks and bobs at 1.5 times the walk position and
+            // the legs swing, splay and lift at half that. A cold strider
+            // shivers.
+            let (pos, speed) = (m.limb_phase, m.limb_amp.min(0.25));
+            let half = pos * 0.75;
+            // v1.0 gap Track 7c: on Java's sides (the right leg on -X; y
+            // and z turns change sign).
+            let rock = -0.4 * (pos * 1.5).sin() * speed;
+            let bob = 4.0 * (pos * 1.5).cos() * speed;
             let shiver = if cold { (time * 45.0).sin() * 0.04 } else { 0.0 };
+            let leg_rot = |sign: f32| {
+                Limb { x: -sign * half.sin() * 2.0 * speed, y: 0.0, z: sign * PI / 18.0 * half.cos() * speed }.quat()
+            };
+            let lift = |sign: f32| -sign * 4.0 * half.sin() * speed;
             let mut parts = Parts::new();
-            parts.push(part(body, [0.0; 3], Quat::from_rotation_z(shiver)));
-            parts.push(part(leg, [-4.0, 14.0, 0.0], rx(stride)));
-            parts.push(part(leg, [4.0, 14.0, 0.0], rx(-stride)));
+            // Unridden, the whole body looks where the strider looks.
+            let ridden = m.mount.as_ref().is_some_and(|s| s.rider.is_some());
+            let (bx, by) = if ridden { (0.0, 0.0) } else { (hx, hy) };
+            parts.push(part(body, [0.0, bob, 0.0], Limb { x: bx, y: by, z: shiver + rock }.quat()));
+            parts.push(part(leg, [-4.0, 14.0 + lift(1.0), 0.0], leg_rot(1.0)));
+            parts.push(part(leg, [4.0, 14.0 + lift(-1.0), 0.0], leg_rot(-1.0)));
             parts
         }
         _ => Parts::new(),

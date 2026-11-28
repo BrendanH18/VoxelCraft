@@ -15,14 +15,20 @@
 
 pub mod block_sounds;
 mod breeze;
+mod bundle;
 mod crafter;
+pub mod creatures;
 mod dsp;
 mod events;
 mod export;
 mod flight;
+mod fox;
+mod goat;
+pub mod horns;
 mod illager;
 mod minecart;
 pub mod mixer;
+mod mounts;
 mod raid;
 mod sniffer;
 pub mod sounds;
@@ -33,6 +39,7 @@ mod voices;
 mod warden;
 mod weapons;
 mod wither;
+mod work;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -84,6 +91,9 @@ pub struct Audio {
     /// Dropping this ends the audio thread (and closes the device).
     _stop: Option<Sender<()>>,
     muted: bool,
+    /// v1.0 final F11: a level nobody is in is ticking; nothing it plays
+    /// reaches the player (or a LAN guest's tap, or the captions).
+    suppressed: bool,
     volume: f32,
     rng: Rng,
     // Player-state tracking for footsteps, landings, jumps and water.
@@ -114,6 +124,12 @@ pub struct Audio {
 }
 
 impl Audio {
+    /// v1.0 final F11: while `on`, nothing played reaches anyone (a level
+    /// nobody is in is ticking). Returns the previous setting.
+    pub fn suppress(&mut self, on: bool) -> bool {
+        std::mem::replace(&mut self.suppressed, on)
+    }
+
     /// Starts the audio thread. `volume` is the master volume (0..1).
     pub fn new(muted: bool, volume: f32) -> Self {
         let volume = volume.clamp(0.0, 1.0);
@@ -165,6 +181,7 @@ impl Audio {
             music,
             _stop: stop,
             muted,
+            suppressed: false,
             volume,
             rng: Rng::new(seed),
             was_on_ground: true,
@@ -206,6 +223,9 @@ impl Audio {
     /// than the sound's own (see [`Sound::source`]), such as a footstep
     /// standing in for a hoe tilling soil (`BLOCKS`).
     pub fn play_in(&mut self, source: SoundSource, sound: Sound, pos: Option<DVec3>, gain: f32, pitch: (f32, f32)) {
+        if self.suppressed {
+            return;
+        }
         if let Some(tap) = &mut self.tap
             && tap.len() < 512
         {
@@ -358,6 +378,14 @@ impl Audio {
                 .map_or(voxelcraft::music::Situation::NetherWastes, voxelcraft::music::Situation::nether),
             dragon,
         });
+        // v1.0 final Track F4: `Minecraft.getMusicVolume`, the camera's
+        // `EnvironmentAttributes.MUSIC_VOLUME` (26.3: 0 in the pale garden,
+        // `OverworldBiomes.darkForest(.., true)`, 1 elsewhere), which
+        // `MusicManager.fadePlaying` fades the current track towards.
+        // Nothing else (a playing jukebox included) changes it.
+        let pale = world.generator.dimension == crate::world::terrain::Dimension::Overworld
+            && column.biome == crate::world::terrain::Biome::PaleGarden;
+        self.music.set_gain(if pale { 0.0 } else { 1.0 });
     }
 
     /// Toggles mute; returns whether sound is now muted.

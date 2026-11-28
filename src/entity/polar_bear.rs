@@ -8,6 +8,8 @@ pub(super) struct Aim {
     pub foe: Foe,
     pub pos: DVec3,
     pub shape: Shape,
+    /// The target's eye height (Track 2d: `getEyeY`).
+    pub eye: f64,
 }
 #[derive(Clone, Debug)]
 pub struct State {
@@ -92,11 +94,13 @@ impl Entities {
                 foe,
                 pos: p.pos,
                 shape: p.shape,
+                eye: p.eye_height(),
             }),
             Foe::Mob(id) => self.mobs.iter().find(|m| m.uid == id && m.alive() && m.simulation_active).map(|m| Aim {
                 foe,
                 pos: m.pos,
                 shape: m.shape(),
+                eye: m.eye_height(),
             }),
         }
     }
@@ -126,6 +130,7 @@ impl Entities {
             let m = &self.mobs[i];
             let pos = m.pos;
             let shape = m.shape();
+            let eye = m.look_eye();
             if m.baby {
                 s.calm();
                 self.mobs[i].polar_bear = Some(s);
@@ -150,11 +155,7 @@ impl Entities {
             if let Some(t) = target {
                 if pos.distance_squared(t.pos) > 400.0 {
                     target = None;
-                } else if !super::mob::line_of_sight(
-                    w,
-                    pos + DVec3::Y * shape.height * 0.85,
-                    t.pos + DVec3::Y * t.shape.height * 0.85,
-                ) {
+                } else if !super::mob::line_of_sight(w, eye, t.pos + DVec3::Y * t.eye) {
                     s.unseen = s.unseen.saturating_add(ticks);
                     if s.unseen > 60 {
                         target = None;
@@ -185,15 +186,10 @@ impl Entities {
                         .filter(player_eligible)
                         .filter(|p| pos.distance_squared(p.pos) <= 100.0)
                         .filter(|p| {
-                            self.mobs[i].polar_reachable(w, p.pos)
-                                && super::mob::line_of_sight(
-                                    w,
-                                    pos + DVec3::Y * shape.height * 0.85,
-                                    p.pos + DVec3::Y * 1.62,
-                                )
+                            self.mobs[i].polar_reachable(w, p.pos) && super::mob::line_of_sight(w, eye, p.eye())
                         })
                         .min_by(|a, b| pos.distance_squared(a.pos).total_cmp(&pos.distance_squared(b.pos)))
-                        .map(|p| Aim { foe: Foe::Player(p.id), pos: p.pos, shape: p.shape });
+                        .map(|p| Aim { foe: Foe::Player(p.id), pos: p.pos, shape: p.shape, eye: p.eye_height() });
                 }
                 if target.is_none() && s.anger_end > now && self.rng.next_int(5) == 0 {
                     let universal = self.neutral_universal_anger && s.angry_at.is_none();
@@ -202,33 +198,23 @@ impl Entities {
                         .iter()
                         .filter(player_eligible)
                         .filter(|p| universal || s.angry_at == Some(Foe::Player(p.id)))
-                        .filter(|p| {
-                            pos.distance_squared(p.pos) <= 400.0
-                                && super::mob::line_of_sight(
-                                    w,
-                                    pos + DVec3::Y * shape.height * 0.85,
-                                    p.pos + DVec3::Y * 1.62,
-                                )
-                        })
+                        .filter(|p| pos.distance_squared(p.pos) <= 400.0 && super::mob::line_of_sight(w, eye, p.eye()))
                         .min_by(|a, b| pos.distance_squared(a.pos).total_cmp(&pos.distance_squared(b.pos)))
-                        .map(|p| Aim { foe: Foe::Player(p.id), pos: p.pos, shape: p.shape });
+                        .map(|p| Aim { foe: Foe::Player(p.id), pos: p.pos, shape: p.shape, eye: p.eye_height() });
                 }
                 if target.is_none() && self.rng.next_int(5) == 0 {
                     target = self
                         .mob_index
                         .nearest(&self.mobs, pos, 20.0, |b| {
                             b.kind == MobKind::Fox
-                                && super::mob::line_of_sight(
-                                    w,
-                                    pos + DVec3::Y * shape.height * 0.85,
-                                    b.pos + DVec3::Y * b.shape().height * 0.85,
-                                )
+                                && super::mob::line_of_sight(w, eye, b.look_eye())
                                 && self.mobs[i].polar_reachable(w, b.pos)
                         })
                         .map(|j| Aim {
                             foe: Foe::Mob(self.mobs[j].uid),
                             pos: self.mobs[j].pos,
                             shape: self.mobs[j].shape(),
+                            eye: self.mobs[j].eye_height(),
                         });
                 }
             }

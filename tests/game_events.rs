@@ -258,7 +258,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.item.FlintAndSteelItem.useOn", "posted: interact block_use_event (ignited)"),
     ("world.item.HangingEntityItem.useOn", "posted: interact block_use_event (decor placed)"),
     ("world.item.HoneycombItem.useOn", "posted: interact block_use_event (waxed)"),
-    ("world.item.InstrumentItem.play", "absent: goat horns can't be played"),
+    ("world.item.InstrumentItem.play", "posted: a goat horn blown, at the player"),
     ("world.item.JukeboxPlayable.tryInsertIntoJukebox", "posted: interact block_use_event"),
     ("world.item.JukeboxSongPlayer.stop", "posted: jukebox vibration_hook"),
     ("world.item.JukeboxSongPlayer.tick", "posted: jukebox vibration_hook"),
@@ -893,4 +893,49 @@ fn vehicle_stores_closing_and_hits_on_carts_post_their_events() {
     let damaged = queued(&mut w, &mut e);
     assert_eq!(kinds(&damaged), [GameEvent::EntityDamage]);
     assert_eq!(damaged[0].source.player, Some(PLAYER));
+}
+
+/// v1.0 final Track F4: `InstrumentItem.use` plays the horn and posts
+/// `instrument_play` at the player's position from the player; every goat
+/// horn then cools down for 140 ticks.
+#[test]
+fn goat_horns_post_instrument_play_and_cool_down() {
+    use voxelcraft::session::interact::{UseContext, Used};
+    let mut w = world();
+    let (mut s, mut e) = session();
+    s.inventory.slots[0] = Some(Stack::new(Item(Item::GOAT_HORN.0 + 5), 1));
+    s.inventory.slots[1] = Some(Stack::new(Item::GOAT_HORN, 1));
+    s.player.pitch = -1.2;
+    w.take_entity_game_events();
+    let ctx = UseContext { sneaking: false, others: &[] };
+    let used = s.use_held(0, &mut w, &mut e, &ctx).unwrap().unwrap();
+    assert_eq!(used.used, Used::HornPlayed { instrument: 5, from: s.player.pos });
+    let posted = w.take_entity_game_events();
+    assert_eq!(kinds(&posted), [GameEvent::InstrumentPlay]);
+    assert_eq!(posted[0].pos, s.player.pos);
+    assert_eq!(posted[0].source.player, Some(PLAYER));
+    // The cooldown is the item's, so another instrument waits too.
+    assert!(s.use_held(1, &mut w, &mut e, &ctx).is_err());
+    assert!(w.take_entity_game_events().is_empty());
+    assert!((s.vitals.horn_cooldown - 140.0 * 0.05).abs() < 1e-5, "Mth.floor(7.0 * 20) ticks");
+    s.vitals.horn_cooldown = 0.05;
+    assert!(s.use_held(1, &mut w, &mut e, &ctx).is_err(), "still cooling a tick before the end");
+    s.vitals.horn_cooldown = 0.0;
+    let used = s.use_held(1, &mut w, &mut e, &ctx).unwrap().unwrap();
+    assert!(matches!(used.used, Used::HornPlayed { instrument: 0, .. }));
+    // `startUsingItem`: held up (and slowing the player) until released
+    // or for its 140-tick use duration.
+    assert!(s.tooting() && s.using_item());
+    for _ in 0..139 {
+        s.tick_tooting(1, true);
+    }
+    assert!(s.tooting(), "held up for 139 ticks");
+    s.tick_tooting(1, true);
+    assert!(!s.tooting() && !s.using_item(), "lowered at its use duration");
+    s.vitals.horn_cooldown = 0.0;
+    s.use_held(1, &mut w, &mut e, &ctx).unwrap().unwrap();
+    s.tick_tooting(1, false);
+    assert!(!s.tooting(), "releasing use lowers it");
+    // The horn isn't used up.
+    assert!(s.inventory.get(0).is_some() && s.inventory.get(1).is_some());
 }

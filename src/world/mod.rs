@@ -54,6 +54,7 @@ pub mod dungeon;
 pub mod end;
 pub mod end_blocks;
 pub mod end_city;
+pub mod end_islands;
 pub mod end_portal;
 pub mod explorer_maps;
 pub mod explosion;
@@ -71,7 +72,7 @@ pub mod furnace;
 pub mod gadgets;
 pub mod gen5_blocks;
 pub mod geode;
-mod growth;
+pub(crate) mod growth;
 pub mod heavy_core;
 mod honey;
 pub mod infested;
@@ -98,8 +99,11 @@ mod nether_decoration;
 pub mod nether_features;
 mod nether_flora;
 pub mod nether_fossil;
+mod nether_order;
 pub mod nether_placed;
+mod nether_surface;
 pub mod noise;
+pub mod offset;
 pub mod ore;
 pub mod overworld_blocks;
 mod overworld_flora;
@@ -144,6 +148,7 @@ pub mod sugar_cane;
 pub mod sulfur_springs;
 pub mod temples;
 pub mod terrain;
+pub mod tickets;
 pub mod trail_ruins;
 pub mod trees;
 pub mod trial;
@@ -225,11 +230,15 @@ impl GeneratedChunk {
         if generator.dimension == terrain::Dimension::Overworld && generator.generation >= terrain::Generation::V2 {
             fluid_ticks.extend(underground::spring_ticks(generator, pos, &data));
         }
-        // GEN-04a: generation 6's Nether lava springs start flowing.
+        // GEN-04a: generation 6's and 7's Nether lava springs start flowing.
         if let Some(nether) = generator.nether_gen()
             && generator.generation >= terrain::Generation::V6
         {
-            fluid_ticks.extend(nether_decoration::v6::spring_ticks(nether, pos, &data));
+            fluid_ticks.extend(if generator.generation >= terrain::Generation::V7 {
+                nether_order::spring_ticks(nether, pos, &data)
+            } else {
+                nether_decoration::v6::spring_ticks(nether, pos, &data)
+            });
         }
         let bubble_seeds = if generator.dimension == terrain::Dimension::End {
             Vec::new()
@@ -319,6 +328,9 @@ pub struct World {
     /// Player-modified chunks that are currently unloaded. With region
     /// storage, only `chunks.bin` chunks not yet moved into records.
     saved: FxHashMap<IVec3, Arc<ChunkData>>,
+    /// v1.0 final F7: walls from `chunks.bin` whose post waits for a
+    /// neighbouring chunk to load (`wall_states`); not saved.
+    legacy_walls: FxHashSet<IVec3>,
     /// v1.0 Track 3b: where unloaded chunks go (see [`chunk_records`]);
     /// `None` keeps them in memory.
     regions: Option<region::RegionStore>,
@@ -347,11 +359,21 @@ pub struct World {
     simulation_host: Option<IVec2>,
     /// The host's exact position, for distance rules such as fire spread.
     simulation_host_pos: Option<DVec3>,
+    /// v1.0 gap Track 8e/8f: the host has left the level for the End
+    /// credits (`showEndCredits`), so their chunk ticket is gone.
+    simulation_host_away: bool,
     /// Whether each registered player (host first, then the others in
     /// order) is a Spectator, whom fire spread ignores.
     simulation_spectators: Vec<bool>,
     region: Option<Box<Region>>,
     meshes_enabled: bool,
+    /// v1.0 final F11: a level nobody is in (see [`tickets`]): no host
+    /// view to stream, mesh or keep; only what its tickets reach loads.
+    background: bool,
+    /// Whether meshing was on before [`World::set_background`] turned it off.
+    meshes_when_viewed: bool,
+    /// v1.0 final F11: the level's loading tickets (Java chunk, level).
+    ticket_loads: Vec<(IVec2, i32)>,
     remote: bool,
     light_updates: lighting::LightUpdates,
     sky_updates: lighting::LightUpdates,
@@ -407,6 +429,10 @@ pub struct World {
     village_homes: FxHashMap<IVec3, IVec3>,
     /// Generation 4 village residents by spawn cell (see `village_life`).
     village_residents: FxHashMap<IVec3, village::Resident>,
+    /// v1.0 final F5: generation 7 mineshafts' chest minecarts still to
+    /// spawn, by rail cell, with their `abandoned_mineshaft` loot seeds
+    /// (derived from generation like `village_residents`, never saved).
+    mineshaft_carts: FxHashMap<IVec3, u64>,
     /// Banners in loaded chunks (see `colour_blocks`), which draw as models.
     banners: FxHashMap<IVec3, Block>,
     /// Straw beds in use (head, where the sleeper lies), which break when left.
@@ -425,6 +451,10 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// Generation 7's return gateways (`end_gateway_return`) in chunks
+    /// generated since the game last took them: each is a new
+    /// `TheEndGatewayBlockEntity`, its age starting at 0.
+    pub generated_gateways: Vec<IVec3>,
     /// Bounded client visual requests, also emitted by headless player actions.
     pub particles: crate::particles::Requests,
     /// Experience released at a block (a broken furnace's store); the game
@@ -502,7 +532,13 @@ pub struct World {
     /// Songs that started (level event 1010): jukebox and song index.
     pub records_started: Vec<(IVec3, usize)>,
     compost_sequence: u64,
+    /// v1.0 gap Track 2h: composter sounds for the game to play.
+    composter_cues: Vec<(IVec3, composter::Cue)>,
+    /// v1.0 gap Track 2h: bone meal sounds (level event 1505) to play.
+    bone_meal_sounds: Vec<IVec3>,
     bell_rings: Vec<IVec3>,
+    /// v1.0 final track F3: bells shaking after a ring (`world::bell`).
+    bell_shakes: rustc_hash::FxHashMap<IVec3, bell::Shake>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -803,6 +839,7 @@ impl World {
             chunks: FxHashMap::default(),
             columns: FxHashMap::default(),
             saved,
+            legacy_walls: FxHashSet::default(),
             regions: None,
             region_records: Default::default(),
             gen_in_flight: FxHashSet::default(),
@@ -821,9 +858,13 @@ impl World {
             simulation_others: Vec::new(),
             simulation_host: None,
             simulation_host_pos: None,
+            simulation_host_away: false,
             simulation_spectators: Vec::new(),
             region: None,
             meshes_enabled,
+            background: false,
+            meshes_when_viewed: meshes_enabled,
+            ticket_loads: Vec::new(),
             remote: false,
             light_updates: Default::default(),
             sky_updates: Default::default(),
@@ -858,6 +899,7 @@ impl World {
             navigation_updates: navigation::Updates::default(),
             village_homes: FxHashMap::default(),
             village_residents: FxHashMap::default(),
+            mineshaft_carts: FxHashMap::default(),
             banners: FxHashMap::default(),
             straw_sleepers: Vec::new(),
             leaf_decay: FxHashMap::default(),
@@ -866,6 +908,7 @@ impl World {
             tile_drops: true,
             rules: WorldRules::default(),
             drops: Vec::new(),
+            generated_gateways: Vec::new(),
             particles: Default::default(),
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
@@ -902,7 +945,10 @@ impl World {
             records: Vec::new(),
             records_started: Vec::new(),
             compost_sequence: 0,
+            composter_cues: Vec::new(),
+            bone_meal_sounds: Vec::new(),
             bell_rings: Vec::new(),
+            bell_shakes: Default::default(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -1017,6 +1063,11 @@ impl World {
     }
 
     fn priority(&self, pos: IVec3) -> i32 {
+        if self.background {
+            // v1.0 final F11: nearest ticket first.
+            let d = self.ticket_loads.iter().map(|&(c, _)| (IVec2::new(pos.x, pos.z) * 2 - c).abs().max_element());
+            return d.min().unwrap_or(0);
+        }
         let c = self.center.unwrap_or(IVec3::ZERO);
         let dy = (pos.y - c.y) * 3 / 2;
         self.horizontal_dist2(pos) * 2 + dy * dy
@@ -1024,29 +1075,122 @@ impl World {
 
     /// Chunks within this radius are meshed and drawn.
     fn in_mesh_range(&self, pos: IVec3) -> bool {
-        self.meshes_enabled && self.horizontal_dist2(pos) <= self.render_distance * self.render_distance
+        self.meshes_enabled
+            && !self.background
+            && self.horizontal_dist2(pos) <= self.render_distance * self.render_distance
     }
 
     /// Loaded radius is one ring larger than the mesh radius so every meshed
     /// chunk has all of its neighbours.
     fn in_load_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance as f32 + 1.5;
-        (self.horizontal_dist2(pos) as f32) <= r * r
+        (!self.background && (self.horizontal_dist2(pos) as f32) <= r * r)
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
                 d.length_squared() <= self.agent_radius * self.agent_radius
             })
+            || self.ticket_loaded(pos)
     }
 
     /// Extra hysteresis before unloading so walking back and forth across a
     /// chunk border doesn't thrash.
     fn in_keep_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance + 3;
-        self.horizontal_dist2(pos) <= r * r
+        (!self.background && self.horizontal_dist2(pos) <= r * r)
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
                 d.length_squared() <= (self.agent_radius + 1) * (self.agent_radius + 1)
             })
+            || self.ticket_loaded(pos)
+    }
+
+    /// v1.0 final F11: whether a loading ticket reaches one of the four
+    /// Java chunks of the storage column at `pos` (level 33, `FULL`, or less).
+    fn ticket_loaded(&self, pos: IVec3) -> bool {
+        !self.ticket_loads.is_empty()
+            && (0..2).any(|dx| {
+                (0..2).any(|dz| {
+                    let c = IVec2::new(pos.x * 2 + dx, pos.z * 2 + dz);
+                    tickets::level_at(&self.ticket_loads, c) <= tickets::FULL
+                })
+            })
+    }
+
+    /// v1.0 final F11: whether any storage column the `loads` reach lies
+    /// outside the host's view's load range.
+    fn beyond_view(&self, loads: &[(IVec2, i32)]) -> bool {
+        let r = self.render_distance as f32 + 1.5;
+        loads.iter().any(|&(c, level)| {
+            let reach = tickets::FULL - level;
+            let (lo, hi): (IVec2, IVec2) = ((c - IVec2::splat(reach)) >> 1i32, (c + IVec2::splat(reach)) >> 1i32);
+            [(lo.x, lo.y), (hi.x, lo.y), (lo.x, hi.y), (hi.x, hi.y)]
+                .iter()
+                .any(|&(x, z)| (self.horizontal_dist2(IVec3::new(x, 0, z)) as f32) > r * r)
+        })
+    }
+
+    /// v1.0 final F11: makes this a level nobody is in (`true`): the host's
+    /// view no longer loads, keeps or meshes anything, so only what its
+    /// tickets ([`World::set_tickets`]) reach stays loaded, and nothing is
+    /// meshed. `false` makes it the viewed level again: every loaded chunk
+    /// is meshed afresh for the renderer, which kept none of it.
+    pub fn set_background(&mut self, background: bool) {
+        if background == self.background {
+            return;
+        }
+        self.background = background;
+        if background {
+            self.meshes_when_viewed = self.meshes_enabled;
+            self.meshes_enabled = false;
+            self.dirty.clear();
+            self.sync_meshes.clear();
+            self.mesh_uploads.clear();
+            self.mesh_removals.clear();
+        } else {
+            self.meshes_enabled = self.meshes_when_viewed;
+            for slot in self.chunks.values_mut() {
+                slot.meshed_version = None;
+            }
+        }
+        self.center = None;
+    }
+
+    /// Whether this is a level nobody is in ([`World::set_background`]).
+    pub fn is_background(&self) -> bool {
+        self.background
+    }
+
+    /// v1.0 final F11: the level's tickets: their simulation levels make
+    /// chunks entity- and block-ticking with or without players
+    /// ([`World::is_entity_ticking`]), their loading levels keep chunks
+    /// loaded ([`World::update_players`], [`World::update_background`]).
+    pub fn set_tickets(&mut self, tickets: &tickets::Tickets) {
+        let loads = tickets.loading();
+        let sims = tickets.simulation();
+        if loads != self.ticket_loads {
+            // Streaming is planned again only when a ticket reaches (or
+            // reached) past what the host's view keeps loaded anyway: a
+            // pearl flying near the host changes nothing there.
+            let replan = self.background || self.beyond_view(&loads) || self.beyond_view(&self.ticket_loads);
+            self.ticket_loads = loads;
+            if replan {
+                self.center = None;
+            }
+        }
+        if sims != self.activity.tickets {
+            self.activity.tickets = sims;
+            self.refresh_redstone_activity();
+        }
+    }
+
+    /// v1.0 final F11: streams a level nobody is in: what its tickets reach
+    /// loads (from its region records, or generated), what they no longer
+    /// reach unloads into its records, and nothing is meshed.
+    pub fn update_background(&mut self) {
+        if self.center.is_none() {
+            self.recenter(IVec3::ZERO);
+        }
+        self.stream();
     }
 
     /// 16-block columns of every fully loaded storage column, for generation herds.
@@ -1531,7 +1675,8 @@ impl World {
             sky: std::array::from_fn(|i| slots[i].and_then(|s| s.sky_light.clone())),
         };
         let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
-        let models = self.lidded_in_chunk(pos).into_iter().map(local_of).collect();
+        let models =
+            self.lidded_in_chunk(pos).into_iter().chain(self.shaking_bells_in_chunk(pos)).map(local_of).collect();
         Box::new(MeshInput {
             neighbors,
             light: Box::new([0; REGION_VOLUME]),
@@ -1540,6 +1685,7 @@ impl World {
             min_y: self.min_y(),
             foliage,
             models,
+            origin: pos * CHUNK_SIZE_I,
         })
     }
 
@@ -1675,7 +1821,12 @@ impl World {
 
         let r = self.render_distance + 2;
         self.load_list.clear();
-        for c in std::iter::once(center).chain(self.view_centers.clone()) {
+        let views: Vec<IVec3> = if self.background {
+            Vec::new()
+        } else {
+            std::iter::once(center).chain(self.view_centers.iter().copied()).collect()
+        };
+        for c in views {
             for dz in -r..=r {
                 for dx in -r..=r {
                     for y in self.generator.dimension.chunk_rows() {
@@ -1696,6 +1847,23 @@ impl World {
                     }
                     for y in self.generator.dimension.chunk_rows() {
                         self.load_list.push(IVec3::new(c.x + dx, y, c.z + dz));
+                    }
+                }
+            }
+        }
+        // v1.0 final F11: what the level's loading tickets reach.
+        for &(c, level) in &self.ticket_loads {
+            let r = tickets::FULL - level;
+            if r < 0 {
+                continue;
+            }
+            for x in (c.x - r) >> 1..=(c.x + r) >> 1 {
+                for z in (c.y - r) >> 1..=(c.y + r) >> 1 {
+                    for y in self.generator.dimension.chunk_rows() {
+                        let p = IVec3::new(x, y, z);
+                        if self.ticket_loaded(p) {
+                            self.load_list.push(p);
+                        }
                     }
                 }
             }
@@ -1757,6 +1925,18 @@ impl World {
         record: Option<region::ChunkRecord>,
         generated: Option<GeneratedFeatures>,
     ) {
+        // Saved portal blocks from before the `axis` state get theirs.
+        let data = if modified { self.axis_legacy_portals(pos, data) } else { data };
+        // v1.0 final F7: walls from `chunks.bin` (saved before region
+        // storage) take Java's post now (`wall_states`).
+        let data = if modified && record.is_none() && self.regions.is_some() && !self.remote {
+            let mut pending = Vec::new();
+            let data = self.migrate_legacy_wall_posts(pos, data, &mut pending);
+            self.legacy_walls.extend(pending);
+            data
+        } else {
+            data
+        };
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1800,6 +1980,7 @@ impl World {
         }
         if let Some((features, rolled)) = generated {
             self.register_features(&data, features, rolled);
+            self.register_return_gateways(pos, &data);
         }
         self.register_village_life(pos, &data);
         self.register_banners(pos, &data);
@@ -1821,6 +2002,7 @@ impl World {
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
+        self.retry_legacy_wall_posts(pos);
     }
 
     /// Unload a present chunk, retaining edited data and queuing removal of its outgoing light.
@@ -1840,6 +2022,7 @@ impl World {
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
         self.village_residents.retain(|p, _| chunk_of(*p) != pos);
+        self.mineshaft_carts.retain(|p, _| chunk_of(*p) != pos);
         self.banners.retain(|p, _| chunk_of(*p) != pos);
         self.forget_shulker_boxes(pos);
         self.forget_campfires(pos);
@@ -1895,7 +2078,13 @@ impl World {
         if self.center != Some(center) {
             self.recenter(center);
         }
+        self.stream();
+    }
 
+    /// Collects finished jobs, starts the nearest missing chunks, settles
+    /// light and queues meshes, for [`World::update_players`] and
+    /// [`World::update_background`].
+    fn stream(&mut self) {
         let cap = self.workers.threads * 3;
 
         // Collect finished work.
@@ -1925,6 +2114,11 @@ impl World {
                     let in_range = self.in_mesh_range(pos);
                     let Some(slot) = self.chunks.get_mut(&pos) else { continue };
                     slot.mesh_in_flight = false;
+                    // v1.0 final F11: a mesh finished after its level went
+                    // into the background is dropped.
+                    if self.background {
+                        continue;
+                    }
                     if slot.version == version {
                         slot.meshed_version = Some(version);
                         self.mesh_uploads.push((pos, mesh));
@@ -2031,11 +2225,17 @@ impl World {
         if b == frog_blocks::FROGSPAWN {
             return ([0.0; 3], [1.0, frog_blocks::HEIGHT as f32, 1.0]);
         }
+        // v1.0 gap track 6c: the outlines Java moves by the block's offset.
+        let o = offset::outline_offset(b, p).as_vec3();
+        if let Some((min, max)) = offset::bamboo_outline(b) {
+            return ((min.as_vec3() + o).to_array(), (max.as_vec3() + o).to_array());
+        }
         let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
         let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
         let above = shape::Above::read(b, |d| self.get_block(p + d).unwrap_or(Block::AIR));
         shape::outline_with(b, neighbour, below, above).bounds().map_or(([0.0; 3], [1.0; 3]), |bx| {
-            (bx.min.map(|c| f32::from(c) / 16.0), bx.max.map(|c| f32::from(c) / 16.0))
+            let at = |c: [u8; 3], i: usize| f32::from(c[i]) / 16.0 + o[i];
+            (std::array::from_fn(|i| at(bx.min, i)), std::array::from_fn(|i| at(bx.max, i)))
         })
     }
 
@@ -2494,8 +2694,10 @@ mod tests {
         }
         let flower = IVec3::new(0, y + 1, 0);
         assert!(world.set_block(flower, Block::POPPY));
-        // The crosshair selects the flower, not the dirt under it.
-        let eye = DVec3::new(0.5, y as f64 + 4.5, 0.5);
+        // The crosshair selects the flower, not the dirt under it (v1.0
+        // gap track 6c: its outline moved by Java's offset for the column).
+        let o = offset::offset(Block::POPPY, 0, 0);
+        let eye = DVec3::new(0.5 + o.x, y as f64 + 4.5, 0.5 + o.z);
         assert_eq!(world.raycast(eye, DVec3::NEG_Y, 10.0).unwrap().0, flower);
 
         // Removing the dirt pops the flower off as an item.

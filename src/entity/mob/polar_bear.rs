@@ -51,12 +51,9 @@ impl Mob {
         let delta = target.pos - self.pos;
         let flat = delta.with_y(0.0);
         let dir = flat.normalize_or(DVec3::X);
-        self.head_target = (wrap(dir.z.atan2(dir.x) as f32 - self.yaw).clamp(-1.2, 1.2), 0.0);
-        let sees = line_of_sight(
-            w,
-            self.pos + DVec3::Y * self.shape().height * 0.85,
-            target.pos + DVec3::Y * target.shape.height * 0.85,
-        );
+        // `MeleeAttackGoal.tick`: `setLookAt(target, 30, 30)`.
+        self.set_look_at(target.pos + DVec3::Y * target.eye, super::head::ATTACK_LOOK, super::head::ATTACK_LOOK);
+        let sees = line_of_sight(w, self.look_eye(), target.pos + DVec3::Y * target.eye);
         let can_attack = polar_melee(self.pos, self.shape(), target.pos, target.shape) && sees;
         let s = self.polar_bear.as_mut().unwrap();
         if can_attack && self.attack_cooldown <= 0.0 {
@@ -82,6 +79,7 @@ impl Mob {
                     attacker: self.uid,
                     damage,
                     knockback: dir * 4.0 + DVec3::Y * 2.0,
+                    melee: true,
                 }),
             }
         } else if delta.length_squared() < (target.shape.half_width * 2.0 + 3.0).powi(2) {
@@ -134,9 +132,15 @@ impl Mob {
         let delta = dm;
         let shape = self.shape();
         let hit = if self.on_ground {
-            physics::move_box_stepping(w, &mut self.pos, &mut dm, delta, shape, 0.6)
+            {
+                let context = Some(self.collision_context());
+                physics::move_box_stepping_context(w, &mut self.pos, &mut dm, delta, shape, 0.6, context)
+            }
         } else {
-            physics::move_box(w, &mut self.pos, &mut dm, delta, shape)
+            {
+                let context = Some(self.collision_context());
+                physics::move_box_context(w, &mut self.pos, &mut dm, delta, shape, context)
+            }
         };
         self.on_ground = hit.on_ground;
         self.blocked = hit.horizontal;
@@ -194,6 +198,7 @@ mod tests {
             foe: Foe::Player(crate::entity::PlayerId::HOST),
             pos: DVec3::new(3.5, 1.0, 0.5),
             shape: crate::player::SHAPE,
+            eye: crate::player::EYE_HEIGHT,
         });
         m.attack_cooldown = 0.5;
         let mut rng = Rng::new(2);

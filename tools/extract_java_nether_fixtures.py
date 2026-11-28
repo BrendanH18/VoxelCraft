@@ -14,7 +14,11 @@ v1.0 Track 8 (GEN-04a). Writes, for the five Nether biomes:
   `ruined_portal_nether`) and the biomes their `has_structure` tags hold;
 - the block tags the placements and features test (`nylium`,
   `base_stone_nether`, `overrides_mushroom_light_requirement`,
-  `cannot_place_basalt_pillar_on`).
+  `cannot_place_basalt_pillar_on`);
+- v1.0 gap Track 5: the Nether's surface rules as 26.3 holds them
+  (`worldgen/material_rule/nether.json` and the rules and conditions it
+  names, `worldgen/noise_settings/nether.json` without its noise router) and
+  the noises those rules read (`worldgen/noise`).
 
 Needs `javac` and `java` (JDK 25) on `PATH`. Never reads VoxelCraft source;
 nothing decompiled is written.
@@ -38,6 +42,61 @@ BIOMES = ["nether_wastes", "soul_sand_valley", "crimson_forest", "warped_forest"
 STRUCTURE_SETS = ["nether_complexes", "nether_fossils"]
 STRUCTURES = ["fortress", "bastion_remnant", "nether_fossil", "ruined_portal_nether"]
 BLOCK_TAGS = ["nylium", "base_stone_nether", "overrides_mushroom_light_requirement", "cannot_place_basalt_pillar_on"]
+SURFACE_NOISES = [
+    "surface",
+    "soul_sand_layer",
+    "gravel_layer",
+    "patch",
+    "netherrack",
+    "nether_wart",
+    "nether_state_selector",
+]
+
+
+def material_rules(jar):
+    """The Nether's material rule and every rule and condition it names."""
+    rules = {"nether": read_json(jar, "worldgen/material_rule/nether.json")}
+    conditions = {}
+    pending = ["nether"]
+    while pending:
+        rule = rules[pending.pop()]
+        for name in sorted(refs(rule)):
+            if jar_has(jar, f"worldgen/material_rule/{name}.json"):
+                if name not in rules:
+                    rules[name] = read_json(jar, f"worldgen/material_rule/{name}.json")
+                    pending.append(name)
+            elif jar_has(jar, f"worldgen/material_condition/{name}.json"):
+                conditions[name] = read_json(jar, f"worldgen/material_condition/{name}.json")
+    settings = read_json(jar, "worldgen/noise_settings/nether.json")
+    settings.pop("noise_router", None)
+    settings.pop("debug_functions", None)
+    return rules, conditions, settings
+
+
+def refs(value):
+    """Bare `minecraft:` strings in a rule (named rules and conditions); block
+    states, biomes and noises sit under their own keys."""
+    out = set()
+    if isinstance(value, str):
+        if value.startswith("minecraft:"):
+            out.add(strip(value))
+    elif isinstance(value, dict):
+        for key, inner in value.items():
+            if key in ("type", "result_state", "biome_is", "noise", "random_name"):
+                continue
+            out |= refs(inner)
+    elif isinstance(value, list):
+        for inner in value:
+            out |= refs(inner)
+    return out
+
+
+def jar_has(jar, path):
+    try:
+        jar.getinfo(DATA + path)
+        return True
+    except KeyError:
+        return False
 
 
 def read_json(jar, path):
@@ -134,6 +193,8 @@ def extract(server_path):
             tag = s["biomes"].removeprefix("#minecraft:")
             structure_biomes[tag] = expand_tag(jar, "worldgen/biome", tag)
         block_tags = {t: expand_tag(jar, "block", t) for t in BLOCK_TAGS}
+        rules, conditions, settings = material_rules(jar)
+        noises = {n: read_json(jar, f"worldgen/noise/{n}.json") for n in SURFACE_NOISES}
     return {
         "reference": {
             "version": "26.3",
@@ -146,6 +207,9 @@ def extract(server_path):
                 "data/minecraft/worldgen/structure_set/{nether_complexes,nether_fossils}.json",
                 "data/minecraft/worldgen/structure/{fortress,bastion_remnant,nether_fossil,ruined_portal_nether}.json",
                 "data/minecraft/tags/worldgen/biome/has_structure/*.json and tags/block/*.json",
+                "data/minecraft/worldgen/material_rule/{nether,bedrock_floor,bedrock_roof}.json, "
+                "worldgen/material_condition/*.json (those they name), worldgen/noise_settings/nether.json "
+                "(without its noise router) and worldgen/noise/*.json (the surface rules' noises)",
             ],
         },
         "parameter_points": points,
@@ -156,6 +220,10 @@ def extract(server_path):
         "structures": structures,
         "structure_biomes": structure_biomes,
         "block_tags": block_tags,
+        "material_rules": rules,
+        "material_conditions": conditions,
+        "noise_settings": settings,
+        "surface_noises": noises,
     }
 
 

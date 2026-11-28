@@ -326,6 +326,10 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::ElderGuardian => 0.3,
         // `Mob.createMobAttributes` leaves the 0.7 default.
         K::WanderingTrader | K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish | K::Squid | K::GlowSquid => 0.7,
+        // v1.0 gap Track 2e: `Villager.createAttributes` and
+        // `Piglin.createAttributes`, for their brains' walk targets.
+        K::Villager => 0.5,
+        K::Piglin => f64::from(0.35_f32),
         _ => 0.25,
     }
 }
@@ -461,6 +465,11 @@ impl Mob {
     }
 
     fn priority_of_running(&self, t: &[Entry]) -> Option<u8> {
+        // v1.0 gap Track 2e: a running fox goal holds `MOVE` at its priority.
+        if let Some(p) = self.fox_move_priority() {
+            let table = self.goals.running.map(|i| t[i as usize].priority);
+            return Some(table.map_or(p, |q| q.min(p)));
+        }
         if let Some(i) = self.goals.running {
             return Some(t[i as usize].priority);
         }
@@ -491,7 +500,7 @@ impl Mob {
         self.goals.ticks = self.goals.ticks.wrapping_add(1);
         // A creeper swelling (`SwellGoal`, priority 2) holds off its avoid goal.
         if self.kind == MobKind::Creeper
-            && (self.fuse > 0.0
+            && (self.swelling
                 || ctx.nearest_target(self.pos).is_some_and(|p| p.targetable && p.pos.distance_squared(self.pos) < 9.0))
         {
             self.stop_goal(world);
@@ -518,6 +527,10 @@ impl Mob {
                 if self.goals.running == Some(i as u8)
                     || matches!(entry.goal, G::Panic | G::Stroll | G::GoHome | G::Travel)
                     || self.priority_of_running(t).is_some_and(|p| entry.priority >= p)
+                    || !self.idle_look_allows(
+                        entry.priority,
+                        matches!(entry.goal, G::Breed | G::Tempt | G::FollowOwner { .. }),
+                    )
                 {
                     continue;
                 }
@@ -599,7 +612,13 @@ impl Mob {
     /// `Goal.stop` for the running table goal.
     pub(crate) fn stop_goal<W: MobWorld + ?Sized>(&mut self, _world: &W) {
         let Some(i) = self.goals.running.take() else { return };
-        match table(self.kind)[i as usize].goal {
+        let goal = table(self.kind)[i as usize].goal;
+        // Track 2d: `AnimalMakeLove.stop` and `FollowTemptation.stop` erase
+        // `LOOK_TARGET`.
+        if matches!(goal, G::Breed | G::Tempt) && super::head::brain(self.kind) {
+            self.head.target = None;
+        }
+        match goal {
             G::Breed => {
                 if let Some(a) = &mut self.animal {
                     a.courtship = 0.0;
@@ -692,8 +711,11 @@ impl Mob {
                     && self.panda_breed_allowed(world)
             }
             G::Tempt => self.find_tempter(ctx),
+            // v1.0 gap Track 2f: `FoxFollowParentGoal`: not while defending.
             G::FollowParent => {
-                self.age < 0 && self.goals.adult.is_some_and(|(_, at)| at.distance_squared(self.pos) >= 9.0)
+                self.age < 0
+                    && !self.fox.as_ref().is_some_and(|s| s.defending)
+                    && self.goals.adult.is_some_and(|(_, at)| at.distance_squared(self.pos) >= 9.0)
             }
             G::FollowAdult => {
                 self.age < 0
@@ -721,6 +743,7 @@ impl Mob {
             G::Tempt => self.find_tempter(ctx),
             G::FollowParent => {
                 self.age < 0
+                    && !self.fox.as_ref().is_some_and(|s| s.defending)
                     && self.goals.parent.is_some_and(|(_, at)| {
                         let d = at.distance_squared(self.pos);
                         (9.0..=256.0).contains(&d)
@@ -756,6 +779,10 @@ impl Mob {
             G::FollowParent | G::FollowAdult => {
                 self.goals.parent = self.goals.adult;
                 self.goals.recalc = 0;
+                // `FoxFollowParentGoal.start` (Track 2e).
+                if self.fox.is_some() {
+                    self.fox_clear_states();
+                }
             }
             G::FollowOwner { .. } => {
                 self.goals.recalc = 0;
@@ -764,6 +791,11 @@ impl Mob {
             G::Breed => {
                 if let Some(a) = &mut self.animal {
                     a.courtship = 0.0;
+                }
+                // `FoxBreedGoal.start` clears the states (Track 2e; the
+                // partner clears its own as its goal starts).
+                if self.fox.is_some() {
+                    self.fox_clear_states();
                 }
             }
             _ => {}
@@ -776,7 +808,14 @@ impl Mob {
         match entry.goal {
             G::Breed => {
                 let Some((uid, at)) = self.animal.as_ref().and_then(|a| a.partner) else { return };
-                self.look_at(at, 1.2);
+                // `setLookAt(partner, 10, getMaxHeadXRot())`; a brain's
+                // `AnimalMakeLove` locks both gazes through `LOOK_TARGET`.
+                if super::head::brain(self.kind) {
+                    self.set_look_target(super::head::Tracked::Mob(uid, at + DVec3::Y * self.eye_height()));
+                } else {
+                    let x = self.max_head_x_rot();
+                    self.goal_look_at(at + DVec3::Y * self.eye_height(), 10.0, x);
+                }
                 self.walk_to(world, at.floor().as_ivec3(), 1, speed, false);
                 let a = self.animal.as_mut().unwrap();
                 a.courtship += 0.1;
@@ -791,7 +830,14 @@ impl Mob {
                     return;
                 };
                 let at = t.pos;
-                self.look_at(at, 1.2);
+                // `setLookAt(player, getMaxHeadYRot() + 20, getMaxHeadXRot())`;
+                // a brain's `FollowTemptation` sets `LOOK_TARGET` every tick.
+                if super::head::brain(self.kind) {
+                    self.set_look_target(super::head::Tracked::Player(t.id));
+                } else {
+                    let (y, x) = (self.max_head_y_rot() + 20.0, self.max_head_x_rot());
+                    self.goal_look_at(at + DVec3::Y * super::head::player_eye(t), y, x);
+                }
                 let close = if self.kind == MobKind::Armadillo { if self.baby { 1.0 } else { 2.0 } } else { 2.5 };
                 if at.distance_squared(self.pos) < close * close {
                     self.nav.stop();
@@ -810,7 +856,13 @@ impl Mob {
             }
             G::FollowAdult => {
                 // The walk target tracks the adult; close enough within 4.
-                let Some((_, at)) = self.goals.parent else { return };
+                let Some((uid, at)) = self.goals.parent else { return };
+                // Track 2d: `BabyFollowAdult` sets `LOOK_TARGET` on the adult's
+                // eyes with the walk target.
+                if self.head.target.is_none() {
+                    let eye = at + DVec3::Y * self.adult_eye_height();
+                    self.set_look_target(super::head::Tracked::Mob(uid, eye));
+                }
                 self.walk_to(world, at.floor().as_ivec3(), 4, speed, false);
             }
             G::FollowOwner { .. } => {
@@ -818,7 +870,9 @@ impl Mob {
                 let at = t.pos;
                 let teleport = at.distance_squared(self.pos) >= 144.0;
                 if !teleport {
-                    self.look_at(at, 1.2);
+                    // `setLookAt(owner, 10, getMaxHeadXRot())`.
+                    let x = self.max_head_x_rot();
+                    self.goal_look_at(at + DVec3::Y * super::head::player_eye(t), 10.0, x);
                 }
                 self.goals.recalc -= 1;
                 if self.goals.recalc <= 0 {
@@ -889,7 +943,7 @@ impl Mob {
         }
         let foe = match a.what {
             Avoided::Player => {
-                let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+                let eye = self.look_eye();
                 let trusted = self.animal.as_ref().map(|s| s.trusted).unwrap_or_default();
                 ctx.players
                     .iter()
@@ -903,7 +957,7 @@ impl Mob {
                             && d.z.abs() <= a.dist + self.shape().half_width
                             && d.y.abs() <= 3.0 + self.shape().height
                             && d.length_squared() <= a.dist * a.dist
-                            && line_of_sight(world, eye, t.pos + DVec3::Y * 1.62)
+                            && line_of_sight(world, eye, t.eye())
                     })
                     .min_by(|l, r| l.pos.distance_squared(self.pos).total_cmp(&r.pos.distance_squared(self.pos)))
                     .map(|t| (Foe::Player(t.id), t.pos))
@@ -942,8 +996,10 @@ impl Mob {
             // `CatAvoidEntityGoal` and `WolfAvoidEntityGoal`: untamed only.
             (MobKind::Cat | MobKind::Wolf, _) => !tame,
             (MobKind::Ocelot, _) => !self.ocelot.as_ref().is_some_and(|s| s.trusting),
-            // Foxes asleep don't flee.
-            (MobKind::Fox, _) => !self.animal.as_ref().is_some_and(|s| s.sleeping),
+            // Foxes asleep don't flee; nor (v1.0 gap Track 2f) defending ones.
+            (MobKind::Fox, _) => {
+                !self.animal.as_ref().is_some_and(|s| s.sleeping) && !self.fox.as_ref().is_some_and(|s| s.defending)
+            }
             // `TradeWithPlayerGoal` shares priority 1 and was registered first.
             (MobKind::WanderingTrader, _) => !self.villager.as_ref().is_some_and(|v| v.trading || v.sleeping),
             _ => true,
@@ -1009,7 +1065,7 @@ impl crate::entity::Entities {
                 other => other,
             };
             if full && avoiding.is_none() {
-                let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+                let eye = m.look_eye();
                 let tame = |b: &Mob| b.animal.as_ref().is_some_and(|a| a.owner.is_some());
                 for (slot, entry) in t.iter().filter(|e| matches!(e.goal, G::Avoid(_))).take(3).enumerate() {
                     let G::Avoid(a) = entry.goal else { continue };
@@ -1044,7 +1100,7 @@ impl crate::entity::Entities {
                     seen[slot] = best
                         .filter(|&(_, j)| {
                             let b = &self.mobs[j];
-                            line_of_sight(world, eye, b.pos + DVec3::Y * (b.shape().height * 0.85))
+                            line_of_sight(world, eye, b.look_eye())
                         })
                         .map(|(_, j)| (self.mobs[j].uid, self.mobs[j].pos));
                 }

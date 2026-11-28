@@ -82,11 +82,16 @@ pub enum Cue {
     CrossbowShoot,
     /// `*.celebrate`.
     Celebrate(MobKind),
+    /// v1.0 gap Track 2: `zombie.attack_wooden_door` (level event 1019) and
+    /// `zombie.break_wooden_door` (1021), played by `BreakDoorGoal` for
+    /// zombies and vindicators alike.
+    DoorAttack,
+    DoorBreak,
 }
 
 impl Cue {
     /// Every cue, for the sound bank.
-    pub const ALL: [Cue; 16] = [
+    pub const ALL: [Cue; 18] = [
         Cue::Prepare(Spell::SummonVex),
         Cue::Prepare(Spell::Fangs),
         Cue::Prepare(Spell::Wololo),
@@ -103,6 +108,8 @@ impl Cue {
         Cue::Celebrate(MobKind::Vindicator),
         Cue::Celebrate(MobKind::Evoker),
         Cue::Celebrate(MobKind::Pillager),
+        Cue::DoorAttack,
+        Cue::DoorBreak,
     ];
 
     /// A stable key for sound banks and LAN.
@@ -124,6 +131,8 @@ impl Cue {
             Cue::Celebrate(MobKind::Evoker) => "evoker.celebrate",
             Cue::Celebrate(MobKind::Pillager) => "pillager.celebrate",
             Cue::Celebrate(_) => "vindicator.celebrate",
+            Cue::DoorAttack => "zombie.attack_wooden_door",
+            Cue::DoorBreak => "zombie.break_wooden_door",
         }
     }
 
@@ -463,7 +472,8 @@ pub enum Crossbow {
 
 /// `Vindicator.setCustomName`: this name makes it attack everything.
 pub const JOHNNY: &str = "Johnny";
-/// `BreakDoorGoal.DEFAULT_DOOR_BREAK_TIME`.
+/// `BreakDoorGoal.DEFAULT_DOOR_BREAK_TIME` (the goal itself is shared with
+/// zombies in `mob::door_break`).
 pub const DOOR_BREAK_TIME: u32 = 240;
 
 /// `VindicatorBreakDoorGoal`'s predicate: Normal or Hard, and only in an
@@ -531,9 +541,9 @@ pub struct Raider {
     pub patrol_cooldown: u32,
     /// v1.0 Track 6: a witch's `NearestHealableRaiderTargetGoal.cooldown`
     /// in ticks, and the raider it means to heal (`setTarget`) with that
-    /// raider's position. Neither is saved, as in Java.
+    /// raider's position and eye height. Neither is saved, as in Java.
     pub heal_cooldown: i32,
-    pub heal_target: Option<(u32, glam::DVec3)>,
+    pub heal_target: Option<(u32, glam::DVec3, f64)>,
 }
 
 impl Raider {
@@ -622,7 +632,7 @@ pub struct State {
     pub(crate) hurt_by: Option<u32>,
     pub(crate) hunted: Option<u32>,
     /// The mob target and where it stands this tick (`illager_upkeep`).
-    pub(crate) foe_at: Option<(u32, DVec3, Shape)>,
+    pub(crate) foe_at: Option<(u32, DVec3, Shape, f64)>,
     /// `spellCastingTickCount` (saved as `spell_ticks`).
     pub spell_ticks: i32,
     /// The spell being cast (`DATA_SPELL_CASTING_ID`).
@@ -641,8 +651,6 @@ pub struct State {
     pub(crate) wololo: Option<(u32, DVec3)>,
     /// `Vindicator.isJohnny` (`johnny`).
     pub johnny: bool,
-    /// A door being broken (`BreakDoorGoal.breakTime`).
-    pub(crate) door: Option<(IVec3, u32)>,
     /// The vex's owner (`owner`), bound origin (`bound_pos`) and limited
     /// life (`life_ticks`).
     pub owner: Option<u32>,
@@ -693,7 +701,6 @@ impl Default for State {
             last_blind: None,
             wololo: None,
             johnny: false,
-            door: None,
             owner: None,
             bound: None,
             life: None,
@@ -966,9 +973,12 @@ impl Entities {
             }
         }
         // Targets among mobs: kinds, positions and owners in one pass.
-        let view: Vec<(u32, MobKind, DVec3, Shape, bool)> =
-            self.mobs.iter().map(|m| (m.uid, m.kind, m.pos, m.shape(), m.alive() && m.simulation_active)).collect();
-        let owner_kind = |uid: Option<u32>, view: &[(u32, MobKind, DVec3, Shape, bool)]| {
+        let view: Vec<(u32, MobKind, DVec3, Shape, bool, f64)> = self
+            .mobs
+            .iter()
+            .map(|m| (m.uid, m.kind, m.pos, m.shape(), m.alive() && m.simulation_active, m.eye_height()))
+            .collect();
+        let owner_kind = |uid: Option<u32>, view: &[(u32, MobKind, DVec3, Shape, bool, f64)]| {
             uid.and_then(|u| view.iter().find(|v| v.0 == u && v.4)).map(|v| v.1)
         };
         for i in 0..self.mobs.len() {
@@ -1002,21 +1012,21 @@ impl Entities {
             } else if hunted.is_none() && full && self.rng.next_int(5) == 0 {
                 // `NearestAttackableTargetGoal` (`randomInterval` 10): the
                 // nearest it can see within its follow range.
-                let eye = pos + DVec3::Y * (self.mobs[i].shape().height * 0.85);
+                let eye = self.mobs[i].look_eye();
                 let me = &self.mobs[i];
                 hunted = self
                     .mobs
                     .iter()
                     .filter(|m| m.simulation_active && m.pos.distance_squared(pos) <= range * range)
                     .filter(|m| attackable(me, johnny, m, owner_kind(m.illager.as_ref().and_then(|t| t.owner), &view)))
-                    .filter(|m| super::mob::line_of_sight(world, eye, m.pos + DVec3::Y * (m.shape().height * 0.85)))
+                    .filter(|m| super::mob::line_of_sight(world, eye, m.look_eye()))
                     .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)))
                     .map(|m| m.uid);
             }
             let find = |u: Option<u32>| {
                 u.and_then(|u| view.iter().find(|v| v.0 == u && v.4))
                     .filter(|v| v.2.distance_squared(pos) <= range * range)
-                    .map(|v| (v.0, v.2, v.3))
+                    .map(|v| (v.0, v.2, v.3, v.5))
             };
             let at_hurt = find(hurt_by);
             let at_hunt = find(hunted);
@@ -1268,7 +1278,7 @@ impl Entities {
                     damage: RAVAGER_ROAR_DAMAGE,
                     knockback: glam::Vec3::ZERO,
                     java: Some(crate::knockback::Hit::melee(from, t.pos, yaw, 0.0)),
-                    cause: RAVAGER_ROAR,
+                    cause: RAVAGER_ROAR.by(Some(super::trident::Owner::Mob(uid))),
                 });
                 events.push(EntityEvent::OwnerHurt { player: t.id, attacker: uid });
                 events
@@ -1365,6 +1375,13 @@ impl Entities {
                 events.push(EntityEvent::MobKilled { kind, pos, burning, player_kill, looting: 0 });
             }
         }
+        // v1.0 final F8: `EvokerFangs.dealDamageTo`: `indirectMagic(fangs,
+        // evoker)` while the evoker is in the level, else plain `magic`.
+        let cause = if fang.owner != 0 && self.mobs.iter().any(|m| m.uid == fang.owner) {
+            FANGS_CAUSE.by(Some(super::trident::Owner::Mob(fang.owner)))
+        } else {
+            Cause::MAGIC
+        };
         for t in &ctx.players {
             if t.targetable && touches(t.pos, t.shape) {
                 events.push(EntityEvent::PlayerHit {
@@ -1372,7 +1389,7 @@ impl Entities {
                     damage: FANG_DAMAGE,
                     knockback: glam::Vec3::ZERO,
                     java: None,
-                    cause: FANGS_CAUSE,
+                    cause,
                 });
             }
         }

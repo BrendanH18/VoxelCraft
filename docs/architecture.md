@@ -180,13 +180,49 @@ persist in the root level file. See [the CLI protocol and limitations](agents.md
 
 Controller and LAN players run the shared actions on their own session
 (`hands::Actor` for hands, `screen::Screen` for container clicks); no player's
-state is swapped into the host's. Independent simultaneous dimensions and
-shape-aware light occlusion remain future work. A first desktop LAN slice uses
+state is swapped into the host's. Shape-aware light occlusion remains
+future work. A first desktop LAN slice uses
 bounded binary-framed TCP and authoritative chunk snapshots; see [LAN](lan.md).
 Split-screen is implemented, and each view blends its biome's fog and sky
 colours around its own eye and keeps its own rain fog and water vision
 (`voxelcraft::atmosphere`, v0.18 Track 8).
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
+
+### Levels the host isn't in (v1.0 final F11)
+
+Java 26.3 ticks every dimension's `ServerLevel` each server tick, players
+or not; what keeps a level's chunks loaded and ticking is its chunk
+tickets ([record](verification/2026-11-28-v1.0-final-f11-dimensions.md)).
+`voxelcraft::world::tickets` holds a level's tickets (`PORTAL`,
+`ENDER_PEARL`, and a loading-only ticket for work waiting on ground) and
+its `emptyTime`. `World::set_tickets` makes their simulation levels part
+of the world's activity (`is_entity_ticking`, `is_block_ticking`) and
+their loading levels part of what streams. `World::set_background(true)`
+takes the host's view out of the world: nothing outside the tickets
+loads or stays loaded, nothing is meshed, and `World::update_background`
+streams it without a host position. `simulation::tick_unattended_world_rules`
+is the world part of a tick with no players.
+
+The game keeps the host's level where it always was (`Game::world`,
+`Game::mobs.entities`) and every other dimension that has been loaded as
+a background `app::levels::Level` with its own `World`, `Entities`,
+tickets and empty time. The choice was between factoring a level tick out
+of `Game::tick` and swapping each background level into those fields
+around a player-free tick; the swap was taken because the entity events
+(explosions, mob griefing, villagers' doors and farms, the dragon, pearls,
+portal departures) are handled by `Game` methods that read and write
+`self.world` and `self.mobs.entities`, and a swap runs exactly the code the
+host's level runs. `Game::with_level` swaps a level in (the game-wide maps
+and loot sequences stay put), sets `Game::unattended` and suppresses the
+audio; `Game::tick_unattended` runs the level's tick; every use of the host
+or the other players in that path is gated on `unattended` (nobody is
+targeted, hurt by blasts, given beacon or conduit power, or seated; no
+natural spawning). Levels tick in Java's order around the host's: those
+before it, the host's own tick, those after it. Travelling to a loaded
+background level swaps it in for good; the level left becomes a
+background level. Saving writes every level's records and level file.
+A LAN client runs no background levels (the host's world is its world);
+guests stay in the host's dimension.
 
 ## Code layout
 
@@ -263,6 +299,8 @@ src/
     mob/dolphin.rs   the dolphin's 26.3 goals, item play and treasure search
     mob/turtle.rs    the turtle's travel, go-home, go-to-water and egg goals
     model/nether.rs  their box models
+    dragon.rs        the End fight: the dragon's phases, crystals, death, saves
+    dragon/gateway.rs End gateways' block entities: age, cooldown, beams
     item.rs          dropped items: physics, merging, despawning, saving
     chunk_storage.rs entities of unloaded chunks: in their region records (in memory without one)
     model.rs         animated box models -> camera-relative box instances and triangles
@@ -294,6 +332,10 @@ src/
     nether_biome_blocks.rs  crimson/warped/soul blocks (ids 1600..=1793)
     nether_features.rs  huge fungi, vines, deltas, basalt columns (Java ports)
     nether_decoration.rs  per-chunk feature placement across chunk borders
+    end.rs           the End: islands, pillars, podium, biomes, chorus, cities
+    end/decoration.rs  generation 7's End decoration (Java's small islands,
+                     return gateways and chorus on its decoration seed)
+    end_islands.rs   Java's End noise router (generation 7's islands)
     nether_flora.rs  nylium, vine growth and Nether bone meal
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
     bastion.rs       bastion remnants: Java pieces (generations 1-2), templates (3)
@@ -1489,6 +1531,27 @@ kinds, item icons, options, game events) contiguous in landing order.
 | — | — | — | 1. Save compatibility; 2. Render-distance performance; 3. Long-session soak; 9. Controls and sculk |
 | 14080–14335 | 1938–1949, 1990–2199 | 4080–4095 | Integrator |
 
+### v1.0 gap-closing track reservations
+
+Reserved on 2026-11-27 when the owner approved the gap-closing build
+([roadmap](roadmap.md#v10-gap-plan-2026-11-27)), after
+`examples/id_map.rs` at `ceadfc2` showed states 13974–14335, items
+1938–1949 and 1957 up and texture layers 4066–4095 unregistered. The rules
+of the acceptance reservations above apply: allocate only inside your
+row, record what you used, leave the rest unregistered; the integrator
+makes appended orderings contiguous in landing order.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| — | 1957–1961 | — | 1. Effects and mob damage |
+| 13974–13989 | 1962–1966 | — | 2. Hostile AI |
+| 13990–14005 | 1967–1971 | — | 3. Mounts and water |
+| 14006–14021 | 1972–1976 | — | 4. The End |
+| 14022–14037 | — | — | 5. Nether generation and portals (5b used 14022–14023: Nether portal `axis=x`, `axis=z`) |
+| 14038–14053 | 1977–1981 | 4080–4087 | 6. Items and utilities (6b used layers 4080–4083: the spore blossom and small dripleaf item models; 6c used states 14038–14040: bamboo `age=0` with no, small and large leaves; 6d used layers 4084–4085: the spyglass's and trident's in-hand models) |
+| 14054–14069 | — | 4066–4079 | 7. Art and motion |
+| 14070–14335 | 1938–1949, 1982–2199 | 4088–4095 | Integrator (2026-11-28, the final wave, from this row: F3 visuals states 14070–14101 and layers 4088–4091; F4 sounds items 1982–1991; F5 structures states 14102–14133 and items 1992–2001; F7 physics states 14134–14165) |
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
@@ -1533,7 +1596,9 @@ chunk unloads out of the level and back when it loads (Java's per-chunk
 entity sections); stored entities are saved in the dimension's existing
 entity properties ([evidence](verification/2026-10-17-entity-storage.md)). Application startup, disk-save assembly, fixed gameplay
 steps and client action adapters are in `src/app/startup.rs`, `save.rs`,
-`tick.rs` and `player_actions.rs`. Window events and frame rendering remain
+`tick.rs` and `player_actions.rs`; `src/app/levels.rs` runs the dimensions
+the host isn't in ([levels the host isn't in](#levels-the-host-isnt-in-v10-final-f11)),
+on `src/world/tickets.rs`. Window events and frame rendering remain
 in the coordinator. Controller/CLI/desktop action ownership is a separate,
 ongoing extraction; moving a file alone does not complete STR-03.
 `src/session/placement.rs` owns validated block placement and actor outcomes;

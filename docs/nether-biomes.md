@@ -75,6 +75,9 @@ Basalt-delta blobs (Java's `ReplaceBlobsFeature` for basalt and blackstone)
 are value noise hashed on the density grid and interpolated, so they cost a
 few lerps per block instead of hundreds of blob tests.
 
+Generation 7 (v1.0 gap Track 5) replaces this table with Java 26.3's own
+rules; see [below](#generation-7-javas-surface-rules-and-decoration-order-v10).
+
 ## Features
 
 `world::nether_features` ports the feature classes and
@@ -286,6 +289,100 @@ table, the biome source and the Nether structure sets against
 `tests/fixtures/java/26.3/nether_generation.json` both ways
 ([record](verification/2026-11-25-v1.0-track-08-generation.md)).
 
+## Generation 7: Java's surface rules and decoration order (v1.0)
+
+Worlds made from the v1.0 gap-closing build on (generation 7,
+`worldgen=7`) keep generation 6's noise, biomes and placed features and
+change two things ([record](verification/2026-11-27-v1.0-gap-track-05-nether-portals.md);
+structures and ancient debris in their steps:
+[Track 5b's record](verification/2026-11-27-v1.0-gap-track-05b-nether-structures-portals.md)).
+
+**Surfaces** follow 26.3's `worldgen/material_rule/nether.json`
+(`world::nether_surface`), applied as `MaterialSystem.buildSurface` does to
+every rock block. A block's stone depth above counts the rock up to the
+first air (lava doesn't end it, so the floor under the lava sea is a
+floor); its depth below counts down to the first air or lava. Each column
+has a surface depth, `surface` noise × 2.75 + 3 plus a random quarter,
+truncated, and is a hole where that is 0 or less. Then, in order:
+
+| Where | Block |
+|---|---|
+| bedrock floor and roof (y 0–4 and 123–127, thinning) | bedrock |
+| y 122 and up | netherrack |
+| basalt deltas, under a ceiling (depth below ≤ 1 + surface depth) | basalt |
+| basalt deltas, under a floor (depth above ≤ 1 + surface depth) | gravel where `patch` ≥ -0.012 and the floor's surface is at y 30–34, else basalt or blackstone by `nether_state_selector` |
+| soul sand valleys, under a ceiling | soul sand or soul soil by the state selector |
+| soul sand valleys, under a floor | gravel as in the deltas, else soul sand or soul soil |
+| a floor's top block below y 32 in a hole | **lava**: the ragged edges of the lava sea |
+| a crimson or warped floor's top block from y 31 where `netherrack` < 0.54 | wart block where `nether_wart` ≥ 1.17, else nylium |
+| nether wastes, under a floor where `soul_sand_layer` ≥ -0.012 | soul sand where the surface is at y 30–34 and not a hole, else netherrack |
+| nether wastes, a floor's top block from y 31 with its surface below 35 where `gravel_layer` ≥ -0.012 | gravel (at y 31 only outside holes) |
+| anything else | netherrack |
+
+So the wastes' soul sand and gravel now lie only at the lava sea's level,
+as in Java, and the forests' bare patches come from the `netherrack`
+noise. The noises keep Java's octaves and amplitudes (26.3 stores them as
+the 1.21 layouts' parity parameters) with VoxelCraft's permutations
+(FE-01); the biome is still the plain quart's, as for every other surface
+and feature.
+
+**Features** are placed one 16 × 16 Java chunk (a cell) at a time, as
+`ChunkGenerator.applyBiomeDecoration` does (`world::nether_order`): over
+the 3 × 3 cells around it, which it may write (writes beyond are dropped,
+as `WorldGenRegion` drops them), step by step, every placed feature a biome
+of those nine cells lists, in the order `FeatureSorter` gives the five
+biomes (pillars; deltas and columns; blobs, springs, fire, glowstone,
+mushrooms, ores; then the overworld spring and mushrooms, the warped
+forest's fungi, vegetation, sprouts and twisting vines, and the crimson
+forest's weeping vines, fungi and vegetation). Each placed feature runs
+its modifiers as `FeaturePlacer` does, and every modifier and feature
+reads the cell's region as the earlier ones left it. So glowstone spreads
+from glowstone of either glowstone feature, ores replace only the
+netherrack the blobs left, fire needs the floor deltas left, twisting vines
+skip spots the warped vegetation took (they are rarer than in generation
+6), and huge fungi grow among the vines that came before them.
+
+**Structures** go in their own steps (v1.0 gap Track 5b), before that
+step's features, as `applyBiomeDecoration` places them: bastions and the
+Nether's ruined portals in step 4 (`surface_structures`, before deltas and
+columns), fortresses and Nether fossils in step 7 (`underground_decoration`,
+before the blobs, fire, glowstone and ores), each step's in the structure
+registry's order (sorted by id). Each structure's pieces are clipped to
+the cell being decorated (`getWritableArea`: its 16 × 16 columns from y 1);
+a ruined portal goes whole into the cell holding its middle
+(`RuinedPortalPiece.postProcess`), its processors, netherrack spread and
+drips reading that cell's region. Structures read the region as earlier
+steps left it (fortress pillars stop on what is under them then) and later
+features read them: glowstone hangs from bastion blackstone, fire can lie
+on a portal's netherrack, ores and blobs pass the bricks by. Where two cells'
+regions overlap, a block a structure changed wins over the other cell's
+change there, Java's result when the structure's chunk was decorated
+after the other (its pieces replace what they cover).
+
+**Ancient debris** is the step 7 `scattered_ore` it is in Java
+(`ore_ancient_debris_large`, then `ore_debris_small`, after the other
+ores): 0 to 3 (or 2) tries, each up to `min(i, 7)` blocks from the
+origin on every axis, replacing netherrack, basalt or blackstone
+(`#base_stone_nether`) with no air beside it as the cell's region stands
+then, so it can sit in basalt and blackstone blobs and in bastion walls,
+and never beside a fortress corridor placed before it.
+
+Each cell is decorated once into a bounded cache of what it changed (at
+most 4 million blocks, 32 MB; a basalt delta cell changes about 17,000,
+others a few hundred to 2,000, plus what its structures change), and a
+32³ chunk takes the changes of the sixteen cells whose regions reach it:
+first those structures made, then the rest. Where two regions overlap,
+Java's result depends on which chunk the server decorated first (the
+later one sees the earlier one's blocks); here neither sees the other's,
+and the cell first by z, then x, keeps its block (a structure's block
+first, as above).
+
+Generation 7 costs about 0.45 ms more per Nether chunk than generation 6
+(`nether_patch_bench`, 100 chunks a patch on Boat: wastes 0.45 → 0.90 ms,
+soul sand valley 0.44 → 0.89, crimson forest 0.53 → 0.76–0.94, warped
+forest 0.58–0.67 → 1.00–1.24, basalt deltas 2.13–2.21 → 2.67–2.76), on the
+generation threads.
+
 ## Known gaps
 
 - Biome layouts are statistically Java's but not seed-for-seed copies.
@@ -295,13 +392,18 @@ table, the biome source and the Nether structure sets against
   surfaces, feature placement, fog (Java's fog reads plain quarts) and the
   ambient-particle window still use the plain 4×4 quart grid, so a nylium
   border and the spawn-list border can differ by a few blocks.
-- Features see only undecorated terrain, so later features don't react to
-  earlier ones as in Java (painting order keeps fungi and vines whole).
+- Generations 1 to 6: features see only undecorated terrain, so later
+  features don't react to earlier ones as in Java (painting order keeps
+  fungi and vines whole), and structures paint after them. Generation 7
+  places features and structures in Java's order on decorated terrain;
+  where two Java chunks' regions overlap, neither sees the other's
+  features or structures (Java's outcome there depends on load order).
 - Fossils are procedural skeletons, not Java's fourteen templates.
   Generations 1 to 5 lack lava springs, fire patches in the wastes and
   deltas and the soul sand/gravel/blackstone/magma ore blobs (generation 6
-  places them); every generation lacks the gravel and lava edges of soul
-  sand valley and delta floors near the lava sea.
+  places them); generations 1 to 6 lack the gravel and lava edges of
+  floors near the lava sea and use the original surface table above
+  (generation 7 follows Java's surface rules).
 - Soul lanterns (no lanterns yet), signs, the soul fire HUD
   overlay (the Java client code is not in the reference jar to check) and wall
   torches are absent. Every mob inside a ladder or vine slides at most 0.15

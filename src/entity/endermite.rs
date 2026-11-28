@@ -53,7 +53,7 @@ pub struct State {
     /// player target in `Mob::move_ctl`).
     pub(super) foe: Option<u32>,
     /// Where `foe` stands this tick, filled in by [`Entities::endermite_upkeep`].
-    pub(super) foe_at: Option<(DVec3, Shape)>,
+    pub(super) foe_at: Option<(DVec3, Shape, f64)>,
     /// `MeleeAttackGoal.ticksUntilNextAttack`.
     pub(super) attack_wait: u32,
     /// Seconds not yet counted as a tick of `life`.
@@ -148,7 +148,7 @@ impl Entities {
                 .iter()
                 .find(|o| o.uid == foe && o.alive() && o.simulation_active)
                 .filter(|o| o.pos.distance_squared(pos) <= FOLLOW_RANGE * FOLLOW_RANGE)
-                .map(|o| (o.pos, o.shape()));
+                .map(|o| (o.pos, o.shape(), o.eye_height()));
             let s = self.mobs[i].endermite.as_mut().unwrap();
             s.foe_at = at;
             if at.is_none() {
@@ -185,6 +185,7 @@ impl Entities {
                 .filter(|&&p| super::mob::line_of_sight(world, eye, p + DVec3::Y * EYE_HEIGHT))
                 .min_by(|a, b| a.distance_squared(m.pos).total_cmp(&b.distance_squared(m.pos)))
                 .copied();
+            m.hunt_eye = EYE_HEIGHT;
         }
     }
 
@@ -204,6 +205,7 @@ impl Entities {
             attacker,
             damage: ENDERMAN_DAMAGE,
             knockback: dir * 4.0 + DVec3::Y * 2.0,
+            melee: true,
         });
     }
 }

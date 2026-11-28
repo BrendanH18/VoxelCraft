@@ -37,6 +37,8 @@ pub enum Used {
     /// A lead, name tag, food or taming item was used on an animal.
     Animal,
     BrushStarted,
+    /// v1.0 gap track 6: a bundle is now in use (`BundleItem.use`).
+    BundleStarted,
     /// The player now rides this vehicle.
     Mounted(u32),
     CartPlaced,
@@ -109,6 +111,12 @@ pub enum Used {
     WindChargeThrown {
         from: DVec3,
     },
+    /// v1.0 final Track F4: a goat horn blown (`InstrumentItem.use`): its
+    /// instrument (Java registry index) and the player's position.
+    HornPlayed {
+        instrument: u8,
+        from: DVec3,
+    },
     /// An item was used on an active vault: `unlocked` with a key, else
     /// refused (`rewarded`: this player already had the reward); `sound`
     /// is false inside the fail sound's 15-tick buffer.
@@ -167,9 +175,12 @@ pub enum Used {
         cell: IVec3,
     },
     /// Flint and steel lit `cell`; `portal` if it opened a Nether portal.
+    /// v1.0 gap Track 8f: `charge` when a fire charge did
+    /// (`FireChargeItem.playSound`'s `FIRECHARGE_USE`).
     Ignited {
         cell: IVec3,
         portal: bool,
+        charge: bool,
     },
     /// Flint and steel struck without lighting anything.
     FlintFizzled,
@@ -339,6 +350,9 @@ impl PlayerSession {
             if result.as_ref().is_ok_and(|u| *u == Some(Used::BrushStarted)) {
                 self.brushing.off = true;
             }
+            if result.as_ref().is_ok_and(|u| *u == Some(Used::BundleStarted)) {
+                self.bundle_use.off = true;
+            }
             match result {
                 Ok(u) => {
                     off_hand = u.is_some();
@@ -502,6 +516,8 @@ impl PlayerSession {
             | Used::EyeReleased { from }
             | Used::RocketLaunched { from }
             | Used::WindChargeThrown { from } => (from, E::ProjectileShoot),
+            // `InstrumentItem.play`: `instrument_play` at the player.
+            Used::HornPlayed { from, .. } => (from, E::InstrumentPlay),
             Used::Rod { from, .. } => {
                 // `FishingRodItem.use`: a cast leaves a bobber out.
                 let cast = entities.bobbers.iter().any(|b| b.owner == self.id);
@@ -654,7 +670,16 @@ impl PlayerSession {
                 .merchant(id)
                 .and_then(|m| m.villager.as_ref())
                 .is_some_and(|v| v.offers.iter().any(Option::is_some));
-            return Ok(Some(if offers { Used::OpenMerchant(id) } else { Used::MerchantRefused }));
+            if !offers {
+                // v1.0 gap Track 7f: `setUnhappy`, the refusal's head shake.
+                entities.refuse_trade(id);
+                return Ok(Some(Used::MerchantRefused));
+            }
+            return Ok(Some(Used::OpenMerchant(id)));
+        }
+        // v1.0 gap Track 7f: a villager child shakes its head at any use.
+        if !ctx.sneaking && entities.pester_child(world, eye, dir, self.entity_reach()) {
+            return Ok(Some(Used::MerchantRefused));
         }
         if let Some(index) = self.mob_target(world, entities)
             && let Some(item) = self.inventory.get(slot).map(|s| s.item)
@@ -696,6 +721,13 @@ impl PlayerSession {
         // the book (`Player.openItemGui`).
         if self.inventory.get(slot).is_some_and(|s| matches!(s.item, Item::WRITABLE_BOOK | Item::WRITTEN_BOOK)) {
             return Ok(Some(Used::OpenBook { slot }));
+        }
+        // v1.0 gap track 6: `BundleItem.use` starts using the bundle; held
+        // use then throws its contents out (`session::bundles`).
+        if self.inventory.get(slot).is_some_and(|s| crate::content::bundle::is_bundle(s.item))
+            && self.start_bundle_use(slot, entities)
+        {
+            return Ok(Some(Used::BundleStarted));
         }
         if self.inventory.get(slot).is_some_and(|s| s.item == Item::MAP) {
             let pos = self.player.pos.floor().as_ivec3();
@@ -795,7 +827,11 @@ impl PlayerSession {
                 return Err("eyes of ender only find strongholds in the overworld");
             }
             let from = self.player.pos + DVec3::Y * (crate::player::SHAPE.height * 0.5);
-            let stronghold = world.generator.strongholds.nearest(from.floor().as_ivec3()).ok_or("no stronghold")?;
+            let stronghold = world
+                .generator
+                .strongholds
+                .nearest(&*world.generator, from.floor().as_ivec3())
+                .ok_or("no stronghold")?;
             entities.release_eye(from, stronghold.as_dvec3());
             if survival {
                 self.inventory.take_one(slot);
@@ -815,6 +851,16 @@ impl PlayerSession {
                 self.inventory.take_one(slot);
             }
             return Ok(Some(Used::WindChargeThrown { from: eye }));
+        }
+        // v1.0 final Track F4: `InstrumentItem.use` plays the instrument
+        // and puts every goat horn on its 140-tick cooldown.
+        if let Some(instrument) = crate::content::goat_horn::instrument(held) {
+            if self.vitals.horn_cooldown > 0.0 {
+                return Err("goat horn cooling down");
+            }
+            self.vitals.horn_cooldown = crate::content::goat_horn::cooldown_seconds();
+            self.start_tooting();
+            return Ok(Some(Used::HornPlayed { instrument, from: self.player.pos }));
         }
         if survival_items::throw_held(&self.player, &mut self.inventory, slot, creative, self.id, entities) {
             return Ok(Some(Used::ProjectileThrown { from: eye }));
@@ -976,7 +1022,7 @@ impl PlayerSession {
             // `FlintAndSteelItem` / `FireChargeItem.useOn`: lighting a candle,
             // candle cake or campfire changes it; fire beside is placed.
             Used::Ignited { cell, .. } => {
-                let fire = world.get_block(cell).is_some_and(|b| b.is_fire() || b == Block::NETHER_PORTAL);
+                let fire = world.get_block(cell).is_some_and(|b| b.is_fire() || b.is_nether_portal());
                 (cell, if fire { E::BlockPlace } else { E::BlockChange }, source, None)
             }
             // `BlockTransformer.transformBlock` (shovels, axes, hoes) and
@@ -1148,6 +1194,12 @@ impl PlayerSession {
             && (held.is_none() || world.redstone_usable(pos))
             && world.use_redstone_by(pos, source)
         {
+            // v1.0 final track F3: the bell shakes from the face struck.
+            if world.get_block(pos).is_some_and(|b| b.base() == Block::BELL)
+                && let Some(face) = world.bell_hit_face(pos, self.player.eye(), self.player.forward().as_dvec3())
+            {
+                world.shake_bell(pos, face);
+            }
             return Ok(Some(Used::Redstone { cell: pos }));
         }
         world.touch_redstone_ore(pos);
@@ -1307,22 +1359,50 @@ impl PlayerSession {
             } else {
                 wear(self, 1, tool_broken);
             }
-            return Ok(Some(Used::Ignited { cell: pos, portal: false }));
+            return Ok(Some(Used::Ignited { cell: pos, portal: false, charge: held == Some(Item::FIRE_CHARGE) }));
+        }
+        // `TntBlock.useItemOn`: flint and steel or a fire charge primes TNT
+        // in the player's name (`prime(level, pos, player, ..)`, v1.0 gap
+        // Track 8e), the charge used up outside creative.
+        if matches!(held, Some(Item::FLINT_AND_STEEL | Item::FIRE_CHARGE))
+            && world.get_block(pos) == Some(Block::TNT)
+            && world.rules.tnt_explodes
+        {
+            world.set_block(pos, Block::AIR);
+            entities.prime_tnt(pos, false, Some(crate::entity::trident::Owner::Player(self.id)));
+            if held == Some(Item::FIRE_CHARGE) {
+                if survival {
+                    self.inventory.take_one(slot);
+                }
+            } else {
+                wear(self, 1, tool_broken);
+            }
+            return Ok(Some(Used::TntPrimed { cell: pos }));
         }
         if held == Some(Item::FLINT_AND_STEEL) {
-            if world.get_block(pos) == Some(Block::TNT) && world.rules.tnt_explodes {
-                world.set_block(pos, Block::AIR);
-                entities.prime_tnt(pos, false);
-                wear(self, 1, tool_broken);
-                return Ok(Some(Used::TntPrimed { cell: pos }));
-            }
             let at = pos + normal;
             if !world.ignite(at) {
                 return Ok(Some(Used::FlintFizzled));
             }
             wear(self, 1, tool_broken);
-            let portal = world.get_block(at) == Some(Block::NETHER_PORTAL);
-            return Ok(Some(Used::Ignited { cell: at, portal }));
+            let portal = world.get_block(at).is_some_and(Block::is_nether_portal);
+            return Ok(Some(Used::Ignited { cell: at, portal, charge: false }));
+        }
+        // v1.0 gap Track 8f: `FireChargeItem.useOn` sets fire in the cell
+        // beside the clicked face where `BaseFireBlock.canBePlacedAt` allows
+        // (lighting a portal frame there too), the charge used up outside
+        // creative; where fire can't go it does nothing and keeps the
+        // charge (`InteractionResult.FAIL`).
+        if held == Some(Item::FIRE_CHARGE) {
+            let at = pos + normal;
+            if !world.ignite(at) {
+                return Ok(None);
+            }
+            if survival {
+                self.inventory.take_one(slot);
+            }
+            let portal = world.get_block(at).is_some_and(Block::is_nether_portal);
+            return Ok(Some(Used::Ignited { cell: at, portal, charge: true }));
         }
         if let Some(used) = self.use_item_on(slot, world, entities, pos, normal, tool_broken) {
             return Ok(Some(used));
@@ -1494,7 +1574,7 @@ impl PlayerSession {
                 return Some(Used::Carved { cell: pos });
             }
         }
-        if item == Item::BONE_MEAL && world.apply_bone_meal(pos) {
+        if item == Item::BONE_MEAL && world.use_bone_meal(pos) {
             if survival {
                 self.inventory.take_one(slot);
             }

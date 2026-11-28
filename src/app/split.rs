@@ -74,6 +74,9 @@ pub(super) struct Atmosphere {
     /// `visual/sky_light_factor` and `visual/sky_light_color`.
     pub sky_light: (f32, [f32; 3]),
     pub cloud_color: [f32; 4],
+    /// The lightmap's night-vision strength (`Effects::lightmap_vision`):
+    /// Night Vision's scale, or Conduit Power's underwater vision.
+    pub night_vision: f32,
 }
 
 impl Atmosphere {
@@ -249,7 +252,9 @@ impl Game {
         } else {
             state.water_ticks = (state.water_ticks - scene.ticks * 10.0).max(0.0);
         }
-        let darkness = effects.get(Effect::Darkness).map(|e| (e.ticks as f32 / 22.0).min(1.0));
+        // `DarknessFogEnvironment` applies while the effect is on, scaled by
+        // its blend factor (`getEffectBlendFactor`), which fades in and out.
+        let darkness = effects.has(Effect::Darkness).then(|| effects.darkness_blend(scene.alpha as f32));
         let weather = if dimension == Dimension::Overworld {
             atm::Weather { rain: self.weather.rain_level(), thunder: self.weather.thunder_level() }
         } else {
@@ -275,7 +280,7 @@ impl Game {
             fire_resistance: effects.has(Effect::FireResistance),
             blindness: effects.get(Effect::Blindness).map(|e| e.ticks),
             darkness,
-            night_vision: if darkness.is_some() { 0.0 } else { effects.night_vision(scene.time) },
+            night_vision: if darkness.is_some() { 0.0 } else { effects.night_vision(scene.alpha as f32) },
             water_vision: if medium == Medium::Water { atm::water_vision(state.water_ticks as u32) } else { 0.0 },
         };
         state.rain.update(&eye, scene.ticks);
@@ -283,6 +288,7 @@ impl Game {
             fog: atm::fog(&eye, state.rain),
             sky_light: atm::sky_light(&eye),
             cloud_color: atm::cloud_color(&eye),
+            night_vision: effects.lightmap_vision(scene.alpha as f32, eye.water_vision),
         }
     }
 
@@ -321,12 +327,30 @@ impl Game {
                         let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
                         self.audio.play(sound, Some(bot.agent.session.player.eye()), 0.7, (1.4, 1.7));
                     }
+                    // v1.0 gap Track 2h: the eating particles of a CLI
+                    // player (`spawnItemParticles`).
+                    Event::EatParticles(item, count) => {
+                        let player = &bot.agent.session.player;
+                        let (eye, forward) = (player.eye(), player.forward().as_dvec3());
+                        let seed = eye.x.to_bits() ^ eye.z.to_bits().rotate_left(17) ^ u64::from(count);
+                        for p in voxelcraft::particles::living_item_particles(item, eye, forward, count, seed) {
+                            self.world.particles.push(p);
+                        }
+                    }
                     Event::Shot(shot) => super::items::shot_sound(&mut self.audio, shot.ranged),
                     Event::Xp(chime) => {
                         super::items::xp_sounds(&mut self.audio, Some(bot.agent.session.player.eye()), chime)
                     }
                     Event::EyeThrown(from) => super::items::eye_thrown_sound(&mut self.audio, from),
                     Event::FrameFilled(pos, opened) => super::items::frame_filled_sounds(&mut self.audio, pos, opened),
+                    Event::Brushed(stroke) => super::hands::brush_sound(&mut self.audio, stroke),
+                    Event::Horn(kind, from) => super::items::horn_sound(&mut self.audio, kind, from),
+                    Event::BundleThrown(out) => {
+                        use voxelcraft::content::bundle::Cue;
+                        super::items::bundle_sound(&mut self.audio, Cue::RemoveOne, Some(out.at));
+                        let block = out.at.floor() + glam::DVec3::splat(0.5);
+                        super::items::bundle_sound(&mut self.audio, Cue::DropContents, Some(block));
+                    }
                 }
             }
         }
@@ -377,7 +401,9 @@ impl Game {
                 a.session.mode == super::GameMode::Spectator,
             );
             let fog_end = atmosphere.end();
-            let draw = atmosphere.draw_distance(a.player.pos, self.world.render_distance());
+            let draw = atmosphere
+                .draw_distance(a.player.pos, self.world.render_distance())
+                .scaled(self.settings.entity_distance);
             let models = self.block_models(scene.alpha, camera, &draw);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
@@ -405,6 +431,7 @@ impl Game {
                             scene.alpha,
                             self.session.inventory.armor,
                             self.session.inventory.get(self.body.actions.selected),
+                            self.session.inventory.offhand,
                         ),
                     ),
                     self.lan.profile.as_str(),
@@ -427,6 +454,7 @@ impl Game {
                                 scene.alpha,
                                 b.agent.session.inventory.armor,
                                 b.agent.session.inventory.get(b.agent.selected),
+                                b.agent.session.inventory.offhand,
                             ),
                         ),
                         other.as_str(),
@@ -441,7 +469,7 @@ impl Game {
             }
             let shadows = self.settings.entity_shadows;
             let verts = self.mobs.entities.shadows(&self.world, camera, scene.alpha, &casters, shadows);
-            super::push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
+            super::push_avatars(&self.world, &others, (camera, forward), fog_end, scene.time, verts);
             crate::render::signs::text(
                 &mut self.mobs.sign_text,
                 crate::render::signs::FONT_VERSION,
@@ -461,21 +489,31 @@ impl Game {
                         self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
                     ),
                     scene.time,
-                    Self::stamp_look(
-                        host_dial.at(a.player.yaw, a.player.pos.x, a.player.pos.z),
-                        bot.hand.appearance(
-                            &a.vitals,
-                            pad.map_or(a.eating(), |p| p.1),
-                            scene.alpha,
-                            a.inventory.armor,
-                            a.inventory.get(bot.agent.selected),
-                        ),
-                    ),
+                    crate::entity::model::PlayerAppearance {
+                        view: forward,
+                        ..Self::stamp_look(
+                            host_dial.at(a.player.yaw, a.player.pos.x, a.player.pos.z),
+                            bot.hand.appearance(
+                                &a.vitals,
+                                pad.map_or(a.eating(), |p| p.1),
+                                scene.alpha,
+                                a.inventory.armor,
+                                a.inventory.get(bot.agent.selected),
+                                a.inventory.offhand,
+                            ),
+                        )
+                    },
                     verts,
                 );
             }
             self.renderer.set_entities(verts);
-            super::weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
+            super::weather::sheets(
+                &self.world,
+                camera,
+                scene.rain,
+                self.settings.weather_radius as i32,
+                &mut self.weather_verts,
+            );
             self.renderer.set_weather(&self.weather_verts);
             let mut params = FrameParams {
                 camera,
@@ -548,7 +586,12 @@ impl Game {
                     },
                 ),
                 rain: scene.rain,
-                night_vision: a.vitals.effects.vision(scene.time, a.player.head_in_water(&self.world)),
+                night_vision: atmosphere.night_vision,
+                darkness: crate::render::Darkness::of(
+                    &a.vitals.effects,
+                    scene.alpha as f32,
+                    self.settings.darkness_effect_scale,
+                ),
                 ui,
                 // Controller players' screens are in-game panels: no blur.
                 blur: 0,

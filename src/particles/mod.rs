@@ -18,6 +18,8 @@ pub use types::{Burst, Kind, System};
 pub const CAPACITY: usize = 16_384;
 /// v0.16 Track B: the most firework trail copies spawned in one tick.
 const TRAIL_CAPACITY: usize = 2048;
+/// v1.0 gap track 6e: dripstone landings reported in one tick, at most.
+const LANDED_CAPACITY: usize = 64;
 const REQUEST_CAPACITY: usize = 1024;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -51,6 +53,9 @@ pub enum Texture {
     /// The renderer resolves the block's particle icon, independently of mesh packing.
     Block(Block),
     Sprite(u16),
+    /// v1.0 gap Track 2g: a layer of the item icon array (Java's item
+    /// atlas sprite for `ItemParticleOption`).
+    Item(u16),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -90,6 +95,11 @@ pub struct Particle {
     pub landing_lifetime: u16,
     /// v0.16 Track B: a firework spark's fade colour, trail and twinkle.
     pub spark: Option<Spark>,
+    /// v1.0 gap track 6e: a pointed dripstone's drop
+    /// (`DripstoneFallAndLandParticle`), which sounds as it lands.
+    pub dripstone: bool,
+    /// Set by the tick a dripstone drop lands in, for [`Pool::tick`].
+    landed: bool,
     stopped: bool,
     on_ground: bool,
     random_state: u64,
@@ -118,6 +128,8 @@ impl Particle {
             successor_lifetime: 64,
             landing_lifetime: 20,
             spark: None,
+            dripstone: false,
+            landed: false,
             stopped: false,
             on_ground: false,
             random_state: pos.x.to_bits() ^ pos.z.to_bits() ^ 0x5350_4c41_5348,
@@ -133,7 +145,9 @@ impl Particle {
                 self.lifetime = self.successor_lifetime;
                 self.gravity = 1.5;
                 self.friction = 0.98;
-                self.color = [1.0, 0.2857143, 0.083333336, 1.0];
+                if self.style == Kind::LavaDrip {
+                    self.color = [1.0, 0.2857143, 0.083333336, 1.0];
+                }
             } else {
                 return false;
             }
@@ -148,7 +162,10 @@ impl Particle {
         match self.motion {
             Motion::Stationary => return true,
             Motion::DripHang => {
-                self.color = [1.0, 16.0 / (self.age as f32 + 16.0), 4.0 / (self.age as f32 + 8.0), 1.0];
+                // `CoolingDripHangParticle`: lava cools from yellow to red.
+                if self.style == Kind::LavaDrip {
+                    self.color = [1.0, 16.0 / (self.age as f32 + 16.0), 4.0 / (self.age as f32 + 8.0), 1.0];
+                }
                 self.velocity.y -= 0.0012;
             }
             Motion::Portal => {
@@ -189,10 +206,21 @@ impl Particle {
                         self.on_ground = true;
                         self.velocity.x *= 0.7;
                         self.velocity.z *= 0.7;
+                        // The falling drop gives way to `LANDING_LAVA` where it
+                        // lands; a dripstone's also sounds (`landed`).
                         if self.style == Kind::LavaDrip && self.motion == Motion::Normal {
                             self.motion = Motion::Stationary;
                             self.age = 0;
                             self.lifetime = self.landing_lifetime;
+                            self.landed = self.dripstone;
+                        }
+                        // v1.0 gap track 6e: a falling dripstone water drop is
+                        // gone where it lands; `Pool::tick` reports it, and the
+                        // system spawns Java's `SPLASH` there and its sound
+                        // (`DripstoneFallAndLandParticle.postMoveUpdate`).
+                        if self.style == Kind::WaterDrip && self.motion == Motion::Normal {
+                            self.landed = true;
+                            return false;
                         }
                         if self.motion == Motion::Splash {
                             self.random_state =
@@ -234,6 +262,10 @@ impl Particle {
         if self.style == Kind::LavaDrip && world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_lava) {
             return false;
         }
+        // `DripParticle.preMoveUpdate`: a water drop meeting water is gone.
+        if self.style == Kind::WaterDrip && world.block(self.pos.floor().as_ivec3()).is_some_and(Block::holds_water) {
+            return false;
+        }
         if self.motion == Motion::Bubble && !world.block(self.pos.floor().as_ivec3()).is_some_and(Block::holds_water) {
             return false;
         }
@@ -271,6 +303,27 @@ pub enum Request {
     EyeBreak {
         pos: DVec3,
     },
+    /// v1.0 gap Track 2g: one `ItemParticleOption` particle of `item` at
+    /// `pos` with `vel` (blocks a tick): `BreakingItemParticle.Provider`.
+    Item {
+        pos: DVec3,
+        vel: DVec3,
+        item: crate::item::Item,
+    },
+    /// v1.0 gap Track 2h: level event 1500 (`ComposterBlock.handleFill`):
+    /// a composter at `cell` was filled (its sound is the game's).
+    Composter {
+        cell: IVec3,
+    },
+    /// v1.0 gap Track 2h: happy-villager particles at `cell`: level event
+    /// 1505 (`BoneMealItem.addGrowthParticles`, `bone_meal`) or 2011 (a
+    /// bee's growth, `ParticleUtils.spawnParticleInBlock`), with Java's
+    /// `count` (15).
+    Growth {
+        cell: IVec3,
+        count: u8,
+        bone_meal: bool,
+    },
     /// HoneyBlock entity events 53/54 and slide sound.
     Honey {
         pos: DVec3,
@@ -286,6 +339,32 @@ pub enum Request {
     },
 }
 
+/// v1.0 gap Track 2g: `LivingEntity.spawnItemParticles(stack, count)`, for
+/// eating (`Consumable.emitParticlesAndSounds`: 5 a chew, 16 on finishing)
+/// and a broken tool (`breakItem`: 5): each particle 0.6 ahead of the eyes,
+/// 0.3 to 0.9 down the view and up to 0.15 aside, moving up to 0.05 aside
+/// and 0.1 to 0.2 up the view, then 0.05 up (blocks a tick). `forward` is
+/// the unit view direction; `seed` the client's random draw.
+pub fn living_item_particles(
+    item: crate::item::Item,
+    eye: DVec3,
+    forward: DVec3,
+    count: u32,
+    seed: u64,
+) -> impl Iterator<Item = Request> {
+    let side = forward.cross(DVec3::Y).normalize_or(DVec3::X);
+    let up = side.cross(forward).normalize_or(DVec3::Y);
+    let mut rng = crate::entity::Rng::new(seed);
+    (0..count).map(move |_| {
+        let dx = (f64::from(rng.next_f32()) - 0.5) * 0.1;
+        let dy = f64::from(rng.next_f32()) * 0.1 + 0.1;
+        let vel = side * dx + up * dy + DVec3::Y * 0.05;
+        let y = -f64::from(rng.next_f32()) * 0.6 - 0.3;
+        let x = (f64::from(rng.next_f32()) - 0.5) * 0.3;
+        Request::Item { pos: eye + side * x + up * y + forward * 0.6, vel, item }
+    })
+}
+
 impl Request {
     /// Where the effect happens, for range checks.
     pub fn pos(&self) -> DVec3 {
@@ -295,8 +374,12 @@ impl Request {
             Request::Explosion { pos, .. }
             | Request::EyeBreak { pos }
             | Request::Honey { pos, .. }
+            | Request::Item { pos, .. }
             | Request::Firework { pos, .. } => *pos,
-            Request::Break { cell, .. } | Request::Hit { cell, .. } => cell.as_dvec3() + DVec3::splat(0.5),
+            Request::Break { cell, .. }
+            | Request::Hit { cell, .. }
+            | Request::Composter { cell }
+            | Request::Growth { cell, .. } => cell.as_dvec3() + DVec3::splat(0.5),
         }
     }
 
@@ -316,7 +399,10 @@ impl Request {
             Request::Break { cell, block } => json!({"t": "r", "p": c(*cell), "b": block.0}),
             Request::Hit { cell, block, face } => json!({"t": "h", "p": c(*cell), "b": block.0, "d": c(*face)}),
             Request::EyeBreak { pos } => json!({"t": "e", "p": v(*pos)}),
+            Request::Item { pos, vel, item } => json!({"t": "it", "p": v(*pos), "v": v(*vel), "i": item.0}),
             Request::Honey { pos, count, sound } => json!({"t": "honey", "p": v(*pos), "n": count, "sound": sound}),
+            Request::Composter { cell } => json!({"t": "cf", "p": c(*cell)}),
+            Request::Growth { cell, count, bone_meal } => json!({"t": "gr", "p": c(*cell), "n": count, "b": bone_meal}),
             Request::Firework { pos, vel, fireworks } => {
                 json!({"t": "fw", "p": v(*pos), "v": v(*vel), "f": fireworks.map(|f| f.field())})
             }
@@ -364,10 +450,21 @@ impl Request {
             "r" => Request::Break { cell: c("p")?, block: block()? },
             "h" => Request::Hit { cell: c("p")?, block: block()?, face: c("d")?.clamp(IVec3::NEG_ONE, IVec3::ONE) },
             "e" => Request::EyeBreak { pos: v("p")? },
+            "it" => Request::Item {
+                pos: v("p")?,
+                vel: v("v")?.clamp(DVec3::splat(-4.0), DVec3::splat(4.0)),
+                item: crate::item::Item::all_items().find(|i| u64::from(i.0) == j["i"].as_u64().unwrap_or(u64::MAX))?,
+            },
             "honey" => Request::Honey {
                 pos: v("p")?,
                 count: u8::try_from(j["n"].as_u64()?).ok()?.min(10),
                 sound: j["sound"] == true,
+            },
+            "cf" => Request::Composter { cell: c("p")? },
+            "gr" => Request::Growth {
+                cell: c("p")?,
+                count: u8::try_from(j["n"].as_u64()?).ok()?.min(64),
+                bone_meal: j["b"] == true,
             },
             "fw" => Request::Firework {
                 pos: v("p")?,
@@ -424,11 +521,18 @@ pub struct Pool {
     particles: VecDeque<Particle>,
     /// v0.16 Track B: firework spark trails left this tick (reserved once).
     trails: Vec<Particle>,
+    /// v1.0 gap track 6e: where dripstone drops landed this tick, and
+    /// whether each was lava.
+    pub(super) landed: Vec<(DVec3, bool)>,
 }
 
 impl Default for Pool {
     fn default() -> Self {
-        Self { particles: VecDeque::with_capacity(CAPACITY), trails: Vec::with_capacity(TRAIL_CAPACITY) }
+        Self {
+            particles: VecDeque::with_capacity(CAPACITY),
+            trails: Vec::with_capacity(TRAIL_CAPACITY),
+            landed: Vec::with_capacity(LANDED_CAPACITY),
+        }
     }
 }
 
@@ -450,8 +554,15 @@ impl Pool {
 
     pub fn tick<W: BlockSource + ?Sized>(&mut self, world: &W) {
         let mut trails = std::mem::take(&mut self.trails);
+        let landed = &mut self.landed;
         self.particles.retain_mut(|p| {
             let keep = p.tick(world);
+            if p.landed {
+                p.landed = false;
+                if landed.len() < LANDED_CAPACITY {
+                    landed.push((p.pos, p.style == Kind::LavaDrip));
+                }
+            }
             if keep
                 && p.spark.is_some()
                 && let Some(copy) = firework::after_spark_tick(p)

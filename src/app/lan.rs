@@ -28,6 +28,10 @@ mod inventory;
 struct LanUse {
     eating: bool,
     drawing: bool,
+    /// v1.0 gap track 6: a bundle being emptied by holding use.
+    bundle: bool,
+    /// v1.0 final Track F4: a blown goat horn held up.
+    horn: bool,
 }
 
 /// Largest view distance (in 32-block chunks) a LAN host streams to clients.
@@ -152,6 +156,14 @@ pub(super) struct Lan {
     /// Ongoing consumption predicted for the selected slot, reconciled with
     /// host snapshots even after every queued input has been acknowledged.
     predicted_eating: Option<usize>,
+    /// v1.0 gap track 6: a bundle in use predicted for the selected slot,
+    /// and the use ticks it has run (`BundleItem.getUseDuration` ends it).
+    predicted_bundle: Option<(usize, u32)>,
+    /// v1.0 final Track F4: a blown goat horn predicted held up (its slot
+    /// and use ticks), and the ticks left of the horn cooldown as this
+    /// client predicts it (`InstrumentItem.use`).
+    predicted_horn: Option<(usize, u32)>,
+    horn_cooldown: u32,
     /// Whether the use button was held on the last client tick.
     use_was_held: bool,
     /// Use was pressed since the last client tick (it may also have been
@@ -170,6 +182,9 @@ pub(super) struct Lan {
     book_serial: u32,
     inventory: inventory::Receiver,
     inventory_revision: u32,
+    /// v1.0 final F6: a guest's raid bar, from the host's last snapshot
+    /// (Java's `ServerBossEvent` sends it to every player in the raid).
+    pub raid_bar: Option<voxelcraft::entity::raid::Bar>,
 }
 impl Lan {
     /// What the use button was doing when `input` was sampled: eating or
@@ -197,7 +212,40 @@ impl Lan {
             && !statue_use
             && (drink || !composting);
         self.predicted_eating = eating.then_some(slot);
-        LanUse { eating, drawing: self.predicted_draw == Some(slot) }
+        // v1.0 gap track 6: `BundleItem.use` in the main hand, or in the
+        // off hand behind an empty one; it runs while use stays held.
+        use voxelcraft::content::bundle::is_bundle;
+        let main = session.inventory.get(slot);
+        let holds_bundle = main.is_some_and(|s| is_bundle(s.item))
+            || main.is_none() && session.inventory.offhand.is_some_and(|s| is_bundle(s.item));
+        let sneaking = input.buttons & 2 != 0;
+        self.predicted_bundle = match self.predicted_bundle {
+            _ if input.buttons & 16 == 0 || !holds_bundle => None,
+            Some((s, ticks)) if !pressed && s == slot => {
+                (ticks + 1 < voxelcraft::session::bundles::USE_TICKS).then_some((slot, ticks + 1))
+            }
+            _ if pressed && !session.block_takes_use(slot, world, sneaking) => Some((slot, 0)),
+            _ => None,
+        };
+        let bundle = self.predicted_bundle.is_some();
+        // v1.0 final Track F4: `InstrumentItem.use` holds the horn up for
+        // its 140-tick use, and the press starts the item's cooldown.
+        use voxelcraft::content::goat_horn;
+        self.horn_cooldown = self.horn_cooldown.saturating_sub(1);
+        let holds_horn = main.is_some_and(|s| goat_horn::instrument(s.item).is_some());
+        self.predicted_horn = match self.predicted_horn {
+            _ if input.buttons & 16 == 0 || !holds_horn => None,
+            Some((s, ticks)) if !pressed && s == slot => {
+                (ticks + 1 < goat_horn::USE_TICKS).then_some((slot, ticks + 1))
+            }
+            _ if pressed && self.horn_cooldown == 0 && !session.block_takes_use(slot, world, sneaking) => {
+                self.horn_cooldown = goat_horn::USE_TICKS;
+                Some((slot, 0))
+            }
+            _ => None,
+        };
+        let horn = self.predicted_horn.is_some();
+        LanUse { eating, drawing: self.predicted_draw == Some(slot), bundle, horn }
     }
 
     /// The world's remembered session rules, `cheats,pvp` as `0` or `1`.
@@ -237,6 +285,8 @@ impl Game {
                 .or_else(|| self.lan.bodies().find(|b| b.0 == name).map(|b| b.1));
             out.extend(body.unwrap_or_else(|| bot.agent.breaking(&self.world)));
         }
+        // v1.0 gap Track 2: doors mobs are breaking (`destroyBlockProgress`).
+        out.extend(self.mobs.entities.door_cracks());
         out.retain(|&(_, f)| f > 0.0);
         out
     }
@@ -345,7 +395,8 @@ fn state(agent: &Agent, name: &str) -> Value {
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
         "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot(),"consuming":agent.session.consuming(),
-        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks})
+        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks,
+        "fire":agent.session.vitals.burning()})
 }
 /// What clients need of *other* players: pose, held item, armor and health, not their inventory.
 /// Rounds to a millimetre (or a thousandth of a radian): plenty for drawing, far fewer bytes.
@@ -375,7 +426,9 @@ fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Val
         "armor":agent.session.inventory.armor.iter().copied().map(stack_appearance).collect::<Vec<_>>(),
         "offhand":stack_appearance(agent.session.inventory.offhand),
         "time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
-        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks})
+        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks,
+        // v1.0 gap Track 8d: on fire, for Java's flame on other players.
+        "fire":agent.session.vitals.burning()})
 }
 fn apply(agent: &mut Agent, v: &Value) {
     if let Some(pos) = vector(&v["pos"]) {
@@ -436,6 +489,11 @@ fn apply(agent: &mut Agent, v: &Value) {
     }
     agent.session.sleeping = v["sleep"].as_f64().map(|f| f as f32);
     agent.session.player.vehicle = v["vehicle"].as_u64().and_then(|id| u32::try_from(id).ok());
+    // v1.0 gap Track 8d: the host's word on whether this player burns (the
+    // flame on them, the screen's fire); the next snapshot renews it.
+    if v["fire"] == true {
+        agent.session.vitals.ignite(1.0);
+    }
 }
 
 impl Game {
@@ -476,7 +534,9 @@ impl Game {
     pub(super) fn lan_command(&mut self, command: &str) {
         self.lan_send(Packet::Command(command.into()));
     }
-    pub(super) fn lan_click(&mut self, slot: u16, right: bool, shift: bool) {
+    /// A click on the host's copy of this guest's screen; `selected` is the
+    /// clicked bundle's selected stack.
+    pub(super) fn lan_click(&mut self, slot: u16, right: bool, shift: bool, selected: Option<usize>) {
         let grid_size = self.lan.inventory.grid.map_or(0, |grid| grid.size as u8);
         if (100..=109).contains(&slot) && usize::from(grid_size) != self.craft.size {
             return;
@@ -484,12 +544,16 @@ impl Game {
         if slot != LAN_OUTSIDE_SLOT {
             self.audio.ui_click();
         }
-        self.lan_send(Packet::Click { slot, right, shift, revision: self.lan.inventory_revision, grid_size });
+        let selected = selected.and_then(|i| u8::try_from(i).ok());
+        let revision = self.lan.inventory_revision;
+        self.lan_send(Packet::Click { slot, right, shift, revision, grid_size, selected });
     }
+    /// A chat line; players' messages wait out Chat Delay (v1.0 final F6).
     pub(super) fn chat_line(&mut self, message: &str) {
-        self.console.lines.push_back(message.into());
-        while self.console.lines.len() > 64 {
-            self.console.lines.pop_front();
+        if super::console::is_player_chat(message) {
+            self.console.push_player_chat(message.into(), self.settings.chat.delay);
+        } else {
+            self.console.push(message.into());
         }
     }
     pub(super) fn broadcast_chat(&mut self, message: &str) {
@@ -505,6 +569,13 @@ impl Game {
             return text;
         };
         if let Some(profiles) = profiles.as_array_mut() {
+            // v1.0 gap Track 8f: each profile's pearls with its player data.
+            for p in profiles.iter_mut() {
+                let id = p["name"].as_str().and_then(|n| self.agents.players.get(n)).map(|b| b.id);
+                if let Some(pearls) = id.and_then(|id| self.saved_pearls(id)) {
+                    p[super::save::PEARLS_KEY] = pearls;
+                }
+            }
             for peer in &self.lan.peers {
                 if let Some(p) = profiles.iter_mut().find(|p| p["name"].as_str() == peer.profile.as_deref())
                     && let Some(mut inventory) =
@@ -707,9 +778,10 @@ impl Game {
                             let _ = peer.connection.send(Packet::Chat(format!("Error: {e}")));
                         }
                     }
-                    Packet::Click { slot, right, shift, revision, grid_size } => {
+                    Packet::Click { slot, right, shift, revision, grid_size, selected } => {
                         if !(100..=109).contains(&slot) || peer.grid.size == usize::from(grid_size) {
-                            self.remote_click(peer, slot, right, shift, revision);
+                            let selected = selected.map(usize::from);
+                            self.remote_click(peer, slot, right, shift, revision, selected);
                         }
                     }
                     Packet::Book { pages, title, offhand } => {
@@ -753,6 +825,14 @@ impl Game {
     pub(super) fn open_vehicles(&self) -> impl Iterator<Item = u32> + '_ {
         self.lan.peers.iter().filter(|p| p.open).filter_map(|p| match p.body.container() {
             Container::Minecart(id) => Some(id),
+            _ => None,
+        })
+    }
+
+    /// v1.0 gap Track 2d: the merchants LAN players trade with, by profile.
+    pub(super) fn lan_trading(&self) -> impl Iterator<Item = (u64, &str)> + '_ {
+        self.lan.peers.iter().filter(|p| p.open).filter_map(|p| match p.body.container() {
+            Container::Trading(id) => Some((id, p.profile.as_deref()?)),
             _ => None,
         })
     }
@@ -848,6 +928,15 @@ impl Game {
                 {
                     return Err("Invalid item name".into());
                 }
+            }
+            // v1.0 final track F1: a guest's drags, double clicks and
+            // number, swap-hands and drop keys over its screen's slots.
+            c if c.starts_with("drag ")
+                || c.starts_with("collect ")
+                || c.starts_with("slot_swap ")
+                || c.starts_with("slot_throw ") =>
+            {
+                self.remote_screen_click(peer, c)?
             }
             "swap" => {
                 let name = peer.profile.clone().unwrap_or_default();
@@ -1038,7 +1127,80 @@ impl Game {
         Ok(())
     }
 
-    fn remote_click(&mut self, peer: &mut Peer, encoded: u16, right: bool, shift: bool, revision: u32) {
+    /// v1.0 final track F1: the guest's `drag KIND SLOT...`, `collect SLOT
+    /// RIGHT`, `slot_swap SLOT KEY` (0..8 or 40) and `slot_throw SLOT WHOLE`
+    /// on the host's copy of its screen.
+    fn remote_screen_click(&mut self, peer: &mut Peer, command: &str) -> Result<(), String> {
+        let mut words = command.split_whitespace();
+        let verb = words.next().unwrap_or_default();
+        let kind = if verb == "drag" {
+            Some(super::clicks::parse_drag_word(words.next().unwrap_or_default()).ok_or("Bad drag")?)
+        } else {
+            None
+        };
+        let numbers: Vec<u16> =
+            words.map(|w| w.parse::<u16>().map_err(|_| "Bad slot".to_string())).collect::<Result<_, _>>()?;
+        if numbers.is_empty() || numbers.len() > 64 {
+            return Err("Bad slot".into());
+        }
+        if !peer.open {
+            return Ok(());
+        }
+        let Some(name) = peer.profile.clone() else { return Ok(()) };
+        let Some(session) = self.agents.players.get(&name).map(|b| &b.agent.session) else { return Ok(()) };
+        if !self.container_still_valid(session, peer.body.container) || session.vitals.is_dead() {
+            return Ok(());
+        }
+        let (container, mode, size) = (peer.body.container, session.mode, peer.grid.size);
+        let decode = |n: u16| decode_slot(n, container, mode, size);
+        let mut container = peer.body.container;
+        let done = match (verb, kind) {
+            ("drag", Some(kind)) => {
+                let slots: Vec<SlotRef> = numbers.iter().filter_map(|n| decode(*n)).collect();
+                self.agent_screen(&name, &mut container, &mut peer.grid, |s| s.drag(&slots, kind))
+            }
+            ("collect", _) => {
+                let Some(slot) = decode(numbers[0]) else { return Ok(()) };
+                let right = numbers.get(1) == Some(&1);
+                self.agent_screen(&name, &mut container, &mut peer.grid, |s| s.pickup_all(slot, right))
+            }
+            ("slot_swap", _) => {
+                let Some(slot) = decode(numbers[0]) else { return Ok(()) };
+                let key = match numbers.get(1) {
+                    Some(&k) if k < 9 => Some(k as usize),
+                    Some(40) => None,
+                    _ => return Err("Bad swap key".into()),
+                };
+                self.agent_screen(&name, &mut container, &mut peer.grid, |s| s.swap_slot(slot, key))
+            }
+            ("slot_throw", _) => {
+                let Some(slot) = decode(numbers[0]) else { return Ok(()) };
+                let whole = numbers.get(1) == Some(&1);
+                self.agent_screen(&name, &mut container, &mut peer.grid, |s| s.throw_slot(slot, whole))
+            }
+            _ => return Err("Bad screen click".into()),
+        };
+        peer.body.container = container;
+        for request in done.map(|(_, r)| r).unwrap_or_default() {
+            match request {
+                super::screen::Request::Popup(text) => {
+                    let _ = peer.connection.send(Packet::Chat(text));
+                }
+                super::screen::Request::Close => self.peer_close(peer),
+            }
+        }
+        Ok(())
+    }
+
+    fn remote_click(
+        &mut self,
+        peer: &mut Peer,
+        encoded: u16,
+        right: bool,
+        shift: bool,
+        revision: u32,
+        selected: Option<usize>,
+    ) {
         if !peer.open {
             return;
         }
@@ -1076,7 +1238,11 @@ impl Game {
             shift && (session.inventory.cursor.is_none() || matches!(slot, SlotRef::Palette(_) | SlotRef::Destroy));
         let mut container = peer.body.container;
         let done = self.agent_screen(&name, &mut container, &mut peer.grid, |s| {
-            if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
+            if quick {
+                s.quick_move(slot)
+            } else {
+                s.click_slot_selected(slot, right, selected);
+            }
         });
         peer.body.container = container;
         for request in done.map(|(_, r)| r).unwrap_or_default() {
@@ -1274,12 +1440,14 @@ impl Game {
                     }
                 }
             }
-            if let Some(bot) = self.agents.players.get(&name) {
+            // v1.0 gap Track 8: a spectator guest passes through portals as
+            // Java's do, so there's nothing to explain.
+            if let Some(bot) = self.agents.players.get(&name).filter(|b| b.agent.session.mode.uses_portals()) {
                 let p = bot.agent.session.player.pos.floor().as_ivec3();
                 if self
                     .world
                     .get_block(p)
-                    .is_some_and(|b| b == Block::NETHER_PORTAL || b == Block::END_PORTAL || b == Block::END_GATEWAY)
+                    .is_some_and(|b| b.is_nether_portal() || b == Block::END_PORTAL || b == Block::END_GATEWAY)
                     && peer.last_portal_message.elapsed() > Duration::from_secs(5)
                 {
                     peer.last_portal_message = Instant::now();
@@ -1321,8 +1489,12 @@ impl Game {
         host.vitals = self.session.vitals.clone();
         host.sleeping = self.session.sleeping;
         let host_eating = (self.body.actions.eat_timer / super::EAT_TIME) as f32;
+        // v1.0 gap Track 8e: a host watching the credits has left the level
+        // (`ServerPlayer.showEndCredits`), so guests don't see them.
+        let host_here = self.credits.is_none();
         let players: Vec<_> =
             std::iter::once(state_lite(&host, &self.lan.profile, self.hand.swing_time(), host_eating))
+                .filter(|_| host_here)
                 .chain(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, b)| {
                     let eating = self
                         .pad_view(n)
@@ -1494,7 +1666,7 @@ impl Game {
                 .map(|m| {
                     // Compact pose: uid, kind, position, yaws/pitch, health, hurt, dying (-1 alive), size, baby.
                     let kind = m.kind.lan_index();
-                    let mut v = json!({"m":[m.uid, kind, r3(m.pos.x), r3(m.pos.y), r3(m.pos.z), r3(m.yaw as f64),
+                    let mut v = json!({"m":[m.uid, kind, r3(m.pos.x), r3(m.pos.y), r3(m.pos.z), r3(m.pose_values()[0] as f64),
                         r3(m.head_yaw as f64), r3(m.head_pitch as f64), r3(m.health as f64), r3(m.hurt as f64),
                         m.dying.map_or(-1.0, |d| r3(d as f64)), m.size, u8::from(m.baby)]});
                     if refresh || !peer.looked.contains(&m.uid) {
@@ -1508,6 +1680,27 @@ impl Game {
                     // The charge bar changes every tick, so it rides with the pose.
                     if let Some(mount) = m.mount.as_ref().filter(|s| s.jump_charge > 0.0) {
                         v["jump"] = json!(mount.jump_charge);
+                    }
+                    // v1.0 gap Track 7c: the squid's tentacle cycle and the
+                    // bee's `shouldRoll` drive their client animations
+                    // every tick, so they ride with the pose too.
+                    if let Some(t) = m.tentacle_cycle() {
+                        v["tc"] = json!(r3(t as f64));
+                    }
+                    if m.bee.is_some_and(|b| b.rolling) {
+                        v["roll"] = json!(true);
+                    }
+                    // v1.0 gap Track 8d: a burning mob carries Java's flame.
+                    if m.burning {
+                        v["fire"] = json!(true);
+                    }
+                    if let Some(t) = m.crossbow_draw() {
+                        v["draw"] = json!(r3(t as f64));
+                    }
+                    // v1.0 gap Track 7f: the villager's `unhappyCounter`
+                    // (synched data in Java) drives its head shake.
+                    if let Some(c) = m.villager.as_ref().map(|v| v.unhappy).filter(|&c| c > 0) {
+                        v["sad"] = json!(c);
                     }
                     looked.insert(m.uid);
                     v
@@ -1558,7 +1751,7 @@ impl Game {
                 .map(|m| m.serialize())
                 .collect::<Vec<_>>()
                 .join(";");
-            let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.session.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical,"tipped":a.tipped,"potion":a.potion.map(|p|p.0)})).collect();
+            let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.session.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical,"tipped":a.tipped,"potion":a.potion.map(|p|p.0),"fire":a.burning()})).collect();
             let decor = self.mobs.entities.decor_near(bot.agent.session.player.pos, 160.0, 256);
             // Signs, shelves and chiseled bookshelves near the player, when
             // they changed or the player moved 16 blocks since the last send.
@@ -1581,6 +1774,13 @@ impl Game {
             snapshot["shulker_lids"] = json!(self.world.shulker_lids_near(here, 160.0));
             // v0.18 Track 9: chest lids and barrel tops in use or moving.
             snapshot["lids"] = json!(self.world.lids_near(here, 160.0));
+            // v1.0 final F6: the raid bar this guest's player is on, as
+            // `ServerBossEvent.addPlayer` shows it to each raid player.
+            snapshot["raid_bar"] = raid_bar_json(self.mobs.entities.raids.bar_for(bot.agent.session.id));
+            // v1.0 final Track F4: brushed finds rising out of their blocks.
+            snapshot["emerging"] = json!(self.world.emerging_near(here, crate::render::signs::RANGE));
+            // v1.0 final track F3: bells shaking after a ring.
+            snapshot["bells"] = json!(self.world.bells_near(here, 160.0));
             if let Some((open, serial)) = &peer.book_open
                 && (open["lectern"].is_array()
                     || open["slot"].as_u64().is_some_and(|slot| peer.inventory.held_matches(slot as usize, inventory)))
@@ -1626,6 +1826,8 @@ impl Game {
         );
         self.lan.predictions.clear();
         self.lan.predicted_eating = None;
+        self.lan.predicted_bundle = None;
+        self.lan.predicted_horn = None;
         self.lan.ready = false;
         self.mobs.entities = crate::entity::Entities::new(seed);
     }
@@ -1669,7 +1871,8 @@ impl Game {
     fn lan_movement(&self, input: &Input, use_state: LanUse) -> voxelcraft::player::MoveInput {
         voxelcraft::player::MoveInput {
             sprint_blocked: !self.session.vitals.may_sprint(self.session.mode.invulnerable()),
-            using_item: input.buttons & 16 != 0 && (use_state.eating || use_state.drawing),
+            using_item: input.buttons & 16 != 0
+                && (use_state.eating || use_state.drawing || use_state.bundle || use_state.horn),
             ..input.movement()
         }
     }
@@ -1728,6 +1931,8 @@ impl Game {
             // v0.16 Track F: conduits animate from the replicated blocks.
             self.world.tick_conduit_replicas();
             self.tick_particles();
+            // v1.0 gap Track 1: Darkness's blend and pulse run on the client.
+            self.session.vitals.effects.tick_client_view();
             // The client doesn't track portal time; nausea comes from the host.
             let nausea =
                 self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Nausea).map(|e| e.ticks);
@@ -1795,7 +2000,10 @@ impl Game {
         self.session.mode = own.session.mode;
         self.session.inventory = self.lan.inventory.current.clone();
         self.lan.inventory_revision = self.lan.inventory.revision;
+        let previous = std::mem::take(&mut self.session.vitals.effects);
         self.session.vitals = own.session.vitals;
+        // v1.0 gap Track 1: the client's own Darkness blend and tick count.
+        self.session.vitals.effects.keep_client_view(&previous, !self.lan.ready);
         self.session.sleeping = own.session.sleeping;
         if !self.lan.ready {
             self.body.actions.selected = own.selected;
@@ -1870,6 +2078,9 @@ impl Game {
         }
         self.world.apply_shulker_lids(&snapshot["shulker_lids"]);
         self.world.apply_lids(&snapshot["lids"]);
+        self.lan.raid_bar = raid_bar_from(&snapshot["raid_bar"]);
+        self.world.apply_emerging(&snapshot["emerging"]);
+        self.world.apply_bells(&snapshot["bells"]);
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial
@@ -2030,6 +2241,18 @@ impl Game {
                 if let Some(mount) = mob.mount.as_mut() {
                     mount.jump_charge = m["jump"].as_f64().map_or(0.0, |j| j.clamp(0.0, 1.0) as f32);
                 }
+                if let Some(t) = m["tc"].as_f64() {
+                    mob.set_tentacle_cycle(t as f32);
+                }
+                if let Some(bee) = mob.bee.as_mut() {
+                    bee.rolling = m["roll"] == true;
+                }
+                mob.burning = m["fire"] == true;
+                mob.set_crossbow_draw(m["draw"].as_f64().map(|t| t as f32));
+                if let Some(v) = mob.villager.as_mut() {
+                    let c = m["sad"].as_u64().unwrap_or(0);
+                    v.unhappy = c.min(u64::from(voxelcraft::entity::villager::UNHAPPY_TICKS)) as u8;
+                }
                 mob.riding = m["r"].as_u64().and_then(|r| u32::try_from(r).ok());
                 mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
                 mob.previous_pose = if known { before } else { mob.pose_values() };
@@ -2144,6 +2367,7 @@ impl Game {
                 arrow.from_player = a["player"] == true;
                 arrow.critical = a["critical"] == true;
                 arrow.tipped = a["tipped"] == true;
+                arrow.set_burning(a["fire"] == true);
                 arrow.potion = a["potion"]
                     .as_u64()
                     .filter(|i| *i < voxelcraft::potion::Potion::COUNT as u64)
@@ -2325,9 +2549,10 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
 impl Game {
     pub(super) fn lan_ui(&self, ui: &mut crate::render::ui::Ui) {
         if self.lan.host.is_none() && self.lan.client.is_none() {
+            self.chat_ui(ui);
             return;
         }
-        let (sw, sh) = ui.size();
+        let (sw, _) = ui.size();
         if self.held(super::keys::Action::PlayerList) && !self.console.open {
             let mut names = vec![self.lan.profile.as_str()];
             names.extend(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, _)| n.as_str()));
@@ -2337,20 +2562,76 @@ impl Game {
                 ui.text((sw - width) / 2.0 + 8.0, 20.0 + i as f32 * 12.0, name, crate::render::ui::WHITE);
             }
         }
-        if !self.console.open && !self.menu.is_open() && !self.inventory_open {
-            for (i, line) in self.console.lines.iter().rev().filter(|s| !s.is_empty()).take(4).enumerate() {
-                ui.rect(
-                    4.0,
-                    sh - 64.0 - i as f32 * 12.0,
-                    crate::render::ui::Ui::text_width(line) + 6.0,
-                    11.0,
-                    [0.0, 0.0, 0.0, 0.45],
-                );
-                ui.text(7.0, sh - 62.0 - i as f32 * 12.0, line, crate::render::ui::WHITE);
-            }
+        self.chat_ui(ui);
+    }
+
+    /// The chat over the hotbar, as Java's unfocused `ChatComponent` draws
+    /// it ([`super::console::draw_chat`]): the rows that fit Unfocused
+    /// Height (90 pixels of 9-pixel rows by default) up from 40 pixels above
+    /// the bottom, on Width's band (332 pixels) of black at Text Background
+    /// Opacity, each fading out 10 seconds after it came
+    /// ([`super::console::chat_alpha`]), in a LAN game as in a single-player
+    /// one (v1.0 gap track 6d; Java's chat options, v1.0 final F6). Debug
+    /// feedback starts with Java's yellow, bold `debug.prefix` (v1.0 gap
+    /// track 6c, Java's `showDebugChat`).
+    pub(super) fn chat_ui(&self, ui: &mut crate::render::ui::Ui) {
+        if self.console.open || self.menu.is_open() || self.inventory_open {
+            return;
         }
+        let rows = super::console::chat_rows(&self.console, &self.settings.chat);
+        let view = super::console::ChatView {
+            focused: false,
+            scroll: 0,
+            new_since_scroll: false,
+            queued: self.console.queue.len(),
+        };
+        super::console::draw_chat(ui, &self.settings, &rows, &view, |ui, x, y, text, a, k| {
+            self.chat_prefix(ui, x, y, text, a, k)
+        });
+    }
+
+    /// Draws a chat row's debug prefix in `ChatFormatting.YELLOW` (0xFFFF55),
+    /// bold (each glyph drawn again a pixel right and advanced a pixel
+    /// more), and returns its width and length. Colors OFF (`chatColors`)
+    /// leaves the row plain, as Java strips its formatting.
+    pub(super) fn chat_prefix(
+        &self,
+        ui: &mut crate::render::ui::Ui,
+        x0: f32,
+        y: f32,
+        text: &str,
+        alpha: f32,
+        k: f32,
+    ) -> (f32, usize) {
+        if !self.settings.chat.colors || !text.starts_with(DEBUG_PREFIX) {
+            return (0.0, 0);
+        }
+        let yellow = [1.0, 1.0, 85.0 / 255.0, alpha];
+        let mut x = x0;
+        for c in DEBUG_PREFIX.chars() {
+            let s = c.to_string();
+            ui.text_scaled(x + k, y, &s, yellow, k);
+            x += ui.text_scaled(x, y, &s, yellow, k) + k;
+        }
+        (x - x0, DEBUG_PREFIX.len())
     }
 }
+
+/// A raid bar for a LAN snapshot: `[title code, progress]`, or null.
+fn raid_bar_json(bar: Option<voxelcraft::entity::raid::Bar>) -> Value {
+    bar.map_or(Value::Null, |b| json!([b.title.code(), r3(f64::from(b.progress))]))
+}
+
+/// The raid bar a snapshot carries; an older host sends none.
+fn raid_bar_from(v: &Value) -> Option<voxelcraft::entity::raid::Bar> {
+    let code = v.get(0)?.as_i64()?;
+    let progress = v.get(1)?.as_f64()?.clamp(0.0, 1.0) as f32;
+    Some(voxelcraft::entity::raid::Bar { progress, title: voxelcraft::entity::raid::BarTitle::from_code(code) })
+}
+
+/// Java's `debug.prefix`, which `KeyboardHandler.debugFeedbackComponent`
+/// puts before debug feedback.
+pub(super) const DEBUG_PREFIX: &str = "[Debug]:";
 
 /// A player on the desktop host: the host itself, or a controller or LAN
 /// player by agent profile name.
@@ -2431,13 +2712,16 @@ impl Game {
         amount: f32,
         (source, yaw, extra): (DVec3, f32, f32),
         fire: f32,
+        by: crate::entity::PlayerId,
     ) -> Option<(DVec3, [u8; 4], bool)> {
-        const CAUSE: voxelcraft::simulation::damage::Cause = voxelcraft::simulation::damage::Cause::PLAYER_ATTACK;
+        // v1.0 gap Track 8f: "was slain by" the attacker, by name.
+        let owner = Some(crate::entity::trident::Owner::Player(by));
+        let cause = voxelcraft::simulation::damage::Cause::PLAYER_ATTACK.by(owner);
         let hit = knockback::Hit::melee(source, self.player(target)?.player.pos, yaw, extra);
         let landed = match target {
             PlayerRef::Host => {
                 let toward = source - self.session.player.pos;
-                let landed = self.damage_player_from(amount, CAUSE, Some(toward)) > 0.0;
+                let landed = self.damage_player_from(amount, cause, Some(toward)) > 0.0;
                 if landed {
                     let entities = &mut self.mobs.entities;
                     self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
@@ -2446,7 +2730,7 @@ impl Game {
             }
             PlayerRef::Agent(name) => {
                 let bot = self.agents.players.get_mut(name)?;
-                bot.agent.hurt_knocked(amount, CAUSE, &hit, &mut self.mobs.entities) > 0.0
+                bot.agent.hurt_knocked(amount, cause, &hit, &mut self.mobs.entities) > 0.0
             }
         };
         let s = self.player_mut(target)?;
@@ -2497,7 +2781,9 @@ impl Game {
         if let Some(t) = self.player_mut(&target) {
             t.axe_incoming(axe);
         }
-        let hurt = self.hurt_player_ref(&target, damage, (attacker_pos, yaw, extra), fire);
+        let attacker_id = self.player(attacker).map_or(crate::entity::PlayerId::HOST, |s| s.id);
+        let target_id = self.player(&target).map_or(crate::entity::PlayerId::HOST, |s| s.id);
+        let hurt = self.hurt_player_ref(&target, damage, (attacker_pos, yaw, extra), fire, attacker_id);
         if let Some(t) = self.player_mut(&target) {
             t.axe_incoming(false);
         }
@@ -2507,6 +2793,13 @@ impl Game {
         // `Player.attack`: the extra knockback, sweep and post-attack effects
         // (Thorns) follow only a hit `hurtOrSimulate` accepted.
         let (extra, sweep, thorns) = if landed { (extra, sweep, thorns) } else { (0.0, false, [0; 4]) };
+        // v1.0 gap Track 2g: the target's `lastHurtByMob`, which the foxes
+        // that trust it defend against.
+        if landed
+            && let (Some(victim), Some(by)) = (self.player(&target).map(|s| s.id), self.player(attacker).map(|s| s.id))
+        {
+            self.mobs.entities.note_player_hurt_by_player(victim, by);
+        }
         if extra > 0.0 {
             // `causeExtraKnockback`: the push slows the attacker and stops its sprint.
             if let Some(me) = self.player_mut(attacker) {
@@ -2541,7 +2834,8 @@ impl Game {
                 .map(|(who, _)| who)
                 .collect();
             for other in near {
-                self.hurt_player_ref(&other, swept, (attacker_pos, yaw, knockback::SWEEP_STRENGTH as f32), 0.0);
+                let push = (attacker_pos, yaw, knockback::SWEEP_STRENGTH as f32);
+                self.hurt_player_ref(&other, swept, push, 0.0, attacker_id);
             }
             let mut burst = crate::particles::Burst::new(crate::particles::Kind::Poof, at + DVec3::Y, 3);
             burst.spread = DVec3::splat(0.5);
@@ -2562,14 +2856,16 @@ impl Game {
         for level in thorns.into_iter().filter(|&l| l > 0) {
             if self.mobs.entities.roll_chance(0.15 * level as f32) {
                 let back = self.mobs.entities.roll_range(1.0, 5.0);
-                const THORNS: voxelcraft::simulation::damage::Cause = voxelcraft::simulation::damage::Cause::THORNS;
+                // v1.0 gap Track 8f: "while trying to hurt" the wearer, by name.
+                let owner = Some(crate::entity::trident::Owner::Player(target_id));
+                let thorns = voxelcraft::simulation::damage::Cause::THORNS.by(owner);
                 match attacker {
                     PlayerRef::Host => {
-                        self.damage_player_armored(back, THORNS);
+                        self.damage_player_armored(back, thorns);
                     }
                     PlayerRef::Agent(name) => {
                         if let Some(bot) = self.agents.players.get_mut(name) {
-                            bot.agent.hurt(back, THORNS, DVec3::ZERO, &mut self.mobs.entities);
+                            bot.agent.hurt(back, thorns, DVec3::ZERO, &mut self.mobs.entities);
                         }
                     }
                 }
@@ -2652,7 +2948,9 @@ fn peer_sounds(
         if movement && pos.distance_squared(me) < 1.0 {
             return None;
         }
-        (pos.distance_squared(me) < 64.0 * 64.0)
+        // v1.0 final Track F4: horns and discs reach their Java range.
+        let range = sound.java_range().unwrap_or(64.0).max(64.0) as f64;
+        (pos.distance_squared(me) < range * range)
             .then(|| json!([sound.key(), pos.x, pos.y, pos.z, gain, lo, hi, source.index()]))
     });
     own.chain(heard).take(96).collect()
@@ -2661,6 +2959,20 @@ fn peer_sounds(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// v1.0 final F6: the raid bar reaches a LAN guest with its title and
+    /// progress; a snapshot without one (no raid, or an older host) clears it.
+    #[test]
+    fn raid_bar_round_trips_through_a_snapshot() {
+        use voxelcraft::entity::raid::{Bar, BarTitle};
+        for title in [BarTitle::Raid, BarTitle::Remaining(7), BarTitle::Victory, BarTitle::Defeat] {
+            let bar = Bar { progress: 0.625, title };
+            let v: Value = serde_json::from_str(&raid_bar_json(Some(bar)).to_string()).unwrap();
+            assert_eq!(raid_bar_from(&v), Some(bar));
+        }
+        assert_eq!(raid_bar_from(&raid_bar_json(None)), None);
+        assert_eq!(raid_bar_from(&json!({})["raid_bar"]), None);
+    }
 
     /// Issue #98: a LAN guest hears the raid horn played for it, at its own
     /// position, once, whether or not the host heard one.
@@ -2693,6 +3005,21 @@ mod tests {
         // Other sounds still reach a guest in range.
         let hurt = [(Sound::Hurt, Some(near), 1.0, (1.0, 1.0), SoundSource::Neutral)];
         assert_eq!(peer_sounds(&hurt, &[], guest, me, near).len(), 1);
+    }
+
+    /// v1.0 final Track F4: a goat horn reaches guests to its 256-block
+    /// range and a jukebox's song to 64; other sounds stop at 64.
+    #[test]
+    fn goat_horns_reach_guests_256_blocks_away() {
+        use crate::audio::{SoundSource, sounds::Sound};
+        let me = DVec3::new(0.5, 64.0, 0.5);
+        let host = DVec3::new(200.5, 64.0, 0.5);
+        let horn = [(Sound::Horn(2), Some(host), 1.0, (1.0, 1.0), SoundSource::Records)];
+        let sent = peer_sounds(&horn, &[], voxelcraft::entity::PlayerId(2), me, host);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0][0], json!(Sound::Horn(2).key()));
+        let hurt = [(Sound::Hurt, Some(host), 1.0, (1.0, 1.0), SoundSource::Players)];
+        assert!(peer_sounds(&hurt, &[], voxelcraft::entity::PlayerId(2), me, host).is_empty());
     }
 
     #[test]
@@ -2733,7 +3060,7 @@ mod tests {
             assert!(lan.sample_use(&session, &world, &input, true).eating);
             world.set_block(p, statue::item_block(Stage::Unaffected, false));
             assert!(lan.sample_use(&session, &world, &input, false).eating, "an existing bite continues");
-            lan.predictions.push_back((input, LanUse { eating: true, drawing: false }));
+            lan.predictions.push_back((input, LanUse { eating: true, drawing: false, bundle: false, horn: false }));
             lan.predictions.clear();
             assert!(lan.sample_use(&session, &world, &input, false).eating, "acknowledging inputs preserves a bite");
             assert!(!lan.sample_use(&session, &world, &Input { buttons: 0, ..input }, false).eating);
@@ -2908,6 +3235,24 @@ mod tests {
         assert_eq!(copy.player.pos, p.player.pos);
         assert_eq!(lite["swing"], 0.1);
         assert_eq!(lite["eat"], 0.5);
+    }
+    /// v1.0 gap track 6d: another player's held stack keeps what its
+    /// glint depends on (enchantments, a lodestone), so a LAN player's
+    /// enchanted item glints in their hand on every screen.
+    #[test]
+    fn other_players_held_stacks_keep_their_glint() {
+        let mut p = Agent::new(DVec3::ZERO);
+        let item = crate::item::Item::from_name("diamond sword").expect("the diamond sword is registered");
+        let mut sword = crate::inventory::Stack::new(item, 1);
+        sword.enchants.set(crate::enchant::Enchantment::Sharpness, 3);
+        assert!(sword.has_foil());
+        p.inventory.slots[0] = Some(sword);
+        p.inventory.offhand = Some(sword);
+        let mut copy = Agent::new(DVec3::ZERO);
+        apply(&mut copy, &state_lite(&p, "Remote", None, 0.0));
+        assert_eq!(copy.inventory.get(0), Some(sword));
+        assert!(copy.inventory.get(0).is_some_and(|s| s.has_foil()));
+        assert!(copy.inventory.offhand.is_some_and(|s| s.has_foil()));
     }
     #[test]
     fn player_snapshot_preserves_progression_and_movement() {

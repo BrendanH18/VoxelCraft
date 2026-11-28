@@ -80,6 +80,37 @@ pub enum Voice {
     /// v0.16 Track D: `entity.sulfur_cube.hurt`/`death` (and the small
     /// cube's, pitched up). It has no ambient call.
     SulfurCube,
+    /// v1.0 final Track F4: the mobs that borrowed another's voice get
+    /// their own (`entity.iron_golem.*`, `entity.llama.*`, `entity.camel.*`,
+    /// `entity.snow_golem.*`, `entity.phantom.*`, `entity.silverfish.*`,
+    /// `entity.turtle.*` and the hatchling's `entity.turtle.*_baby`).
+    IronGolem,
+    Llama,
+    Camel,
+    SnowGolem,
+    Phantom,
+    Silverfish,
+    Turtle,
+    BabyTurtle,
+    /// v1.0 final Track F4: kin's calls made their own
+    /// ([`super::creatures::kin`]), for mobs with their own Java events.
+    Husk,
+    Drowned,
+    ZombieVillager,
+    ZombifiedPiglin,
+    Stray,
+    Bogged,
+    WitherSkeleton,
+    MagmaCube,
+    WanderingTrader,
+    SkeletonHorse,
+    ZombieHorse,
+    Donkey,
+    Mule,
+    PiglinBrute,
+    Zoglin,
+    GlowSquid,
+    ElderGuardian,
 }
 
 /// What kind of sound a voice makes.
@@ -92,7 +123,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 55] = [
+    pub const ALL: [Voice; 80] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -148,6 +179,31 @@ impl Voice {
         Voice::Wither,
         Voice::Shulker,
         Voice::SulfurCube,
+        Voice::IronGolem,
+        Voice::Llama,
+        Voice::Camel,
+        Voice::SnowGolem,
+        Voice::Phantom,
+        Voice::Silverfish,
+        Voice::Turtle,
+        Voice::BabyTurtle,
+        Voice::Husk,
+        Voice::Drowned,
+        Voice::ZombieVillager,
+        Voice::ZombifiedPiglin,
+        Voice::Stray,
+        Voice::Bogged,
+        Voice::WitherSkeleton,
+        Voice::MagmaCube,
+        Voice::WanderingTrader,
+        Voice::SkeletonHorse,
+        Voice::ZombieHorse,
+        Voice::Donkey,
+        Voice::Mule,
+        Voice::PiglinBrute,
+        Voice::Zoglin,
+        Voice::GlowSquid,
+        Voice::ElderGuardian,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -178,7 +234,22 @@ impl Voice {
             | Voice::Piglin
             | Voice::Hoglin
             | Voice::Guardian
-            | Voice::Pillager => SoundSource::Hostile,
+            | Voice::Pillager
+            // `Phantom.getSoundSource` is HOSTILE; the silverfish is a `Monster`.
+            | Voice::Phantom
+            | Voice::Silverfish
+            | Voice::Husk
+            | Voice::Drowned
+            | Voice::ZombieVillager
+            | Voice::ZombifiedPiglin
+            | Voice::Stray
+            | Voice::Bogged
+            | Voice::WitherSkeleton
+            | Voice::MagmaCube
+            | Voice::PiglinBrute
+            | Voice::Zoglin
+            | Voice::ElderGuardian
+            => SoundSource::Hostile,
             Voice::Sniffer
             | Voice::Allay
             | Voice::Bat
@@ -212,7 +283,21 @@ impl Voice {
             | Voice::HappyGhast
             | Voice::Nautilus
             | Voice::ZombieNautilus
-            | Voice::CamelHusk => SoundSource::Neutral,
+            | Voice::CamelHusk
+            // Golems and the animals keep the default NEUTRAL.
+            | Voice::IronGolem
+            | Voice::Llama
+            | Voice::Camel
+            | Voice::SnowGolem
+            | Voice::Turtle
+            | Voice::BabyTurtle
+            | Voice::WanderingTrader
+            | Voice::SkeletonHorse
+            | Voice::ZombieHorse
+            | Voice::Donkey
+            | Voice::Mule
+            | Voice::GlowSquid
+            => SoundSource::Neutral,
         }
     }
 
@@ -273,6 +358,31 @@ impl Voice {
             Voice::Bee => "bee",
             Voice::Rabbit => "rabbit",
             Voice::Goat => "goat",
+            Voice::IronGolem => "iron_golem",
+            Voice::Llama => "llama",
+            Voice::Camel => "camel",
+            Voice::SnowGolem => "snow_golem",
+            Voice::Phantom => "phantom",
+            Voice::Silverfish => "silverfish",
+            Voice::Turtle => "turtle",
+            Voice::BabyTurtle => "baby_turtle",
+            Voice::Husk => "husk",
+            Voice::Drowned => "drowned",
+            Voice::ZombieVillager => "zombie_villager",
+            Voice::ZombifiedPiglin => "zombified_piglin",
+            Voice::Stray => "stray",
+            Voice::Bogged => "bogged",
+            Voice::WitherSkeleton => "wither_skeleton",
+            Voice::MagmaCube => "magma_cube",
+            Voice::WanderingTrader => "wandering_trader",
+            Voice::SkeletonHorse => "skeleton_horse",
+            Voice::ZombieHorse => "zombie_horse",
+            Voice::Donkey => "donkey",
+            Voice::Mule => "mule",
+            Voice::PiglinBrute => "piglin_brute",
+            Voice::Zoglin => "zoglin",
+            Voice::GlowSquid => "glow_squid",
+            Voice::ElderGuardian => "elder_guardian",
         }
     }
 }
@@ -292,17 +402,17 @@ impl Call {
 /// A voiced utterance: `f0(t)` is the pitch, `env(t)` the loudness,
 /// `formants` the vowel as (frequency, Q, gain), scaled over time by
 /// `shift(t)` (1 = unchanged). `breath` mixes in aspiration noise.
-struct Utterance<'a> {
-    secs: f32,
-    f0: &'a dyn Fn(f32) -> f32,
-    env: &'a dyn Fn(f32) -> f32,
-    formants: [(f32, f32, f32); 3],
-    shift: &'a dyn Fn(f32) -> f32,
-    jitter: f32,
-    breath: f32,
+pub(super) struct Utterance<'a> {
+    pub(super) secs: f32,
+    pub(super) f0: &'a dyn Fn(f32) -> f32,
+    pub(super) env: &'a dyn Fn(f32) -> f32,
+    pub(super) formants: [(f32, f32, f32); 3],
+    pub(super) shift: &'a dyn Fn(f32) -> f32,
+    pub(super) jitter: f32,
+    pub(super) breath: f32,
 }
 
-fn utter(rng: &mut Rng, u: &Utterance) -> Vec<f32> {
+pub(super) fn utter(rng: &mut Rng, u: &Utterance) -> Vec<f32> {
     let len = samples(u.secs);
     let mut filters: Vec<Biquad> = u.formants.iter().map(|&(f, q, _)| Biquad::bandpass(f, q)).collect();
     let mut phase = 0.0f32;
@@ -339,17 +449,17 @@ fn utter(rng: &mut Rng, u: &Utterance) -> Vec<f32> {
 }
 
 /// A smooth rise over `a` seconds and fall over the last `r` of `len`.
-fn swell(t: f32, a: f32, r: f32, len: f32) -> f32 {
+pub(super) fn swell(t: f32, a: f32, r: f32, len: f32) -> f32 {
     let up = (t / a).min(1.0);
     let down = ((len - t) / r).clamp(0.0, 1.0);
     up * up * (3.0 - 2.0 * up) * down * down * (3.0 - 2.0 * down)
 }
 
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
+pub(super) fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t.clamp(0.0, 1.0)
 }
 
-const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
+pub(super) const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
 
 pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {
@@ -395,6 +505,202 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Hoglin => hoglin(call, rng),
         Voice::Strider => strider(call, rng),
         Voice::Pillager => villager(call, rng),
+        Voice::IronGolem => super::creatures::iron_golem(call, rng),
+        Voice::Llama => super::creatures::llama(call, rng),
+        Voice::Camel => super::creatures::camel(call, rng),
+        Voice::SnowGolem => super::creatures::snow_golem(call, rng),
+        Voice::Phantom => super::creatures::phantom(call, rng),
+        Voice::Silverfish => super::creatures::silverfish(call, rng),
+        Voice::Turtle => super::creatures::turtle(call, rng, false),
+        Voice::BabyTurtle => super::creatures::turtle(call, rng, true),
+        Voice::Husk => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Zombie,
+                rate: 0.88,
+                low: 3200.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Sand,
+            },
+            call,
+            rng,
+        ),
+        Voice::Drowned => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Zombie,
+                rate: 0.95,
+                low: 1800.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Water,
+            },
+            call,
+            rng,
+        ),
+        Voice::ZombieVillager => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Villager,
+                rate: 0.8,
+                low: 2600.0,
+                high: 0.0,
+                layer: super::creatures::Layer::None,
+            },
+            call,
+            rng,
+        ),
+        Voice::ZombifiedPiglin => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Piglin,
+                rate: 0.85,
+                low: 2400.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Moss,
+            },
+            call,
+            rng,
+        ),
+        Voice::Stray => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Skeleton,
+                rate: 1.1,
+                low: 0.0,
+                high: 900.0,
+                layer: super::creatures::Layer::Frost,
+            },
+            call,
+            rng,
+        ),
+        Voice::Bogged => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Skeleton,
+                rate: 0.85,
+                low: 2500.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Moss,
+            },
+            call,
+            rng,
+        ),
+        Voice::WitherSkeleton => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Skeleton,
+                rate: 0.7,
+                low: 3000.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Hollow,
+            },
+            call,
+            rng,
+        ),
+        Voice::MagmaCube => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Slime,
+                rate: 0.8,
+                low: 0.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Sizzle,
+            },
+            call,
+            rng,
+        ),
+        Voice::WanderingTrader => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Villager,
+                rate: 1.08,
+                low: 0.0,
+                high: 250.0,
+                layer: super::creatures::Layer::Hum,
+            },
+            call,
+            rng,
+        ),
+        Voice::SkeletonHorse => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Horse,
+                rate: 1.05,
+                low: 0.0,
+                high: 600.0,
+                layer: super::creatures::Layer::Hollow,
+            },
+            call,
+            rng,
+        ),
+        Voice::ZombieHorse => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Horse,
+                rate: 0.82,
+                low: 2200.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Moss,
+            },
+            call,
+            rng,
+        ),
+        Voice::Donkey => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Horse,
+                rate: 0.9,
+                low: 3000.0,
+                high: 0.0,
+                layer: super::creatures::Layer::None,
+            },
+            call,
+            rng,
+        ),
+        Voice::Mule => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Horse,
+                rate: 0.95,
+                low: 2800.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Hum,
+            },
+            call,
+            rng,
+        ),
+        Voice::PiglinBrute => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Piglin,
+                rate: 0.77,
+                low: 2800.0,
+                high: 0.0,
+                layer: super::creatures::Layer::None,
+            },
+            call,
+            rng,
+        ),
+        Voice::Zoglin => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Hoglin,
+                rate: 0.77,
+                low: 2600.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Moss,
+            },
+            call,
+            rng,
+        ),
+        Voice::GlowSquid => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Squid,
+                rate: 1.12,
+                low: 0.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Frost,
+            },
+            call,
+            rng,
+        ),
+        Voice::ElderGuardian => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Guardian,
+                rate: 0.75,
+                low: 2600.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Hollow,
+            },
+            call,
+            rng,
+        ),
+
         Voice::Wolf | Voice::Fox | Voice::Parrot | Voice::Rabbit | Voice::Goat => animal_voice(voice, call, rng),
         Voice::Fish | Voice::Squid | Voice::Dolphin | Voice::Axolotl | Voice::Guardian | Voice::Cat => {
             aquatic(voice, call, rng)
@@ -1111,6 +1417,30 @@ fn villager(call: Call, rng: &mut Rng) -> Vec<f32> {
             breath: 0.08,
         },
     );
+    dsp::finish(out, 0.5)
+}
+
+/// v1.0 gap Track 8f: `entity.villager.no`, original synthesized audio in
+/// the villager's voice: the same nasal "hmm" tract, two short closed-mouth
+/// syllables ("hm-mm"), the second lower and falling, as a refusal.
+pub(super) fn villager_no(rng: &mut Rng) -> Vec<f32> {
+    let base = rng.range(118.0, 142.0);
+    let mut out = vec![0.0; samples(0.5)];
+    for (start, secs, rise, fall) in [(0.0f32, 0.17f32, 1.12f32, 0.05f32), (0.2, 0.26, 0.98, 0.3)] {
+        let syllable = utter(
+            rng,
+            &Utterance {
+                secs,
+                f0: &|t| base * rise * (1.0 - fall * t / secs),
+                env: &|t| swell(t, 0.025, secs * 0.5, secs),
+                formants: [(260.0, 7.0, 1.0), (1000.0, 8.0, 0.3), (2150.0, 9.0, 0.12)],
+                shift: FLAT,
+                jitter: 0.025,
+                breath: 0.06,
+            },
+        );
+        mix_into(&mut out, &syllable, 1.0, samples(start));
+    }
     dsp::finish(out, 0.5)
 }
 

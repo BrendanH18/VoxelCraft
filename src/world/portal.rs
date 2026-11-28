@@ -3,12 +3,79 @@
 //!
 //! A frame is a rectangle of obsidian around an empty interior 2..=21 wide
 //! and 3..=21 tall, standing along X or Z (corners optional, as in
-//! Minecraft). Portal blocks fill the interior.
+//! Minecraft). Portal blocks fill the interior, each with Java's `axis`
+//! state: [`AXIS_X`] or [`AXIS_Z`] (v1.0 gap Track 5b).
 
-use glam::IVec3;
+use std::sync::Arc;
+
+use glam::{DVec3, IVec3};
 
 use super::World;
 use super::block::Block;
+use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, chunk_of};
+use super::shape::Box16;
+
+/// Java's `nether_portal[axis=x]` and `[axis=z]` (`HORIZONTAL_AXIS`),
+/// states 14022 and 14023 from Track 5's reservation. [`Block::NETHER_PORTAL`]
+/// (state 104) is the portal of saves from before them: it has no axis,
+/// and gets the one its neighbours give it when its chunk loads
+/// ([`World::axis_legacy_portals`]).
+pub const AXIS_X: Block = Block(FIRST);
+pub const AXIS_Z: Block = Block(LAST);
+pub const FIRST: u16 = 14022;
+pub const LAST: u16 = 14023;
+
+/// The portal's states with an axis.
+pub const fn owns(id: u16) -> bool {
+    id >= FIRST && id <= LAST
+}
+
+/// A Nether portal block: along X, along Z, or from an older save.
+pub const fn is_portal(b: Block) -> bool {
+    b.0 == Block::NETHER_PORTAL.0 || owns(b.0)
+}
+
+/// The portal block standing along X if `along_x`, else along Z.
+pub const fn of_axis(along_x: bool) -> Block {
+    if along_x { AXIS_X } else { AXIS_Z }
+}
+
+/// Whether portal block `b` stands along X (`None`: not a portal with an axis).
+pub const fn axis(b: Block) -> Option<bool> {
+    match b.0 {
+        FIRST => Some(true),
+        LAST => Some(false),
+        _ => None,
+    }
+}
+
+/// Java's `NetherPortalBlock.SHAPES` (`Block.column(4, 16, 0, 16)` turned
+/// by `Shapes.rotateHorizontalAxis`), and the box of its `nether_portal_ns`
+/// (along X) and `nether_portal_ew` (along Z) models: a plane 4/16 thick
+/// through the middle of the cell, standing along the portal's axis (v1.0
+/// gap Track 5c). It is the outline the crosshair meets; the portal has no
+/// collision, and an entity is in it anywhere in the cell
+/// (`getEntityInsideCollisionShape` is the full block).
+pub const fn plane(along_x: bool) -> Box16 {
+    if along_x { Box16 { min: [0, 0, 6], max: [16, 16, 10] } } else { Box16 { min: [6, 0, 0], max: [10, 16, 16] } }
+}
+
+/// Whether portal block `b` stands along X, read from its state, or for an
+/// axis-less portal from an older save from the blocks east and west of it
+/// ([`inferred_axis`]).
+pub fn along_x(b: Block, east: Block, west: Block) -> bool {
+    axis(b).unwrap_or_else(|| inferred_axis(IVec3::ZERO, |q| Some(if q.x > 0 { east } else { west })))
+}
+
+/// How the game stood an axis-less portal block before the state: along
+/// X when portal or obsidian holds it on both sides along X, else along Z.
+/// `block` answers `None` for a block it can't see (a chunk neither loaded
+/// nor saved), which counts as holding it, so a portal at a chunk's edge
+/// keeps its axis.
+fn inferred_axis(p: IVec3, block: impl Fn(IVec3) -> Option<Block>) -> bool {
+    let holds = |q: IVec3| block(q).is_none_or(|b| is_portal(b) || b == Block::OBSIDIAN);
+    holds(p + IVec3::X) && holds(p - IVec3::X)
+}
 
 const MIN_W: i32 = 2;
 const MAX_W: i32 = 21;
@@ -24,6 +91,186 @@ pub const OVERWORLD_PORTAL_RADIUS: i32 = 128;
 pub const CREATE_RADIUS: i32 = 16;
 pub const LEDGE_MIN_Y: i32 = 70;
 pub const LEDGE_BELOW_TOP: i32 = 9;
+/// `BlockUtil.getLargestRectangleAround`'s reach each way, as portal
+/// travel calls it (21 along the portal and up).
+pub const RECTANGLE_LIMIT: i32 = 21;
+
+/// v1.0 gap Track 5: Java's `WorldBorder` with its default settings
+/// (`WorldBorder.Settings.DEFAULT`: centred on 0, 0 and 59,999,968 across).
+/// In 26.3 every dimension keeps its own border, created with these, and
+/// VoxelCraft has no `/worldborder` to move it, so every dimension's border
+/// is this one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorldBorder {
+    pub min_x: f64,
+    pub max_x: f64,
+    pub min_z: f64,
+    pub max_z: f64,
+}
+
+pub const BORDER: WorldBorder =
+    WorldBorder { min_x: -29_999_984.0, max_x: 29_999_984.0, min_z: -29_999_984.0, max_z: 29_999_984.0 };
+
+impl WorldBorder {
+    /// `isWithinBounds(x, z)`: the west and north edges are inside.
+    pub fn contains(&self, x: f64, z: f64) -> bool {
+        x >= self.min_x && x < self.max_x && z >= self.min_z && z < self.max_z
+    }
+
+    /// `isWithinBounds(BlockPos)`: the block's corner.
+    pub fn contains_block(&self, p: IVec3) -> bool {
+        self.contains(f64::from(p.x), f64::from(p.z))
+    }
+
+    /// `isWithinBounds(AABB)`: both corners, the far one just inside.
+    pub fn contains_box(&self, min: DVec3, max: DVec3) -> bool {
+        let inset = f64::from(1.0e-5_f32);
+        self.contains(min.x, min.z) && self.contains(max.x - inset, max.z - inset)
+    }
+
+    /// `clampToBounds(x, y, z)`: the block holding the position moved
+    /// inside the border.
+    pub fn clamp(&self, p: DVec3) -> IVec3 {
+        let inset = f64::from(1.0e-5_f32);
+        DVec3::new(p.x.clamp(self.min_x, self.max_x - inset), p.y, p.z.clamp(self.min_z, self.max_z - inset))
+            .floor()
+            .as_ivec3()
+    }
+}
+
+/// `BlockUtil.FoundRectangle` of a portal: its bottom corner on the
+/// negative side, its width along the portal and its height.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PortalRect {
+    pub min: IVec3,
+    pub width: i32,
+    pub height: i32,
+}
+
+/// A trip through a Nether portal, as `NetherPortalBlock.getPortalDestination`
+/// sets out: where to look for the exit (the scaled position clamped to the
+/// border), the entry portal's axis, where in the entry portal the
+/// traveller was (`PortalShape.getRelativePosition`) and their motion,
+/// which they keep (`Relative.DELTA`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PortalTrip {
+    pub target: IVec3,
+    pub along_x: bool,
+    pub offset: DVec3,
+    pub vel: DVec3,
+    /// v1.0 gap Track 8b: the traveller set off as a spectator (turned one
+    /// on the count's last tick), so no exit portal is built for them.
+    pub spectator: bool,
+}
+
+impl PortalTrip {
+    /// A trip that didn't start in a portal block: Java's fallback, the
+    /// middle of the exit portal's bottom (axis X, offset (0.5, 0, 0)).
+    pub fn without_portal(target: IVec3) -> Self {
+        Self { target, along_x: true, offset: DVec3::new(0.5, 0.0, 0.0), vel: DVec3::ZERO, spectator: false }
+    }
+}
+
+/// `BlockUtil.getLargestRectangleAround(center, axis, 21, Y, 21, test)`:
+/// the largest rectangle of cells passing `test` in the portal's plane
+/// through `center` (along X or Z), reached from `center` without leaving
+/// the run of passing cells above and below it.
+pub fn largest_rectangle_around(center: IVec3, along_x: bool, test: impl Fn(IVec3) -> bool) -> PortalRect {
+    let axis = if along_x { IVec3::X } else { IVec3::Z };
+    let limit = |from: IVec3, dir: IVec3, limit: i32| {
+        let mut n = 0;
+        while n < limit && test(from + dir * (n + 1)) {
+            n += 1;
+        }
+        n
+    };
+    let neg1 = limit(center, -axis, RECTANGLE_LIMIT);
+    let pos1 = limit(center, axis, RECTANGLE_LIMIT);
+    let columns = (neg1 + 1 + pos1) as usize;
+    // Each column's reach down and up, never past its neighbour's nearer the centre.
+    let mut bounds = vec![(0, 0); columns];
+    let centre = neg1 as usize;
+    bounds[centre] = (limit(center, IVec3::NEG_Y, RECTANGLE_LIMIT), limit(center, IVec3::Y, RECTANGLE_LIMIT));
+    let centre2 = bounds[centre].0;
+    for i in 1..=neg1 as usize {
+        let last = bounds[centre - (i - 1)];
+        let at = center - axis * i as i32;
+        bounds[centre - i] = (limit(at, IVec3::NEG_Y, last.0), limit(at, IVec3::Y, last.1));
+    }
+    for i in 1..=pos1 as usize {
+        let last = bounds[centre + i - 1];
+        let at = center + axis * i as i32;
+        bounds[centre + i] = (limit(at, IVec3::NEG_Y, last.0), limit(at, IVec3::Y, last.1));
+    }
+    let (mut min1, mut min2, mut size1, mut size2) = (0, 0, 0, 0);
+    let mut heights = vec![0; columns];
+    for i2 in (0..=centre2).rev() {
+        for (i1, &(down, up)) in bounds.iter().enumerate() {
+            let (lo, hi) = (centre2 - down, centre2 + up);
+            heights[i1] = if i2 >= lo && i2 <= hi { hi + 1 - i2 } else { 0 };
+        }
+        let (start, end, height) = max_rectangle(&heights);
+        let new1 = 1 + end - start;
+        if new1 * height > size1 * size2 {
+            (min1, min2, size1, size2) = (start, i2, new1, height);
+        }
+    }
+    PortalRect { min: center + axis * (min1 - neg1) + IVec3::Y * (min2 - centre2), width: size1, height: size2 }
+}
+
+/// `BlockUtil.getMaxRectangleLocation`: the largest rectangle under a
+/// histogram, as (first column, last column, height).
+fn max_rectangle(columns: &[i32]) -> (i32, i32, i32) {
+    let (mut start_max, mut end_max, mut height_max) = (0i32, 0i32, 0i32);
+    let mut stack: Vec<usize> = vec![0];
+    for column in 1..=columns.len() {
+        let height = columns.get(column).copied().unwrap_or(0);
+        while let Some(&top) = stack.last() {
+            let stack_height = columns[top];
+            if height >= stack_height {
+                stack.push(column);
+                break;
+            }
+            stack.pop();
+            let start = stack.last().map_or(0, |&t| t + 1) as i32;
+            if stack_height * (column as i32 - start) > height_max * (end_max - start_max) {
+                end_max = column as i32;
+                start_max = start;
+                height_max = stack_height;
+            }
+        }
+        if stack.is_empty() {
+            stack.push(column);
+        }
+    }
+    (start_max, end_max - 1, height_max)
+}
+
+/// `PortalShape.getRelativePosition`: where an entity of `width` by
+/// `height` (Java's float dimensions) stands in the portal: across it and
+/// up it as fractions of the room it has, and its distance from the
+/// portal's centre plane.
+pub fn relative_position(rect: PortalRect, along_x: bool, pos: DVec3, width: f64, height: f64) -> DVec3 {
+    let room = f64::from(rect.width) - width;
+    let headroom = f64::from(rect.height) - height;
+    let min = rect.min.as_dvec3();
+    let (across, forward, min_across, min_forward) =
+        if along_x { (pos.x, pos.z, min.x, min.z) } else { (pos.z, pos.x, min.z, min.x) };
+    let right = if room > 0.0 { ((across - (min_across + width / 2.0)) / room).clamp(0.0, 1.0) } else { 0.5 };
+    let up = if headroom > 0.0 { ((pos.y - min.y) / headroom).clamp(0.0, 1.0) } else { 0.0 };
+    DVec3::new(right, up, forward - (min_forward + 0.5))
+}
+
+/// `NetherPortalBlock.createDimensionTransition`'s position: the same place
+/// in the exit portal (along X if `along_x`) for an entity of `width` by
+/// `height`, before `findCollisionFreePosition`.
+pub fn exit_position(rect: PortalRect, along_x: bool, offset: DVec3, width: f64, height: f64) -> DVec3 {
+    let right = width / 2.0 + (f64::from(rect.width) - width) * offset.x;
+    let up = (f64::from(rect.height) - height) * offset.y;
+    let forward = 0.5 + offset.z;
+    let min = rect.min.as_dvec3();
+    if along_x { min + DVec3::new(right, up, forward) } else { min + DVec3::new(forward, up, right) }
+}
 
 impl World {
     fn is(&self, p: IVec3, b: Block) -> bool {
@@ -35,10 +282,12 @@ impl World {
     pub fn light_portal(&mut self, p: IVec3) -> bool {
         for axis in [IVec3::X, IVec3::Z] {
             if let Some((corner, w, h)) = self.find_frame(p, axis) {
+                // `PortalShape.createPortalBlocks`: the frame's axis.
+                let portal = of_axis(axis == IVec3::X);
                 for dy in 0..h {
                     for i in 0..w {
                         // Straight in: the half-filled portal isn't whole yet.
-                        self.edit(corner + axis * i + IVec3::Y * dy, Block::NETHER_PORTAL, true);
+                        self.edit(corner + axis * i + IVec3::Y * dy, portal, true);
                     }
                 }
                 return true;
@@ -86,12 +335,12 @@ impl World {
     }
 
     /// A portal block stays while it's held above and below, and on both
-    /// sides along X or along Z, by portal or obsidian.
+    /// sides along its axis, by portal or obsidian (Java's `updateShape`
+    /// ignores neighbours across its axis).
     fn portal_supported(&self, p: IVec3) -> bool {
-        let holds = |d: IVec3| matches!(self.get_block(p + d), Some(Block::NETHER_PORTAL | Block::OBSIDIAN) | None);
-        holds(IVec3::Y)
-            && holds(IVec3::NEG_Y)
-            && ((holds(IVec3::X) && holds(IVec3::NEG_X)) || (holds(IVec3::Z) && holds(IVec3::NEG_Z)))
+        let holds = |d: IVec3| self.get_block(p + d).is_none_or(|b| b.is_nether_portal() || b == Block::OBSIDIAN);
+        let side = if self.portal_along_x(p) { IVec3::X } else { IVec3::Z };
+        holds(IVec3::Y) && holds(IVec3::NEG_Y) && holds(side) && holds(-side)
     }
 
     /// After an edit at `p`: portal blocks next to it that lost their frame
@@ -100,7 +349,7 @@ impl World {
         let mut queue: Vec<IVec3> = SIDES.iter().map(|&d| p + d).collect();
         let mut budget = 4 * MAX_W * MAX_H;
         while let Some(q) = queue.pop() {
-            if self.is(q, Block::NETHER_PORTAL) && !self.portal_supported(q) {
+            if self.get_block(q).is_some_and(Block::is_nether_portal) && !self.portal_supported(q) {
                 self.edit(q, Block::AIR, true);
                 queue.extend(SIDES.iter().map(|&d| q + d));
                 budget -= 1;
@@ -114,49 +363,115 @@ impl World {
     /// v0.16 Track G: `PortalForcer.findClosestPortalPosition`. Every
     /// Nether portal block is a point of interest; of those within `radius`
     /// blocks horizontally (16 into the Nether, 128 out of it) at any
-    /// height, the nearest to `near` (Java's `distSqr`, lower first on a
-    /// tie). Chunks that are neither loaded nor saved were never changed,
-    /// so hold no portal. Returns the lowest portal block under the one
-    /// found, where the traveller stands.
+    /// height and inside the world border (v1.0 gap Track 5), the nearest
+    /// to `near` (Java's `distSqr`, lower first on a tie). Chunks that are
+    /// neither loaded nor saved were never changed, so hold no portal.
     pub fn find_portal(&self, near: IVec3, radius: i32) -> Option<IVec3> {
-        use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I as S};
-        let mut best: Option<(i64, i32, IVec3)> = None;
-        let (min_y, max_y) = (self.min_y(), self.max_y());
-        for cz in (near.z - radius).div_euclid(S)..=(near.z + radius).div_euclid(S) {
-            for cx in (near.x - radius).div_euclid(S)..=(near.x + radius).div_euclid(S) {
-                for cy in min_y.div_euclid(S)..=(max_y - 1).div_euclid(S) {
-                    let Some(data) = self.section_data(IVec3::new(cx, cy, cz)) else { continue };
-                    if !data.contains(Block::NETHER_PORTAL) {
+        find_portal_in(|c| self.section_data(c), near, radius, self.min_y(), self.max_y())
+    }
+
+    /// Whether the portal at `p` stands along X: its `axis` state, or for
+    /// a portal block from an older save that hasn't been given one, what
+    /// its neighbours say ([`inferred_axis`]).
+    pub fn portal_along_x(&self, p: IVec3) -> bool {
+        match self.get_block(p).and_then(axis) {
+            Some(along_x) => along_x,
+            None => inferred_axis(p, |q| Some(self.get_block(q).unwrap_or(Block::AIR))),
+        }
+    }
+
+    /// The portal around portal block `p` as travel measures it
+    /// (`getLargestRectangleAround` of blocks in the same state as `p`, 21
+    /// each way), and whether it stands along X.
+    pub fn portal_rect(&self, p: IVec3) -> (PortalRect, bool) {
+        let along_x = self.portal_along_x(p);
+        let state = self.get_block(p);
+        (largest_rectangle_around(p, along_x, |q| self.get_block(q) == state), along_x)
+    }
+
+    /// v1.0 gap Track 5b: a saved chunk's portal blocks from before the
+    /// `axis` state ([`Block::NETHER_PORTAL`]) get the axis the game gave
+    /// them then, from their neighbours in this chunk and in the loaded or
+    /// saved chunks around it ([`inferred_axis`]).
+    pub(super) fn axis_legacy_portals(&self, pos: IVec3, data: Arc<ChunkData>) -> Arc<ChunkData> {
+        if !data.contains(Block::NETHER_PORTAL) {
+            return data;
+        }
+        let base = pos * CHUNK_SIZE_I;
+        let at = |d: &ChunkData, p: IVec3| {
+            let l = p - chunk_of(p) * CHUNK_SIZE_I;
+            d.get(l.x as usize, l.y as usize, l.z as usize)
+        };
+        let block = |q: IVec3| match chunk_of(q) {
+            c if c == pos => Some(at(&data, q)),
+            c => self.section_data(c).map(|d| at(&d, q)),
+        };
+        let mut out = (*data).clone();
+        for i in 0..CHUNK_VOLUME {
+            let (x, y, z) = (i % CHUNK_SIZE, (i / CHUNK_SIZE) % CHUNK_SIZE, i / (CHUNK_SIZE * CHUNK_SIZE));
+            if data.get(x, y, z) == Block::NETHER_PORTAL {
+                let p = base + IVec3::new(x as i32, y as i32, z as i32);
+                out.set(x, y, z, of_axis(inferred_axis(p, block)));
+            }
+        }
+        Arc::new(out)
+    }
+
+    /// v1.0 gap Track 5: `PortalShape.findCollisionFreePosition` for an
+    /// entity of `width` by `height` whose feet are at `bottom`: the
+    /// nearest place to it, at most half its width across and one block
+    /// up, where no block's collision box (each grown by half the entity's
+    /// size) holds its centre; `bottom` itself if there is none or the
+    /// entity is over 4 blocks either way.
+    pub fn collision_free_position(&self, bottom: DVec3, width: f64, height: f64) -> DVec3 {
+        if width > 4.0 || height > 4.0 {
+            return bottom;
+        }
+        let half = DVec3::new(width / 2.0, height / 2.0, width / 2.0);
+        let center = bottom + DVec3::Y * half.y;
+        let e = 1.0e-6;
+        let allowed =
+            (center - DVec3::new(half.x + e, e, half.z + e), center + DVec3::new(half.x + e, 1.0 + e, half.z + e));
+        let size = DVec3::new(width, height, width);
+        let mut colliders = Vec::new();
+        crate::physics::colliders(self, allowed.0 - size, allowed.1 + size, &mut colliders);
+        let obstacles: Vec<(DVec3, DVec3)> = colliders
+            .iter()
+            .filter(|c| BORDER.contains_box(c.min, c.max))
+            .map(|c| (c.min - half, c.max + half))
+            .collect();
+        // The free space is the allowed box less the obstacles, cut at
+        // every edge (as `Shapes.join` cuts it into cells); the nearest
+        // point of a free cell to the centre.
+        let cuts = |axis: usize| {
+            let (lo, hi) = (allowed.0[axis], allowed.1[axis]);
+            let mut v = vec![lo, hi];
+            for (a, b) in &obstacles {
+                v.extend([a[axis], b[axis]].into_iter().filter(|&c| c > lo && c < hi));
+            }
+            v.sort_by(f64::total_cmp);
+            v.dedup();
+            v
+        };
+        let (xs, ys, zs) = (cuts(0), cuts(1), cuts(2));
+        let mut best: Option<(f64, DVec3)> = None;
+        for x in xs.windows(2) {
+            for y in ys.windows(2) {
+                for z in zs.windows(2) {
+                    let (lo, hi) = (DVec3::new(x[0], y[0], z[0]), DVec3::new(x[1], y[1], z[1]));
+                    let mid = (lo + hi) / 2.0;
+                    if obstacles.iter().any(|(a, b)| mid.cmpgt(*a).all() && mid.cmplt(*b).all()) {
                         continue;
                     }
-                    for i in 0..super::chunk::CHUNK_VOLUME {
-                        let (x, y, z) = (i % CHUNK_SIZE, (i / CHUNK_SIZE) % CHUNK_SIZE, i / (CHUNK_SIZE * CHUNK_SIZE));
-                        if data.get(x, y, z) != Block::NETHER_PORTAL {
-                            continue;
-                        }
-                        let p = IVec3::new(cx * S + x as i32, cy * S + y as i32, cz * S + z as i32);
-                        if (p.x - near.x).abs() > radius || (p.z - near.z).abs() > radius {
-                            continue;
-                        }
-                        let d = (p - near).as_i64vec3().length_squared();
-                        if best.is_none_or(|(bd, by, _)| (d, p.y) < (bd, by)) {
-                            best = Some((d, p.y, p));
-                        }
+                    let p = center.clamp(lo, hi);
+                    let d = p.distance_squared(center);
+                    if best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, p));
                     }
                 }
             }
         }
-        let (_, _, mut p) = best?;
-        // The portal may be in a saved, unloaded chunk: read the sections.
-        let block_at = |q: IVec3| {
-            let c = IVec3::new(q.x.div_euclid(S), q.y.div_euclid(S), q.z.div_euclid(S));
-            let l = q - c * S;
-            self.section_data(c).map(|d| d.get(l.x as usize, l.y as usize, l.z as usize))
-        };
-        while p.y > min_y && block_at(p - IVec3::Y) == Some(Block::NETHER_PORTAL) {
-            p.y -= 1;
-        }
-        Some(p)
+        best.map_or(bottom, |(_, p)| p - DVec3::Y * half.y)
     }
 
     /// `canPortalReplaceBlock`: replaceable and holding no fluid.
@@ -186,14 +501,17 @@ impl World {
 
     /// v0.16 Track G: `PortalForcer.createPortal` at `origin`, along X or
     /// Z as the portal travelled through. Columns spiral out to 16 blocks
-    /// (`BlockPos.spiralAround`, east then south); in each, from the
-    /// `MOTION_BLOCKING` height down, the bottom of every run of
-    /// replaceable cells (a single cell or at least three high) that can
-    /// hold the frame is a site; the nearest with room on both sides wins,
-    /// else the nearest with room only for the frame. With none, an
-    /// obsidian ledge is built at y 70 up to 9 below the top. Returns the
-    /// lowest interior cell on the frame's negative side.
-    pub fn create_portal(&mut self, origin: IVec3, along_x: bool) -> IVec3 {
+    /// (`BlockPos.spiralAround`, east then south), skipping a column that
+    /// is (or whose next block along the portal is) outside the world
+    /// border; in each, from the `MOTION_BLOCKING` height down, the bottom
+    /// of every run of replaceable cells (a single cell or at least three
+    /// high) that can hold the frame is a site; the nearest with room on
+    /// both sides wins, else the nearest with room only for the frame.
+    /// With none, an obsidian ledge is built at y 70 up to 9 below the
+    /// top, clamped to the border; with no room for that, no portal
+    /// (`None`). Returns the new portal: its lowest interior cell on the
+    /// negative side, 2 wide and 3 high.
+    pub fn create_portal(&mut self, origin: IVec3, along_x: bool) -> Option<PortalRect> {
         let dir = if along_x { IVec3::X } else { IVec3::Z };
         // `Direction.getClockWise`: east turns south, south turns west.
         let side = if along_x { IVec3::Z } else { IVec3::NEG_X };
@@ -202,6 +520,9 @@ impl World {
         let mut full: Option<(i64, IVec3)> = None;
         let mut partial: Option<(i64, IVec3)> = None;
         for column in spiral(origin, CREATE_RADIUS) {
+            if !BORDER.contains_block(column) || !BORDER.contains_block(column + dir) {
+                continue;
+            }
             let height = max_placeable.min(self.motion_blocking_height(column.x, column.z));
             let mut y = height;
             while y >= min_y {
@@ -236,7 +557,10 @@ impl World {
             None => {
                 let low = (min_y + 1).max(LEDGE_MIN_Y);
                 let high = max_placeable - LEDGE_BELOW_TOP;
-                let at = IVec3::new(origin.x, origin.y.clamp(low, high.max(low)), origin.z) - dir;
+                if high < low {
+                    return None;
+                }
+                let at = BORDER.clamp((IVec3::new(origin.x, origin.y.clamp(low, high), origin.z) - dir).as_dvec3());
                 for b in -1..2 {
                     for w in 0..2 {
                         for h in -1..3 {
@@ -255,12 +579,13 @@ impl World {
                 }
             }
         }
+        // `createPortal`: the portal block along the entry portal's axis.
         for w in 0..2 {
             for h in 0..3 {
-                self.edit(at + dir * w + IVec3::Y * h, Block::NETHER_PORTAL, true);
+                self.edit(at + dir * w + IVec3::Y * h, of_axis(along_x), true);
             }
         }
-        at
+        Some(PortalRect { min: at, width: 2, height: 3 })
     }
 
     /// `Heightmap.Types.MOTION_BLOCKING`: one above the highest block that
@@ -274,6 +599,146 @@ impl World {
             y -= 1;
         }
         self.min_y()
+    }
+}
+
+/// [`World::find_portal`] over the chunk sections `section` holds (loaded,
+/// saved or in region records), from height `min_y` up to below `max_y`.
+pub fn find_portal_in(
+    section: impl Fn(IVec3) -> Option<Arc<ChunkData>>,
+    near: IVec3,
+    radius: i32,
+    min_y: i32,
+    max_y: i32,
+) -> Option<IVec3> {
+    const S: i32 = CHUNK_SIZE_I;
+    let mut best: Option<(i64, i32, IVec3)> = None;
+    for cz in (near.z - radius).div_euclid(S)..=(near.z + radius).div_euclid(S) {
+        for cx in (near.x - radius).div_euclid(S)..=(near.x + radius).div_euclid(S) {
+            for cy in min_y.div_euclid(S)..=(max_y - 1).div_euclid(S) {
+                let Some(data) = section(IVec3::new(cx, cy, cz)) else { continue };
+                if ![Block::NETHER_PORTAL, AXIS_X, AXIS_Z].iter().any(|&b| data.contains(b)) {
+                    continue;
+                }
+                for i in 0..CHUNK_VOLUME {
+                    let (x, y, z) = (i % CHUNK_SIZE, (i / CHUNK_SIZE) % CHUNK_SIZE, i / (CHUNK_SIZE * CHUNK_SIZE));
+                    if !data.get(x, y, z).is_nether_portal() {
+                        continue;
+                    }
+                    let p = IVec3::new(cx * S + x as i32, cy * S + y as i32, cz * S + z as i32);
+                    if (p.x - near.x).abs() > radius || (p.z - near.z).abs() > radius || !BORDER.contains_block(p) {
+                        continue;
+                    }
+                    let d = (p - near).as_i64vec3().length_squared();
+                    if best.is_none_or(|(bd, by, _)| (d, p.y) < (bd, by)) {
+                        best = Some((d, p.y, p));
+                    }
+                }
+            }
+        }
+    }
+    best.map(|(_, _, p)| p)
+}
+
+/// The portal block a [`PortalProcessor`] counts for (Java's `Portal`
+/// instance, which `isSamePortal` compares).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PortalKind {
+    /// `NetherPortalBlock`: 80 ticks for a survivor
+    /// (`getPortalTransitionTime`), and the purple (`Transition.CONFUSION`).
+    #[default]
+    Nether,
+    /// `EndPortalBlock`: the `Portal` default of 0 ticks, so the trip comes
+    /// on the next tick.
+    End,
+    /// `EndGatewayBlock`: 0 ticks too.
+    Gateway,
+}
+
+/// v1.0 gap Track 8b: Java 26.3's `PortalProcessor`, the server's
+/// countdown for a player in a portal. A portal block's `entityInside`
+/// calls `setAsInsidePortal` ([`PortalProcessor::enter`]) as the player
+/// moves, and the next tick's `Entity.handlePortal` (at the start of the
+/// tick, before moving) counts it ([`PortalProcessor::process`]): the trip
+/// comes on the tick `portalTime++` reaches the portal's delay (80 ticks
+/// for a survivor in a Nether portal, the 81st after the one the player
+/// stepped in), and every tick spent out of the portal takes 4 off the
+/// count until it runs out. Track 8c: End portals and gateways count
+/// through it too (a delay of 0: the next tick), and a different portal
+/// starts a new count (`isSamePortal`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PortalProcessor {
+    /// `Entity.portalProcess` isn't null.
+    active: bool,
+    /// `portal`.
+    kind: PortalKind,
+    /// `entryPosition`: the portal cell the player was last marked in.
+    entry: IVec3,
+    /// `portalTime`.
+    time: u32,
+    /// `insidePortalThisTick`.
+    inside: bool,
+}
+
+impl PortalProcessor {
+    /// `Entity.setAsInsidePortal` off cooldown: a new count starts at 0 for
+    /// a new portal (none running, or another kind), or the running one is
+    /// marked inside for the next tick at `cell`, unless already marked
+    /// this tick (the first cell touched stays the entry).
+    pub fn enter(&mut self, kind: PortalKind, cell: IVec3) {
+        if !self.active || self.kind != kind {
+            *self = Self { active: true, kind, entry: cell, time: 0, inside: true };
+        } else if !self.inside {
+            self.entry = cell;
+            self.inside = true;
+        }
+    }
+
+    /// `handlePortal`'s `processPortalTeleportation(level, entity,
+    /// canUsePortal(false))`, then `hasExpired`: whether the player goes
+    /// now, `allowed` (not riding, alive, not asleep) and `delay` ticks
+    /// (`getPortalTransitionTime`) after the count began.
+    pub fn process(&mut self, allowed: bool, delay: u32) -> bool {
+        if !self.active {
+            return false;
+        }
+        let go = if self.inside {
+            self.inside = false;
+            // `allowedToTeleport && this.portalTime++ >= delay`.
+            allowed && {
+                let reached = self.time >= delay;
+                self.time += 1;
+                reached
+            }
+        } else {
+            // `decayTick`.
+            self.time = self.time.saturating_sub(4);
+            false
+        };
+        if !go && self.time == 0 {
+            *self = Self::default();
+        }
+        go
+    }
+
+    /// `portalTime`: ticks counted, 0 with no count running.
+    pub fn time(&self) -> u32 {
+        self.time
+    }
+
+    /// Whether a count is running (`portalProcess` isn't null).
+    pub fn active(&self) -> bool {
+        self.active
+    }
+
+    /// The portal counted for (meaningful while [`PortalProcessor::active`]).
+    pub fn kind(&self) -> PortalKind {
+        self.kind
+    }
+
+    /// `getEntryPosition`: the portal cell the trip leaves from.
+    pub fn entry(&self) -> IVec3 {
+        self.entry
     }
 }
 
@@ -301,6 +766,37 @@ pub fn spiral(center: IVec3, radius: i32) -> Vec<IVec3> {
     }
 }
 
+/// v1.0 gap Track 4c: a player's motion arriving through an End portal into
+/// the End. `EndPortalBlock.getPortalDestination` keeps it
+/// (`Relative.DELTA`) and sets the yaw to west (90°) while keeping the
+/// pitch (`Relative.X_ROT`); `ROTATE_DELTA` turns the motion with the
+/// yaw ([`rotate_delta`]). `java_yaw` is the old yaw in Java's degrees; the
+/// motion is in any unit.
+pub fn end_arrival_motion(vel: glam::DVec3, java_yaw: f32) -> glam::DVec3 {
+    rotate_delta(vel, java_yaw, 90.0)
+}
+
+/// v1.0 gap Track 8: a traveller's motion leaving a Nether portal whose
+/// exit stands along the other axis. `NetherPortalBlock.createDimensionTransition`
+/// adds 90° to the yaw (`Relative.ROTATION` with `outputRotation` 90) and
+/// keeps the motion (`Relative.DELTA`), which `ROTATE_DELTA` turns with the
+/// yaw; with both portals along one axis it is unchanged. `java_yaw` is the
+/// yaw in Java's degrees.
+pub fn quarter_turn_motion(vel: glam::DVec3, java_yaw: f32) -> glam::DVec3 {
+    rotate_delta(vel, java_yaw, java_yaw + 90.0)
+}
+
+/// `PositionMoveRotation.calculateAbsolute`'s `ROTATE_DELTA`: the motion
+/// turned by the old yaw less the new (Java degrees, as floats), in Java's
+/// float radians and `Mth` tables, after an `xRot` by the pitch's change,
+/// which is zero for every teleport that keeps the pitch.
+fn rotate_delta(vel: glam::DVec3, old_yaw: f32, new_yaw: f32) -> glam::DVec3 {
+    use crate::knockback::{mth_cos, mth_sin};
+    let radians = f64::from(f64::from(old_yaw - new_yaw).to_radians() as f32);
+    let (cos, sin) = (f64::from(mth_cos(radians)), f64::from(mth_sin(radians)));
+    glam::DVec3::new(vel.x * cos + vel.z * sin, vel.y, vel.z * cos - vel.x * sin)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -310,6 +806,140 @@ mod tests {
 
     use super::*;
     use crate::world::terrain::Generator;
+
+    /// v1.0 gap Track 4c: arriving in the End keeps the motion, turned with
+    /// the yaw to the west the player now faces.
+    #[test]
+    fn the_end_portal_keeps_motion_turned_to_face_west() {
+        // Running south (Java yaw 0) into the portal: running west on the platform.
+        let v = end_arrival_motion(DVec3::new(0.0, -0.5, 0.3), 0.0);
+        assert!((v - DVec3::new(-0.3, -0.5, 0.0)).length() < 1e-6, "{v}");
+        // Already facing west: unchanged.
+        let v = end_arrival_motion(DVec3::new(-0.2, 0.1, 0.05), 90.0);
+        assert!((v - DVec3::new(-0.2, 0.1, 0.05)).length() < 1e-6, "{v}");
+        // Facing north (180): its motion turns half round, and keeps its speed.
+        let v = end_arrival_motion(DVec3::new(0.1, 0.0, -0.4), 180.0);
+        assert!((v - DVec3::new(-0.4, 0.0, -0.1)).length() < 1e-6, "{v}");
+        assert!((v.length() - DVec3::new(0.1, 0.0, -0.4).length()).abs() < 1e-6);
+    }
+
+    /// v1.0 gap Track 8: leaving by a portal along the other axis turns the
+    /// motion a quarter with the view (`ROTATE_DELTA`), so whatever was
+    /// ahead of the traveller stays ahead; sideways and vertical motion
+    /// turn with it.
+    #[test]
+    fn a_quarter_turned_exit_turns_the_motion_with_the_view() {
+        // Running south (Java yaw 0): running west, the way they now face.
+        let v = quarter_turn_motion(DVec3::new(0.0, -0.2, 0.3), 0.0);
+        assert!((v - DVec3::new(-0.3, -0.2, 0.0)).length() < 1e-6, "{v}");
+        for yaw in [-170.0f32, -35.5, 12.25, 90.0, 400.0, 1234.5] {
+            let facing = |yaw: f32| {
+                let r = f64::from(yaw).to_radians();
+                DVec3::new(-r.sin(), 0.0, r.cos())
+            };
+            let side = |yaw: f32| facing(yaw + 90.0);
+            let v = quarter_turn_motion(facing(yaw) * 0.4 + side(yaw) * 0.1, yaw);
+            let want = facing(yaw + 90.0) * 0.4 + side(yaw + 90.0) * 0.1;
+            assert!((v - want).length() < 1e-4, "yaw {yaw}: {v} against {want}");
+        }
+    }
+
+    /// v1.0 gap Track 8b: `PortalProcessor`'s count. A player who steps in
+    /// on tick 0 and stays goes on tick 81 (`portalTime++ >= 80`); out of
+    /// the portal the count loses 4 a tick and, run out, starts again from
+    /// 0; riding (`canUsePortal` false) clears the mark without counting.
+    #[test]
+    fn the_portal_count_takes_81_ticks_and_runs_down_4_a_tick() {
+        let mut p = PortalProcessor::default();
+        assert!(!p.process(true, 80), "nothing before the player steps in");
+        // Tick 0: moving into the portal.
+        p.enter(PortalKind::Nether, IVec3::ZERO);
+        let mut went = None;
+        for tick in 1..=100 {
+            if p.process(true, 80) {
+                went = Some(tick);
+                break;
+            }
+            p.enter(PortalKind::Nether, IVec3::ZERO);
+        }
+        assert_eq!(went, Some(81));
+        assert_eq!(p.time(), 81, "the count stays after the trip");
+        assert!(!p.process(true, 80));
+        assert_eq!(p.time(), 77, "4 off a tick outside");
+        for _ in 0..19 {
+            p.process(true, 80);
+        }
+        assert_eq!(p.time(), 1);
+        assert!(!p.process(true, 80));
+        assert!(!p.active(), "run out: the count is gone");
+
+        // Stepping back in before it runs out carries the count on.
+        let mut p = PortalProcessor::default();
+        p.enter(PortalKind::Nether, IVec3::ZERO);
+        for _ in 0..40 {
+            p.process(true, 80);
+            p.enter(PortalKind::Nether, IVec3::ZERO);
+        }
+        p.process(true, 80);
+        assert_eq!(p.time(), 41);
+        for _ in 0..5 {
+            p.process(true, 80);
+        }
+        assert_eq!(p.time(), 21);
+        p.enter(PortalKind::Nether, IVec3::ZERO);
+        let ticks = (1..).find(|_| {
+            let go = p.process(true, 80);
+            p.enter(PortalKind::Nether, IVec3::ZERO);
+            go
+        });
+        assert_eq!(ticks, Some(60), "21 counted, 59 more to reach 80, the trip on the next");
+
+        // Not allowed (riding): the mark is used up, nothing counts, and a
+        // count still at 0 is dropped.
+        let mut p = PortalProcessor::default();
+        p.enter(PortalKind::Nether, IVec3::ZERO);
+        assert!(!p.process(false, 80));
+        assert!(!p.active());
+        // The creative delay of 0 goes on the tick after stepping in.
+        p.enter(PortalKind::Nether, IVec3::ZERO);
+        assert!(p.process(true, 0));
+    }
+
+    /// v1.0 gap Track 8c: End portals and gateways count through the same
+    /// processor with the `Portal` default delay of 0, so the trip comes on
+    /// the tick after the one the player touched it; another portal starts
+    /// a new count (`isSamePortal`), and the entry is the first cell marked
+    /// in a tick (`setAsInsidePortal` skips a count already marked).
+    #[test]
+    fn end_portals_and_gateways_go_on_the_next_tick() {
+        let mut p = PortalProcessor::default();
+        let (a, b) = (IVec3::new(1, 60, 2), IVec3::new(2, 60, 2));
+        p.enter(PortalKind::End, a);
+        p.enter(PortalKind::End, b);
+        assert_eq!((p.kind(), p.entry()), (PortalKind::End, a));
+        assert!(p.process(true, 0), "the next tick's handlePortal");
+        assert!(!p.process(true, 0), "out of the portal: the count runs down");
+        assert!(!p.active());
+
+        // A Nether count running when the player touches a gateway is
+        // replaced, not carried on.
+        let mut p = PortalProcessor::default();
+        for _ in 0..30 {
+            p.enter(PortalKind::Nether, a);
+            p.process(true, 80);
+        }
+        assert_eq!(p.time(), 30);
+        p.enter(PortalKind::Gateway, b);
+        assert_eq!((p.kind(), p.entry(), p.time()), (PortalKind::Gateway, b, 0));
+        // Riding or asleep, the mark is used up without a trip.
+        assert!(!p.process(false, 0));
+        assert!(!p.active());
+        // A later tick's mark moves the entry.
+        p.enter(PortalKind::Gateway, a);
+        p.process(true, 5);
+        p.enter(PortalKind::Gateway, b);
+        assert_eq!(p.entry(), b);
+    }
 
     /// A loaded world with a hollow sky high above the terrain to build in.
     fn world() -> World {
@@ -341,9 +971,11 @@ mod tests {
         frame(&mut world, at, 2, 3);
         assert!(world.light_portal(at + IVec3::new(1, 2, 0)), "lit from the top corner");
         for (dx, dy) in [(0, 0), (1, 0), (0, 2), (1, 2)] {
-            assert_eq!(world.get_block(at + IVec3::new(dx, dy, 0)), Some(Block::NETHER_PORTAL));
+            assert_eq!(world.get_block(at + IVec3::new(dx, dy, 0)), Some(AXIS_X));
         }
-        assert_eq!(world.find_portal(at + IVec3::new(-5, 3, 2), 8), Some(at));
+        // The nearest portal block, and the portal around it.
+        assert_eq!(world.find_portal(at + IVec3::new(-5, 3, 2), 8), Some(at + IVec3::new(0, 2, 0)));
+        assert_eq!(world.portal_rect(at + IVec3::new(0, 2, 0)), (PortalRect { min: at, width: 2, height: 3 }, true));
         // Knocking out one side of the frame takes the whole portal down.
         world.set_block(at + IVec3::new(2, 1, 0), Block::AIR);
         for dy in 0..3 {
@@ -360,19 +992,158 @@ mod tests {
         assert!(!world.light_portal(at));
     }
 
+    /// A frame `w` wide along `dir` (X or Z) and `h` tall around `at`.
+    fn frame_along(world: &mut World, at: IVec3, w: i32, h: i32, dir: IVec3) {
+        for i in -1..=w {
+            world.set_block(at + dir * i - IVec3::Y, Block::OBSIDIAN);
+            world.set_block(at + dir * i + IVec3::Y * h, Block::OBSIDIAN);
+        }
+        for y in 0..h {
+            world.set_block(at - dir + IVec3::Y * y, Block::OBSIDIAN);
+            world.set_block(at + dir * w + IVec3::Y * y, Block::OBSIDIAN);
+        }
+    }
+
+    /// v1.0 gap Track 5b: portal blocks carry their frame's axis (Java's
+    /// `axis` state), travel measures a portal by that state, and a portal
+    /// stands while held along its own axis.
+    #[test]
+    fn portals_carry_their_axis() {
+        let mut world = world();
+        let at = IVec3::new(4, 220, 4);
+        frame_along(&mut world, at, 3, 3, IVec3::Z);
+        assert!(world.light_portal(at + IVec3::new(0, 1, 1)));
+        for (dz, dy) in [(0, 0), (2, 0), (1, 2)] {
+            assert_eq!(world.get_block(at + IVec3::new(0, dy, dz)), Some(AXIS_Z));
+        }
+        let rect = PortalRect { min: at, width: 3, height: 3 };
+        assert_eq!(world.portal_rect(at + IVec3::new(0, 1, 2)), (rect, false));
+        // Blocks beside it across its axis don't hold it up or bring it down.
+        for x in [-1, 1] {
+            world.set_block(at + IVec3::new(x, 1, 1), Block::OBSIDIAN);
+            world.set_block(at + IVec3::new(x, 1, 1), Block::AIR);
+        }
+        assert_eq!(world.get_block(at + IVec3::new(0, 1, 1)), Some(AXIS_Z));
+        // Along its axis they do.
+        world.set_block(at + IVec3::new(0, 1, 3), Block::AIR);
+        assert_eq!(world.get_block(at + IVec3::new(0, 1, 1)), Some(Block::AIR));
+        // `/setblock nether_portal` is Java's default state, along X.
+        assert_eq!(Block::from_name("nether_portal"), Some(AXIS_X));
+        assert!([Block::NETHER_PORTAL, AXIS_X, AXIS_Z].iter().all(|b| b.is_nether_portal()));
+        assert_eq!((AXIS_X.base(), AXIS_Z.base(), AXIS_Z.emission()), (Block::NETHER_PORTAL, Block::NETHER_PORTAL, 11));
+    }
+
+    /// v1.0 gap Track 5c: Java's `NetherPortalBlock.SHAPES`, the outline the
+    /// crosshair meets: a 4/16 plane through the middle along the axis; an
+    /// older save's portal reads its axis from its neighbours. Nothing
+    /// collides with it.
+    #[test]
+    fn portals_are_met_at_javas_thin_plane() {
+        use super::super::shape::{self, Box16};
+        let x = Box16 { min: [0, 0, 6], max: [16, 16, 10] };
+        let z = Box16 { min: [6, 0, 0], max: [10, 16, 16] };
+        let outline = |b: Block, east: Block, west: Block| {
+            let side = move |f: super::super::block::Facing| match f {
+                super::super::block::Facing::East => east,
+                super::super::block::Facing::West => west,
+                _ => Block::AIR,
+            };
+            shape::outline(b, side, Block::OBSIDIAN).as_slice().to_vec()
+        };
+        assert_eq!(outline(AXIS_X, Block::AIR, Block::AIR), [x]);
+        assert_eq!(outline(AXIS_Z, AXIS_X, AXIS_X), [z]);
+        assert_eq!(outline(Block::NETHER_PORTAL, Block::OBSIDIAN, AXIS_X), [x]);
+        assert_eq!(outline(Block::NETHER_PORTAL, Block::AIR, Block::OBSIDIAN), [z]);
+        for b in [AXIS_X, AXIS_Z, Block::NETHER_PORTAL] {
+            assert!(b.is_targetable() && !b.is_solid() && !b.is_replaceable());
+            assert!(shape::collision(b, |_| Block::AIR, Block::AIR).is_empty());
+        }
+        // The crosshair stops at the plane, not the cell's edge.
+        let mut world = world();
+        let at = IVec3::new(4, 220, 4);
+        frame_along(&mut world, at, 2, 3, IVec3::X);
+        assert!(world.light_portal(at));
+        let cell = at + IVec3::Y;
+        assert_eq!(world.get_block(cell), Some(AXIS_X));
+        let eye = cell.as_dvec3() + DVec3::new(0.5, 0.5, -2.0);
+        let hit = world.raycast_hit(eye, DVec3::Z, 5.0).unwrap();
+        assert_eq!((hit.cell, hit.normal), (cell, IVec3::NEG_Z));
+        assert!((hit.point.z - (f64::from(cell.z) + 6.0 / 16.0)).abs() < 1e-9, "{:?}", hit.point);
+        assert_eq!(world.outline(cell), ([0.0, 0.0, 6.0 / 16.0], [1.0, 1.0, 10.0 / 16.0]));
+    }
+
+    /// Portal blocks from saves before the `axis` state (state 104) get the
+    /// axis the game gave them then when their chunk loads; ones with an
+    /// axis keep it through a save and load.
+    #[test]
+    fn portals_from_older_saves_get_their_axis_on_load() {
+        let mut world = world();
+        let (at_x, at_z) = (IVec3::new(4, 220, 4), IVec3::new(12, 220, 12));
+        frame_along(&mut world, at_x, 2, 3, IVec3::X);
+        frame_along(&mut world, at_z, 2, 3, IVec3::Z);
+        assert!(world.light_portal(at_x) && world.light_portal(at_z));
+        let cpos = crate::world::chunk::chunk_of(at_x);
+        assert_eq!(cpos, crate::world::chunk::chunk_of(at_z + IVec3::new(1, 2, 2)));
+        let data = world.section_data(cpos).unwrap();
+        let saved = super::super::storage::decode(&super::super::storage::encode(&data), false).unwrap();
+        let mut legacy = saved.clone();
+        for i in 0..CHUNK_VOLUME {
+            let (x, y, z) = (i % CHUNK_SIZE, (i / CHUNK_SIZE) % CHUNK_SIZE, i / (CHUNK_SIZE * CHUNK_SIZE));
+            if legacy.get(x, y, z).is_nether_portal() {
+                legacy.set(x, y, z, Block::NETHER_PORTAL);
+            }
+        }
+        for (data, what) in [(saved, "kept"), (legacy, "given")] {
+            let saved = [(cpos, Arc::new(data))].into_iter().collect();
+            let mut loaded = World::new(Arc::new(Generator::new(3)), saved, 2);
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while loaded.get_block(at_x).is_none() || loaded.pending_jobs() > 0 {
+                loaded.update(DVec3::new(0.0, 230.0, 0.0));
+                assert!(Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            for (at, axis) in [(at_x, AXIS_X), (at_z, AXIS_Z)] {
+                for d in [IVec3::ZERO, IVec3::Y * 2] {
+                    assert_eq!(loaded.get_block(at + d), Some(axis), "{what}: {}", at + d);
+                }
+            }
+            assert_eq!(loaded.portal_rect(at_z + IVec3::Z).0, PortalRect { min: at_z, width: 2, height: 3 });
+        }
+        // At a chunk's edge, a neighbour in a chunk never loaded or saved
+        // leaves the axis as the portal's own neighbours give it.
+        let far = IVec3::new(1000, 6, 1000);
+        let mut blocks = ChunkData::new_dense(Block::AIR);
+        let i = |x, y, z| crate::world::chunk::index(x, y, z);
+        for y in 4..7 {
+            // Along X, out of the chunk's east side; along Z, out of its north.
+            blocks[i(31, y, 8)] = Block::NETHER_PORTAL;
+            blocks[i(30, y, 8)] = Block::NETHER_PORTAL;
+            blocks[i(29, y, 8)] = Block::OBSIDIAN;
+            blocks[i(8, y, 0)] = Block::NETHER_PORTAL;
+            blocks[i(8, y, 1)] = Block::NETHER_PORTAL;
+            blocks[i(8, y, 2)] = Block::OBSIDIAN;
+        }
+        let given = world.axis_legacy_portals(far, Arc::new(ChunkData::from_dense(blocks)));
+        assert_eq!((given.get(31, 5, 8), given.get(30, 5, 8)), (AXIS_X, AXIS_X));
+        assert_eq!((given.get(8, 5, 0), given.get(8, 5, 1)), (AXIS_Z, AXIS_Z));
+    }
+
     #[test]
     fn missing_portals_are_built_with_somewhere_to_stand() {
         let mut world = world();
         // High in the sky the nearest site is on the ground below, within
         // 16 blocks across.
-        let at = world.create_portal(IVec3::new(2, 230, 2), true);
+        let rect = world.create_portal(IVec3::new(2, 230, 2), true).expect("room for a portal");
+        let at = rect.min;
+        assert_eq!((rect.width, rect.height), (2, 3));
         assert!((at.x - 2).abs() <= 16 && (at.z - 2).abs() <= 16, "{at}");
-        assert_eq!(world.get_block(at), Some(Block::NETHER_PORTAL));
-        assert_eq!(world.get_block(at + IVec3::new(1, 2, 0)), Some(Block::NETHER_PORTAL));
+        assert_eq!(world.get_block(at), Some(AXIS_X));
+        assert_eq!(world.get_block(at + IVec3::new(1, 2, 0)), Some(AXIS_X));
         assert_eq!(world.get_block(at + IVec3::new(-1, 3, 0)), Some(Block::OBSIDIAN));
         assert_eq!(world.get_block(at - IVec3::Y), Some(Block::OBSIDIAN));
         assert!(world.get_block(at + IVec3::new(0, -1, 1)).unwrap().is_solid(), "ground to step onto");
-        assert_eq!(world.find_portal(at + IVec3::new(0, 2, 0), 4), Some(at));
+        assert_eq!(world.find_portal(at + IVec3::new(0, 2, 0), 4), Some(at + IVec3::new(0, 2, 0)));
+        assert_eq!(world.portal_rect(at + IVec3::new(1, 1, 0)), (rect, true));
     }
 
     #[test]
@@ -385,20 +1156,21 @@ mod tests {
                 world.set_block(IVec3::new(x, 219, z), Block::STONE);
             }
         }
-        let at = world.create_portal(IVec3::new(0, 225, 0), true);
+        let at = world.create_portal(IVec3::new(0, 225, 0), true).unwrap().min;
         assert_eq!(at, IVec3::new(0, 220, 0));
         assert_eq!(world.get_block(at - IVec3::Y), Some(Block::OBSIDIAN));
-        assert_eq!(world.get_block(at + IVec3::X), Some(Block::NETHER_PORTAL));
+        assert_eq!(world.get_block(at + IVec3::X), Some(AXIS_X));
         // Along Z (an entry portal along Z) it turns.
-        let at = world.create_portal(IVec3::new(4, 224, 4), false);
-        assert_eq!(world.get_block(at + IVec3::Z), Some(Block::NETHER_PORTAL));
+        let at = world.create_portal(IVec3::new(4, 224, 4), false).unwrap().min;
+        assert_eq!(world.get_block(at + IVec3::Z), Some(AXIS_Z));
         assert_eq!(world.get_block(at - IVec3::Z), Some(Block::OBSIDIAN));
         // The nearer portal is found from either side.
-        assert_eq!(world.find_portal(IVec3::new(5, 222, 7), 128), Some(at + IVec3::Z));
+        let found = world.find_portal(IVec3::new(5, 222, 7), 128).unwrap();
+        assert_eq!(world.portal_rect(found), (PortalRect { min: at, width: 2, height: 3 }, false));
     }
 
     #[test]
-    fn a_saved_unloaded_portal_is_entered_at_its_bottom() {
+    fn a_saved_unloaded_portal_is_found() {
         let mut world = world();
         let at = IVec3::new(4, 220, 4);
         frame(&mut world, at, 2, 3);
@@ -407,9 +1179,49 @@ mod tests {
         // which `get_block` doesn't read.
         world.remove_chunk(crate::world::chunk::chunk_of(at));
         assert_eq!(world.get_block(at), None);
-        // From above, the nearest portal cell is the top row; the traveller
-        // still arrives at the bottom.
-        assert_eq!(world.find_portal(at + IVec3::new(0, 6, 0), 16), Some(at));
+        // From above, the nearest portal cell is in the top row (the
+        // arrival waits for it to load, then measures the portal).
+        assert_eq!(world.find_portal(at + IVec3::new(0, 6, 0), 16), Some(at + IVec3::new(0, 2, 0)));
+    }
+
+    /// `findCollisionFreePosition`: an arrival overlapping a wall moves
+    /// clear of it (at most half its width across, one block up); one in
+    /// the open stays put.
+    #[test]
+    fn arrivals_move_clear_of_blocks_like_java() {
+        let mut world = world();
+        let at = IVec3::new(4, 220, 4);
+        frame(&mut world, at, 2, 3);
+        assert!(world.light_portal(at + IVec3::new(1, 2, 0)));
+        let rect = PortalRect { min: at, width: 2, height: 3 };
+        let (w, h) = (f64::from(0.6f32), f64::from(1.8f32));
+        let open = exit_position(rect, true, DVec3::new(0.5, 0.0, 0.0), w, h);
+        assert_eq!(world.collision_free_position(open, w, h), open);
+        // A wall just in front of the portal: an arrival 0.45 forward of the
+        // portal's middle overlaps it and backs off to touch it.
+        for x in -1..=2 {
+            for y in 0..4 {
+                world.set_block(at + IVec3::new(x, y, 1), Block::STONE);
+            }
+        }
+        let pos = exit_position(rect, true, DVec3::new(0.5, 0.0, 0.45), w, h);
+        let free = world.collision_free_position(pos, w, h);
+        let want = at.as_dvec3() + DVec3::new(1.0, 0.0, 1.0 - w / 2.0);
+        assert!((free - want).abs().max_element() < 1e-5, "{free} not {want}");
+        // Too deep in the wall to back out: Java keeps the position.
+        let deep = exit_position(rect, true, DVec3::new(0.5, 0.0, 0.8), w, h);
+        assert_eq!(world.collision_free_position(deep, w, h), deep);
+    }
+
+    /// The world border: a new portal's fallback ledge is clamped inside it.
+    #[test]
+    fn new_portals_stay_inside_the_world_border() {
+        let mut world = world();
+        // Nothing is loaded out there, so there are no sites: the ledge.
+        let rect = world.create_portal(IVec3::new(29_999_990, 80, 5), true).expect("a ledge");
+        assert_eq!(rect.min, IVec3::new(29_999_983, 80, 5));
+        let rect = world.create_portal(IVec3::new(-40_000_000, 400, -40_000_000), false).expect("a ledge");
+        assert_eq!(rect.min, IVec3::new(-29_999_984, world.portal_max_y() - LEDGE_BELOW_TOP, -29_999_984));
     }
 
     #[test]
@@ -436,3 +1248,7 @@ mod tests {
         assert_eq!(all.len(), 33 * 33);
     }
 }
+
+#[cfg(test)]
+#[path = "portal_java_tests.rs"]
+mod java_tests;

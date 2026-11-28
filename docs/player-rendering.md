@@ -184,5 +184,231 @@ Java's renderers lerp them with the partial tick. `Entities::mesh` draws
 the interpolated pose and restores the simulation's values; LAN replicas
 interpolate from the previous snapshot's pose.
 
+## Mob motion against Java's client (v1.0 gap Track 7)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-27-v1.0-gap-track-07-art-motion.md));
+the shared code is `src/entity/motion.rs`.
+
+- **Walk cycle.** `Mob::limb_phase` and `limb_amp` are Java's
+  `WalkAnimationState` position and speed. Each tick the speed moves 0.4
+  of the way to `min(distance moved * 4, 1)` and the position advances by
+  the speed (the camel, frog and creaking keep Java's own gains; bees and
+  parrots count their climb). A hit sets the speed to 1.5, dying or riding
+  stops it, and a baby's legs cycle three times as fast. Models read
+  `walkAnimationPos` (interpolated as `position - speed * (1 - partial)`)
+  and `walkAnimationSpeed` (lerped, capped at 1).
+- **Limbs.** Each family swings as its Java model does: quadrupeds, the
+  creeper, chicken, llama, wolf, fox and goat `cos(pos * 0.6662) * 1.4 *
+  speed` in diagonal pairs; humanoids (zombies, skeletons, piglins,
+  endermen) the same for legs and `* 1` for arms, with the idle arm bob;
+  villagers, witches and illagers at half stride; cats and ocelots at
+  amplitude 1 (galloping while sprinting); horses 0.8 front and 0.5 hind;
+  the hoglin `cos(pos) * 1.2`; the ravager 0.4; the strider, spider,
+  iron golem, turtle and warden their own formulas. Keyframe-animated
+  mobs (armadillo, camel, copper golem, creaking, frog, sniffer) keep their
+  own drawn limbs on Java's `applyWalk` loop length and strength.
+- **Attacks.** An attack starts Java's 6-tick arm swing (`SwingState`):
+  zombies and zombified piglins swing their raised arms
+  (`animateZombieArms`), armed illagers and piglins swing the weapon down
+  (`swingWeaponDown`), other humanoids twist the body (`WHACK`); the
+  iron golem throws both arms over 10 ticks, the hoglin butts its head
+  over 10, the ravager lunges its neck and opens its mouth.
+- **Death.** A dead mob topples over about its feet onto its left side
+  (spiders, silverfish and endermites onto their backs), on
+  `sqrt((deathTime - 1) / 20 * 1.6)`, landing 13.5 ticks in, and is
+  removed as `deathTime` reaches 20.
+- **Hurt flash.** The red overlay is on, not fading, for the 10 ticks of
+  `hurtTime` and from death on, mixed as Java's `OverlayTexture` does: 70 %
+  of the shaded texel and 30 % red, in sRGB, under the light (Track 7b:
+  the red under the light map's colour alone, unshaded, as in Java's
+  `entity.fsh`).
+
 **Cost.** `cargo run --profile ci --example entity_submission_bench`
 times the per-frame entity build headless; see the record for numbers.
+
+## Mob animations beyond the walk (v1.0 gap Track 7b)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-27-v1.0-gap-track-07b-mob-animations.md)).
+The client-side state Java keeps on its entities is in
+`src/entity/mob_anim.rs`, ticked with the walk and read with the
+partial tick; the models are in `src/entity/model*`.
+
+- **Sides.** Java's model space maps onto this game's by a half turn
+  about X: Java's right is this model's -X, the mob's own right, and
+  every y and z turn changes sign (`Part::on_java_side`). Humanoids,
+  illagers, the vex, villagers, witches and the iron golem now hold
+  weapons and items in their right hands, with their limb phases and
+  swings on the matching sides; armor's left and right pieces follow.
+- **Each mob's own clock.** Idle animations read the mob's own
+  `ageInTicks` (`Mob::tick_count` plus the partial tick, counted from its
+  spawn or load), so mobs no longer bob in step.
+- **Flight and swimming.** The chicken and parrot flap on Java's `flap`
+  and `flapSpeed` (and the parrot's poses: dancing, sitting, flying,
+  standing); bees beat, bob and tumble (`rollAmount`); the allay's wings,
+  lean, idle bob, arms and dance spin; the vex's arms and wings; the
+  phantom's wings, both beating together; fish sway and swing their tails
+  and flop on land; squid open their tentacles and turn their bodies
+  (`tentacleAngle`, `xBodyRot`, `zBodyRot`); dolphins pitch and rock;
+  guardians swing their tails and draw in their spikes while swimming.
+- **Rods, segments and tentacles.** The blaze's twelve rods on
+  `BlazeModel`'s rings; silverfish and endermite segments on their
+  models' sway; ghast tentacles trailing on `0.2 * sin(age * 0.3 + i) +
+  0.4`; the shulker's lid (Java's full rise, bob and twist); the breeze on
+  its `IDLE` loop; the bat's wings and the rabbit's hop and head tilt on
+  their `AnimationState` clocks.
+- **Poses.** The pillager draws its crossbow back over its charge time;
+  an aggressive drowned raises its trident overhead and swims, arms
+  forward and body tipped (`swimAmount`); horses swish their tails
+  (`tailCounter`) and rear (`standAnim`) when hit, when they throw a
+  rider and now and then at rest.
+- **Babies.** Chickens, pigs, cows, sheep, wolves, villagers, zombies,
+  husks and drowned draw Java 26.3's own baby proportions (large heads,
+  short legs) at full scale, with this game's own art; Track 7c gave
+  every other kind its baby model (below).
+
+## Mob models on Java's parts (v1.0 gap Track 7c)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-27-v1.0-gap-track-07c-mob-models.md)).
+
+- **Rigs.** `src/entity/model/rig.rs` holds a model as Java's part tree
+  (each part's `PartPose` offset and rotation in Java's axes, its boxes
+  written from Java's `addBox` numbers) and composes it as `ModelPart`
+  does, onto this game's axes by Track 7b's half turn about X.
+  `src/entity/model/keyframes.rs` runs Java's keyframe animations on a
+  rig (linear and Catmull-Rom keys, loops, `applyWalk`); the tables in
+  `src/entity/model/keyframe_defs/` hold the numbers of Java's
+  definitions. Colours and details stay this game's own.
+- **Babies.** Every kind Java 26.3 gives a baby layer draws it at full
+  scale (`src/entity/model/baby_rigs.rs` and Track 7b's `babies.rs`),
+  animated by its Java model, with the baby keyframes Java's babies run
+  (camel calf, fox kit, rabbit kit, armadillo pup, axolotl, nautilus).
+  The ghastling is Java's adult happy ghast scaled by 0.2375, as before.
+- **Joints.** The guardian's three tail joints and twelve edge spikes, the
+  phantom's wing tips and two-joint tail, the pufferfish's blue fins and
+  the parrot's legs move as Java's do; the adult rabbit and bat are
+  rebuilt on Java's parts and run `RabbitAnimation` and `BatAnimation`
+  per part.
+- **Horses.** Rearing places the body, front legs and head as
+  `AbstractEquineModel` does; grazing (`eatAnim`) lowers and turns the
+  head down, chewing (`mouthAnim`) shakes it.
+- **Sides.** Every quadruped's walk has Java's right hind leg (-X) on the
+  walk's cosine.
+- **Eyes and arms.** The guardian's eye slides toward its target (else
+  the viewer); a crossbow piglin draws its crossbow over the 25 ticks it
+  loads; admiring piglins draw `ADMIRING_ITEM`.
+- **LAN.** Squid tentacle cycles, bee rolls and piglin draws reach guests
+  with every tick's pose.
+
+## Model details (v1.0 gap Track 7d)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-27-v1.0-gap-track-07d-model-details.md)).
+
+- **Scale.** Rig parts scale as Java's `ModelPart` does (after the turn,
+  carried to the children's offsets and boxes), and every keyframe
+  `SCALE` channel runs: the nautilus's swim pulse, the fox kit's walk,
+  the sniffer's nose and body. A part can skip its own boxes while its
+  children draw (`skipDraw`).
+- **Nautilus.** The adult nautilus and zombie nautilus are Java's adult
+  mesh, facing as Java's (owner, 2026-11-27): the shell leads and the
+  body and mouth trail, swimming with `NautilusAnimation.SWIMMING` as the
+  baby does. The saddle, the armor and a warm zombie nautilus's corals
+  (hidden under armor) follow Java's layers.
+- **Baby keyframes.** The camel calf's idle (restarted every 80 to 119
+  ticks), the armadillo pup's roll-up, roll-out and peek (its head and
+  front legs drawn while it hides) and the snifflet's sniffer keyframes.
+  The snifflet's head is its mesh's size: 26.3 draws snifflets with
+  `SnifferModel`, so `SniffletModel`'s `BABY_TRANSFORM` never applies.
+- **Baby layers.** Horse foals wear their markings, a trader cria its
+  blanket, and a zombie villager cub its armor. Java draws no profession
+  on a cub, only its villager type's outfit (drawn since Track 7e, below).
+
+## Villagers and foxes (v1.0 gap Track 7e)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-28-v1.0-gap-track-07e-villagers-fox.md)).
+
+- **Villager meshes.** Villagers and wandering traders are
+  `VillagerModel`'s parts (a 10-pixel head, the 20-pixel robe, the folded
+  `arms`), drawn at 0.9375; zombie villagers are `ZombieVillagerModel`'s
+  humanoid, unscaled, with raised zombie arms.
+- **Outfit layers.** `VillagerProfessionLayer`'s order: the biome type's
+  outfit (seven original outfits: palette, robe accents, headwear; the
+  baby outfit on children and the cub), then for adults with a job the
+  profession's apron and hat and, unless a nitwit, the level badge
+  (stone to diamond). The type's headwear shows only when the
+  profession's hat metadata is none, or partial while the type's is not
+  full (desert and snow villagers; zombie villagers' types have none).
+  Zombie villagers wear the outfits faded. Guests get the type and level.
+- **Zombie villager armor and hand.** The adult wears armor on its
+  humanoid parts, the helmet on the taller head, and holds its main hand.
+- **Shown trade.** `CrossedArmsItemLayer` holds a villager's shown trade
+  (a wandering trader's main hand) up in front of the folded arms, in
+  the item's ground transform.
+- **Fox.** The adult is `AdultFoxModel`'s mesh. Adult and kit run
+  `FoxModel.setupAnim` on the fox's state: the interested head roll,
+  crouching with its wiggle, sleeping curled (legs hidden, eyes closed),
+  sitting, the adult's pounce drop and the faceplanted paddle;
+  `FoxRenderer` pitches a pouncing or faceplanted fox by its look.
+
+## Profession outfits, the fox's mouth item, the unhappy shake (v1.0 gap Track 7f)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-28-v1.0-gap-track-07f-villager-details.md)).
+
+- **Profession layers.** Every profession wears its own clothes, original
+  art in the box style, between the type's outfit and the level badge as
+  `VillagerProfessionLayer` draws them: aprons with bibs and straps (the
+  armorer's, butcher's, farmer's, leatherworker's, mason's, toolsmith's,
+  weaponsmith's), the fisherman's waxed apron and neckerchief, the
+  fletcher's tunic and quiver, the librarian's tabard, the cartographer's
+  waistcoat and rolled map, the shepherd's woolly cape and satchel, the
+  cleric's vestments and the nitwit's green coat. Face pieces sit on the
+  head: the armorer's welding mask, the cartographer's monocle, the
+  weaponsmith's eyepatch; smiths and craftsmen wear gloves. The cleric's
+  and nitwit's clothes repaint the robe and sleeves and cover the type's
+  touches on it, not its headwear. Zombie villagers wear the same clothes
+  rotted; babies wear none.
+- **Fox mouth item.** `FoxHeldItemLayer`: the main-hand item at the head's
+  pivot (in the pounce pitch), turned by the head roll and the look,
+  moved to the mouth (Java's offsets for the adult and the kit, awake and
+  asleep), laid flat, in the item's ground transform; the kit's at 0.75.
+- **Faceplant paddle.** `legMotionPos` belongs to the model (one for the
+  adult, one for the kit) and gains 0.67 each time it poses a faceplanted
+  fox, so the paddle runs per rendered frame, shared by every such fox.
+- **Unhappy shake.** While a villager's `unhappyCounter` runs (40 ticks
+  after a refused trade or a use on a child), `VillagerModel` bows the
+  head to 0.4 and rolls it `0.3 * sin(0.45 * ageInTicks)`, children too.
+  Guests get the counter with the pose.
+
+## Random block variants, fire's two textures and bells (v1.0 final track F3)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-28-v1.0-final-f3-visuals.md)).
+
+- **Random model variants.** `ModelBlockRenderer.tesselateBlock` seeds a
+  `SingleThreadedRandomSource` with `BlockState.getSeed(pos)`
+  (`Mth.getSeed`), and a blockstate entry listing several models
+  (`WeightedVariants`) takes `nextInt(totalWeight)`. Every full cube the
+  game draws with variants (stone, infested stone, bedrock, sculk,
+  deepslate and infested deepslate mirrored and turned a half; grass,
+  dirt, sand, red sand, mycelium, podzol, rooted dirt and the concrete
+  powders turned; netherrack turned every way) is drawn with the variant
+  Java picks for its cell, chosen per fragment by the chunk shader from the
+  cell's world position, so merged quads stay merged and the quad stays 12
+  bytes. Items and falling blocks keep the unturned model, as Java's items
+  do.
+- **Fire's two textures.** Fire's and soul fire's floor models are
+  `fire_floor0` (`fire_0`) or `fire_floor1` (`fire_1`), picked per block:
+  `MultiPartModel` draws a `nextLong` from the position's random and
+  reseeds with it for each part. A burning entity's flame alternates
+  `fire_0` and `fire_1` quad by quad (`FlameFeatureRenderer`).
+- **Bells.** A rung bell swings for 50 ticks (`BellBlockEntity`): its body
+  turns about its pivot (8, 12, 8) by `sin(t / pi) / (4 + t / 3)` radians
+  (`BellModel.setupAnim`), about x when struck on the north or south face,
+  about z on the east or west, from the struck face for a player's use and
+  from the bell's facing (north) for redstone and villagers. LAN guests get
+  the swing in their snapshots.

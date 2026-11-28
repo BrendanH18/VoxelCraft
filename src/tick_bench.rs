@@ -13,6 +13,13 @@
 //! (hoppers, carts, dispensers), piston pushes and the mob update with
 //! natural spawning.
 //!
+//! The `background` scene (v1.0 final F11) is the `entities` scene with a
+//! second level nobody is in beside it, as the game runs the dimensions the
+//! host isn't in: the same 160 mobs inside a `PORTAL` ticket's area that
+//! arrivals keep renewing, ticked each tick with no players
+//! ([`crate::simulation::tick_unattended_world_rules`] and the entity
+//! update), timed as its own `background` phase.
+//!
 //! What the desktop tick adds and this leaves out: the player's own movement
 //! and vitals (the camera flies a fixed route, as the live scenes' does), the
 //! audio and particles fed by entity events, and agents, LAN and controllers.
@@ -38,10 +45,10 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use crate::world::{World, WorldRules};
 
 /// The scenes this harness can run.
-pub const SCENES: [&str; 6] = ["streaming", "survival", "entities", "automation", "hoppers", "village"];
+pub const SCENES: [&str; 7] = ["streaming", "survival", "entities", "automation", "hoppers", "village", "background"];
 
 /// Each tick's time by phase, in milliseconds.
-pub const TICK_PHASES: [&str; 5] = ["setup", "world_rules", "automation", "mobs", "drops"];
+pub const TICK_PHASES: [&str; 6] = ["setup", "world_rules", "automation", "mobs", "drops", "background"];
 type TickTimes = [f32; TICK_PHASES.len()];
 
 /// Camera height above the generator's surface along the routes, as the live scenes'.
@@ -123,6 +130,88 @@ pub struct Harness {
     heights: rustc_hash::FxHashMap<(i32, i32), i32>,
     /// The last tick's world rule steps, in milliseconds.
     pub steps: [f32; crate::simulation::WORLD_RULE_STEPS.len()],
+    /// v1.0 final F11: the `background` scene's level nobody is in.
+    pub background: Option<Background>,
+}
+
+/// v1.0 final F11: a level nobody is in, as the game runs one.
+pub struct Background {
+    pub world: World,
+    pub entities: Entities,
+    pub tickets: crate::world::tickets::Tickets,
+    empty: crate::world::tickets::EmptyTime,
+    portal: glam::IVec2,
+}
+
+impl Background {
+    fn new(generator: Arc<Generator>, seed: u64) -> Self {
+        let mut world = World::new_headless(generator, Default::default(), 2);
+        world.set_background(true);
+        world.set_simulation_players_with_host(None, std::iter::empty(), std::iter::empty());
+        // Far from the camera's level, as another dimension is.
+        let portal = glam::IVec2::new(1250, 0);
+        let mut tickets = crate::world::tickets::Tickets::default();
+        tickets.add_with_radius(crate::world::tickets::TicketKind::Portal, portal, 3);
+        world.set_tickets(&tickets);
+        Self { world, entities: Entities::new(seed), tickets, empty: Default::default(), portal }
+    }
+
+    fn loaded(&mut self) -> bool {
+        self.world.update_background();
+        self.world.pending_jobs() == 0 && self.world.column_loaded(self.portal.x * 16, self.portal.y * 16)
+    }
+
+    /// The entities scene's population around the portal.
+    fn populate(&mut self) {
+        let at = IVec3::new(self.portal.x * 16 + 8, 0, self.portal.y * 16 + 8);
+        for i in 0..ENTITY_MOBS {
+            let kind = [MobKind::Cow, MobKind::Sheep, MobKind::Pig, MobKind::Chicken][i % 4];
+            let (x, z) = (at.x + i as i32 % 21 - 10, at.z + i as i32 / 21 - 4);
+            let ground = self.world.surface_height(x, z).unwrap_or(SEA_LEVEL);
+            self.entities.spawn(kind, DVec3::new(f64::from(x) + 0.5, f64::from(ground + 1), f64::from(z) + 0.5));
+        }
+        self.entities.ensure_mob_ids();
+    }
+
+    /// One tick of the level: its tickets, then what they reach.
+    fn tick(&mut self, ticks: u64) {
+        use crate::world::tickets::TicketKind;
+        // Arrivals keep coming through the portal.
+        if ticks.is_multiple_of(200) {
+            self.tickets.add_with_radius(TicketKind::Portal, self.portal, 3);
+        }
+        let w = &self.world;
+        self.tickets.purge(|c| w.column_loaded(c.x * 16, c.y * 16));
+        let w = &mut self.world;
+        w.set_tickets(&self.tickets);
+        w.set_simulation_players_with_host(None, std::iter::empty(), std::iter::empty());
+        w.update_background();
+        let running = self.empty.tick(self.tickets.keep_active());
+        crate::simulation::tick_unattended_world_rules(w, true, 3, running);
+        let e = &mut self.entities;
+        if running {
+            w.tick_automation_entities(e);
+            let ctx = Ctx {
+                spawn_light: SpawnLight::DAY,
+                players: Vec::new(),
+                daylight: 1.0,
+                raining: false,
+                spawning: false,
+                dimension: Dimension::Overworld,
+            };
+            std::hint::black_box(e.update_world(TICK_SECONDS, w, &ctx, Difficulty::Normal));
+        } else {
+            e.sync_chunk_entities(w);
+        }
+        for chunk in std::mem::take(&mut e.pearl_tickets) {
+            self.tickets.add_with_radius(TicketKind::EnderPearl, chunk, 2);
+        }
+        for (cell, stack) in std::mem::take(&mut w.drops) {
+            e.drop_from_block(stack, cell);
+        }
+        e.clear_pending_sounds();
+        w.particles.drain().for_each(drop);
+    }
 }
 
 impl Harness {
@@ -131,7 +220,7 @@ impl Harness {
         let generator = Arc::new(Generator::new(options.seed));
         let ground = generator.column(0, 0).height;
         let camera = DVec3::new(0.5, f64::from(ground.max(SEA_LEVEL)) + 2.0, 0.5);
-        let mut world = World::new(generator, Default::default(), options.render_distance);
+        let mut world = World::new(Arc::clone(&generator), Default::default(), options.render_distance);
         // As the desktop game streams: light within a per-frame budget,
         // resolved in full before a frame's first tick.
         world.set_stream_light_budget(Some(STREAM_LIGHT_BUDGET));
@@ -148,6 +237,7 @@ impl Harness {
             spawning: true,
             heights: Default::default(),
             steps: Default::default(),
+            background: (options.scene == "background").then(|| Background::new(Arc::clone(&generator), options.seed)),
         };
         if h.scene == "village" {
             let g = Arc::clone(&h.world.generator);
@@ -167,7 +257,8 @@ impl Harness {
         let start = Instant::now();
         loop {
             self.stream();
-            if self.world.pending_jobs() == 0 && self.world.is_loaded(self.camera.floor().as_ivec3()) {
+            let background = self.background.as_mut().is_none_or(Background::loaded);
+            if background && self.world.pending_jobs() == 0 && self.world.is_loaded(self.camera.floor().as_ivec3()) {
                 break;
             }
             if start.elapsed() > limit {
@@ -181,7 +272,10 @@ impl Harness {
 
     fn build_fixture(&mut self) {
         let at = self.camera.floor().as_ivec3();
-        let floor = matches!(self.scene.as_str(), "entities" | "automation" | "hoppers");
+        let floor = matches!(self.scene.as_str(), "entities" | "automation" | "hoppers" | "background");
+        if let Some(b) = &mut self.background {
+            b.populate();
+        }
         if floor {
             for x in -12..=12 {
                 for z in -12..=12 {
@@ -190,7 +284,7 @@ impl Harness {
             }
         }
         match self.scene.as_str() {
-            "entities" => {
+            "entities" | "background" => {
                 // The live scene's population, at dawn with no natural spawning.
                 self.spawning = false;
                 self.day_time = 0.0;
@@ -376,12 +470,16 @@ impl Harness {
         w.primed_tnt.clear();
         e.clear_pending_sounds();
         w.particles.drain().for_each(drop);
-        if self.scene != "entities" {
+        if self.scene != "entities" && self.scene != "background" {
             (self.day_time, self.day_count) =
                 crate::simulation::advance_day(self.day_time, self.day_count, TICK_SECONDS, &rules);
         }
-        self.ticks += 1;
         mark(4, &mut times);
+        if let Some(b) = &mut self.background {
+            b.tick(self.ticks);
+        }
+        self.ticks += 1;
+        mark(5, &mut times);
         times
     }
 }
@@ -592,7 +690,7 @@ mod tests {
     fn every_scene_name_is_accepted_and_others_are_not() {
         let bad = Options { scene: "nowhere".into(), ..Default::default() };
         assert!(run(&bad).is_err());
-        assert_eq!(SCENES.len(), 6);
+        assert_eq!(SCENES.len(), 7);
     }
 
     #[test]

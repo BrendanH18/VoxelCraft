@@ -5,11 +5,15 @@
 use crate::enchant::{self, Enchants};
 use crate::item::{ArmorPiece, Item};
 
+pub mod clicks;
 pub mod components;
 use components::{Payload, StackPayload, Trim};
 
 pub const HOTBAR_SLOTS: usize = 9;
 pub const SLOTS: usize = 36;
+/// Java's `Inventory.SLOT_OFFHAND`: the off-hand as a hand slot
+/// ([`Inventory::get`], [`Inventory::wear`], [`Inventory::slot_mut`]).
+pub const OFFHAND: usize = 40;
 /// Plain UTF-8 bytes kept inline so [`Stack`] remains cheap to copy.
 pub const STACK_NAME_MAX: usize = 64;
 
@@ -255,6 +259,15 @@ impl Stack {
     }
 
     /// Remaining durability as a fraction, for tools that have been used.
+    /// `ItemStack.hasFoil`: the enchantment glint, on enchanted stacks
+    /// (and enchanted books' stored enchantments), lodestone compasses and
+    /// the items Java always draws with it (written books, the enchanted
+    /// golden apple, the experience bottle, the Nether star, the End
+    /// crystal). Slots, held and dropped items all draw it.
+    pub fn has_foil(&self) -> bool {
+        !self.enchants.is_empty() || self.item.has_glint() || self.lodestone.is_some()
+    }
+
     pub fn wear(&self) -> Option<f32> {
         let max = self.item.durability()?;
         (self.damage > 0).then(|| 1.0 - self.damage as f32 / max as f32)
@@ -302,7 +315,16 @@ impl Inventory {
     }
 
     pub fn get(&self, slot: usize) -> Option<Stack> {
+        // v1.0 final track F1: Java's off-hand index (`Inventory.SLOT_OFFHAND`).
+        if slot == OFFHAND {
+            return self.offhand;
+        }
         self.slots[slot]
+    }
+
+    /// The stack in `slot`, the off-hand at [`OFFHAND`].
+    pub fn slot_mut(&mut self, slot: usize) -> &mut Option<Stack> {
+        if slot == OFFHAND { &mut self.offhand } else { &mut self.slots[slot] }
     }
 
     /// Java's swap-item-with-offhand action: the selected hotbar stack and
@@ -357,12 +379,12 @@ impl Inventory {
     /// `true` if that broke it (the slot is then empty). Non-tools are
     /// untouched.
     pub fn wear(&mut self, slot: usize, uses: u16) -> bool {
-        let Some(s) = &mut self.slots[slot] else { return false };
+        let Some(s) = self.slot_mut(slot) else { return false };
         let Some(max) = s.item.durability() else { return false };
         let uses = (0..uses).filter(|_| enchant::wears(s.enchants, false, enchant::roll())).count() as u16;
         s.damage = s.damage.saturating_add(uses);
         if s.damage >= max {
-            self.slots[slot] = None;
+            *self.slot_mut(slot) = None;
             return true;
         }
         false

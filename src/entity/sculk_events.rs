@@ -20,8 +20,10 @@ struct Watch {
     dying: bool,
     /// `wasTouchingWater`, for `doWaterSplashEffect`.
     in_water: bool,
-    /// A creeper's fuse was lit, or a witch was drinking.
+    /// A creeper's fuse was lit (`swellDir > 0`), or a witch was drinking.
     fusing: bool,
+    /// The creeper's swell last tick: `prime_fuse` needs it at 0.
+    fuse: f32,
     drinking: bool,
     hurt: f32,
     move_dist: f32,
@@ -176,12 +178,13 @@ impl Entities {
             let watch = self.sculk.watch.entry(m.uid).or_insert(Watch {
                 dying: m.dying.is_some(),
                 in_water: m.in_water,
-                fusing: m.fuse > 0.0,
+                fusing: m.swelling,
+                fuse: m.fuse,
                 drinking: m.drinking_potion(),
                 hurt: m.hurt,
                 next_step: 1.0,
                 armadillo: m.armadillo.as_ref().map_or(0, |a| a.pose),
-                sitting: m.mount.as_ref().is_some_and(|s| s.sit_ticks > 0),
+                sitting: m.mount.as_ref().is_some_and(|s| s.camel_sitting),
                 dash_cooldown: m.mount.as_ref().map_or(0, |s| s.dash_cooldown),
                 dashing: m.nautilus.as_ref().is_some_and(|n| n.dashing),
                 primed: m.sulfur_cube.as_ref().is_some_and(|c| c.primed()),
@@ -206,12 +209,14 @@ impl Entities {
                 w.emit_game_event(m.pos, GameEvent::Splash, source, None);
             }
             watch.in_water = m.in_water;
-            // `Creeper.tick`: the swell starting posts `prime_fuse`.
-            let fusing = m.fuse > 0.0;
-            if !first && m.alive() && fusing && !watch.fusing {
+            // `Creeper.tick`: the swell starting from nothing posts
+            // `prime_fuse` (not one a fall left).
+            let fusing = m.swelling;
+            if !first && m.alive() && fusing && !watch.fusing && watch.fuse == 0.0 {
                 w.emit_game_event(m.pos, GameEvent::PrimeFuse, source, None);
             }
             watch.fusing = fusing;
+            watch.fuse = m.fuse;
             // `Witch.aiStep`: finishing a potion posts `drink`.
             let drinking = m.drinking_potion();
             if !first && m.alive() && watch.drinking && !drinking {
@@ -306,7 +311,7 @@ fn mob_actions(w: &mut World, m: &super::Mob, source: EventSource, watch: &mut W
     }
     if let Some(s) = &m.mount {
         // `Camel.sitDown`, `standUp` and `standUpInstantly`.
-        let sitting = s.sit_ticks > 0;
+        let sitting = s.camel_sitting;
         if sitting != watch.sitting && super::mounts::camel_like(m.kind) {
             post(GameEvent::EntityAction);
         }

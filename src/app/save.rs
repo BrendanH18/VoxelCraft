@@ -1,6 +1,10 @@
 //! World save assembly and persistence, separate from event dispatch.
 use super::*;
 use crate::world::region::REGION_DIR;
+/// v1.0 gap Track 8f: a player's ender pearls in their player data (Java's
+/// `ender_pearls`).
+pub(super) const PEARLS_KEY: &str = "ender_pearls";
+
 impl Game {
     /// Saves the world and waits until it is on disk: quitting, changing
     /// dimension, `/save` and the LAN host's save all finish here before
@@ -72,12 +76,29 @@ impl Game {
         if let Some(cause) = &self.session.vitals.death {
             props.insert("death".to_string(), cause.clone());
         }
+        // v1.0 gap Track 8f: the host's pearls (`ServerPlayer.saveEnderPearls`).
+        let host = crate::entity::PlayerId::HOST;
+        if let Some(pearls) = self.saved_pearls(host) {
+            props.insert(PEARLS_KEY.to_string(), pearls.to_string());
+        }
         props.insert("dimension".to_string(), self.dimension.name().to_string());
         props.insert("time".to_string(), format!("{:.5}", self.day_time));
         props.insert("day_count".to_string(), self.day_count.to_string());
         props.insert("weather".to_string(), self.weather.serialize());
         if self.credits_seen {
             props.insert("credits_seen".to_string(), "1".to_string());
+        }
+        if !self.owed_portals.is_empty() {
+            props.insert(dimension::OWED_PORTALS_KEY.to_string(), dimension::owed_portals_text(&self.owed_portals));
+        }
+        // v1.0 final Track F2: travellers waiting for other dimensions, and
+        // a vehicle on its way with the host.
+        let arrivals = self.saved_portal_arrivals();
+        if !arrivals.is_empty() {
+            props.insert(
+                super::portal_travel::PORTAL_ARRIVALS_KEY.to_string(),
+                super::portal_travel::arrivals_text(&arrivals),
+            );
         }
         if let Some(b) = self.session.spawn_bed {
             props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
@@ -99,6 +120,9 @@ impl Game {
         }
         let seed = self.world.generator.seed;
         record_generation(&mut props, self.world.generator.generation);
+        // v1.0 final F11: the levels running in the background first (an
+        // Overworld among them gives the root level file its state).
+        self.save_background_levels(seed);
         if self.world.writes_records() {
             self.save_regions(seed, props, wait);
             self.last_save = Instant::now();
@@ -211,6 +235,50 @@ impl Game {
     }
 }
 
+impl Game {
+    /// v1.0 final F11: saves each background level as the host's level is
+    /// saved: entities stored in its unloaded chunks and its loaded chunks
+    /// to their region records, then (once those are on disk) its level
+    /// file. A background Overworld's level state goes into the root level
+    /// file with the player's (`overworld_props`), written by the host's
+    /// level's save after it. Each waits until it is on disk: they hold
+    /// only what their tickets reach.
+    fn save_background_levels(&mut self, seed: u64) {
+        for i in 0..self.levels.len() {
+            let result = self.with_level(i, |g| {
+                if !g.world.writes_records() {
+                    return Ok(None);
+                }
+                let stored = g.mobs.entities.take_stored_batches(&mut g.world);
+                let records = g.world.save_records(stored);
+                let props = g.dimension_props();
+                log::info!("saved {records} {} chunk records (in the background)", g.dimension.name());
+                if g.dimension == Dimension::Overworld {
+                    return g.world.flush_regions().map(|()| Some(props));
+                }
+                let dimension = dimension::storage_for(&g.storage, g.dimension);
+                let own = LevelInfo { seed, player: None, props };
+                if let Some(store) = g.world.regions() {
+                    store.after_writes(move || {
+                        dimension.save_level(&own)?;
+                        dimension.retire_chunks_file()
+                    });
+                }
+                g.world.flush_regions().map(|()| None)
+            });
+            match result {
+                Ok(Some(overworld)) => self.overworld_props = overworld,
+                Ok(None) => {}
+                Err(e) => {
+                    log::error!("save failed: {e}");
+                    self.show_popup(&format!("Could not save the world: {e}"));
+                    self.save_error = Some(e.to_string());
+                }
+            }
+        }
+    }
+}
+
 /// Records the world's generator in its `level.txt` properties, for
 /// `startup::world_generation` to read back.
 pub(super) fn record_generation(props: &mut std::collections::BTreeMap<String, String>, generation: Generation) {
@@ -221,6 +289,39 @@ pub(super) fn record_generation(props: &mut std::collections::BTreeMap<String, S
 /// checked: either way the legacy `chunks.bin` save must not run.
 fn may_hold_regions(regions: &std::path::Path) -> bool {
     !matches!(regions.try_exists(), Ok(false))
+}
+
+impl Game {
+    /// v1.0 gap Track 8f: the pearls saved with the host's and each
+    /// profile's player data, waiting until their owner is in their level.
+    pub(super) fn load_owned_pearls(&mut self, root: &std::collections::BTreeMap<String, String>) {
+        if let Some(v) = root.get(PEARLS_KEY).and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok()) {
+            self.owned_pearls.load(&v, crate::entity::PlayerId::HOST);
+        }
+        let Some(serde_json::Value::Array(profiles)) =
+            root.get("agents").and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok())
+        else {
+            return;
+        };
+        for p in &profiles {
+            if let Some(bot) = p["name"].as_str().and_then(|n| self.agents.players.get(n)) {
+                self.owned_pearls.load(&p[PEARLS_KEY], bot.id);
+            }
+        }
+    }
+
+    /// v1.0 gap Track 8f: pearls are in the level only while their owner
+    /// is (the host, or an active profile).
+    pub(super) fn sync_owned_pearls(&mut self) {
+        if self.lan.client.is_some() {
+            return;
+        }
+        let agents = &self.agents.players;
+        let present = |id: crate::entity::PlayerId| {
+            id == crate::entity::PlayerId::HOST || agents.values().any(|b| b.active && b.id == id)
+        };
+        self.owned_pearls.sync(&mut self.mobs.entities, self.dimension, present);
+    }
 }
 
 #[cfg(test)]

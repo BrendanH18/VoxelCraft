@@ -260,6 +260,70 @@ pub enum Sound {
     /// v1.0 Track 5: `particle.soul_escape`, Soul Speed boots on soul sand
     /// and soul soil.
     SoulEscape,
+    /// v1.0 gap track 6: a bundle taking, refusing, giving up or emptying
+    /// out a stack (`SoundEvents.BUNDLE_*`).
+    Bundle(voxelcraft::content::bundle::Cue),
+    /// v1.0 gap Track 3b: camels sitting, standing and dashing, and mounts
+    /// made mad.
+    Mount(crate::entity::mounts::Cue),
+    /// v1.0 gap Track 5c: the Nether portal's own sounds (`block.portal.*`).
+    Portal(PortalCue),
+    /// v1.0 gap Track 2f: the fox's own sounds (`entity.fox.*` beyond its
+    /// ambient, hurt and death calls).
+    Fox(crate::entity::fox::Cue),
+    /// v1.0 gap Track 2g: the goat's long jump and landing.
+    Goat(voxelcraft::entity::animals::long_jump::Cue),
+    /// v1.0 gap Track 8f: `entity.villager.no`, the villager's refusal with
+    /// its head shake.
+    VillagerNo,
+    /// v1.0 gap track 6e: a pointed dripstone's drop landing
+    /// (`DripstoneFallAndLandParticle.postMoveUpdate`): lava when true.
+    DripstoneDrip(bool),
+    /// v1.0 gap Track 2h: the composter's fill, empty and ready sounds.
+    Composter(voxelcraft::world::composter::Cue),
+    /// v1.0 gap Track 2h: a villager's work sound
+    /// (`VillagerProfession.workSound`), one of [`Profession::WORKERS`].
+    ///
+    /// [`Profession::WORKERS`]: voxelcraft::entity::villager::Profession::WORKERS
+    VillagerWork(voxelcraft::entity::villager::Profession),
+    /// v1.0 final Track F4: a goat horn's call, by Java instrument
+    /// (`item.goat_horn.sound.<n>`, `RECORDS`), heard to its 256-block range.
+    Horn(u8),
+    /// v1.0 final Track F4: a note of a music disc's tune, played from a
+    /// jukebox (`SimpleSoundInstance.forJukeboxSong`: volume 4, linear
+    /// attenuation to 64 blocks). It shares the note block's buffers.
+    Disc(Instrument),
+    /// v1.0 final Track F4: brushing a block (`item.brush.brushing.*`).
+    Brush(super::horns::BrushCue),
+    /// v1.0 final Track F4: a mob's own footstep (`playStepSound`).
+    MobStep(super::creatures::StepCue),
+}
+
+/// v1.0 gap Track 5c: Java's `PORTAL_AMBIENT`, `PORTAL_TRIGGER` and
+/// `PORTAL_TRAVEL`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum PortalCue {
+    /// A portal block's whoosh (`NetherPortalBlock.animateTick`, one time in
+    /// 100, at the block): "Portal whooshes".
+    Ambient,
+    /// Stepping into a portal (`LocalPlayer.handlePortalTransitionEffect`):
+    /// "Portal noise intensifies".
+    Trigger,
+    /// Arriving through one (level event 1032): "Portal noise fades".
+    Travel,
+}
+
+impl PortalCue {
+    pub const ALL: [PortalCue; 3] = [PortalCue::Ambient, PortalCue::Trigger, PortalCue::Travel];
+
+    /// The Java sound event.
+    pub fn event(self) -> &'static str {
+        match self {
+            PortalCue::Ambient => "block.portal.ambient",
+            PortalCue::Trigger => "block.portal.trigger",
+            PortalCue::Travel => "block.portal.travel",
+        }
+    }
 }
 
 /// v0.18 Track 9: the five events of a Java `SoundType`.
@@ -338,7 +402,20 @@ impl Sound {
     const CRAFTER_END: usize = Self::MINECART_END + crate::world::crafter::Cue::ALL.len();
     const BLOCK_END: usize = Self::CRAFTER_END + super::block_sounds::FAMILY_COUNT * BlockCue::ALL.len();
     const CONTAINER_END: usize = Self::BLOCK_END + ContainerCue::ALL.len();
-    pub const COUNT: usize = Self::CONTAINER_END + 1;
+    const SOUL_ESCAPE_END: usize = Self::CONTAINER_END + 1;
+    const BUNDLE_END: usize = Self::SOUL_ESCAPE_END + voxelcraft::content::bundle::Cue::ALL.len();
+    const MOUNT_END: usize = Self::BUNDLE_END + crate::entity::mounts::Cue::ALL.len();
+    const PORTAL_END: usize = Self::MOUNT_END + PortalCue::ALL.len();
+    const FOX_END: usize = Self::PORTAL_END + crate::entity::fox::Cue::ALL.len();
+    const GOAT_END: usize = Self::FOX_END + voxelcraft::entity::animals::long_jump::Cue::ALL.len();
+    const VILLAGER_NO_END: usize = Self::GOAT_END + 1;
+    const DRIP_END: usize = Self::VILLAGER_NO_END + 2;
+    const COMPOSTER_END: usize = Self::DRIP_END + voxelcraft::world::composter::Cue::ALL.len();
+    const WORK_END: usize = Self::COMPOSTER_END + voxelcraft::entity::villager::Profession::WORKERS.len();
+    const HORN_END: usize = Self::WORK_END + 8;
+    const DISC_END: usize = Self::HORN_END + Instrument::ALL.len();
+    const BRUSH_END: usize = Self::DISC_END + super::horns::BrushCue::ALL.len();
+    pub const COUNT: usize = Self::BRUSH_END + super::creatures::StepCue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -365,6 +442,22 @@ impl Sound {
             Sound::Block(family, cue) => Self::CRAFTER_END + family.index() * BlockCue::ALL.len() + cue as usize,
             Sound::Container(cue) => Self::BLOCK_END + cue as usize,
             Sound::SoulEscape => Self::CONTAINER_END,
+            Sound::Bundle(cue) => Self::SOUL_ESCAPE_END + cue as usize,
+            Sound::Mount(cue) => Self::BUNDLE_END + cue as usize,
+            Sound::Portal(cue) => Self::MOUNT_END + cue as usize,
+            Sound::Fox(cue) => Self::PORTAL_END + cue as usize,
+            Sound::Goat(cue) => Self::FOX_END + cue as usize,
+            Sound::VillagerNo => Self::GOAT_END,
+            Sound::DripstoneDrip(lava) => Self::VILLAGER_NO_END + usize::from(lava),
+            Sound::Composter(cue) => Self::DRIP_END + cue as usize,
+            Sound::VillagerWork(job) => {
+                Self::COMPOSTER_END
+                    + voxelcraft::entity::villager::Profession::WORKERS.iter().position(|&j| j == job).unwrap_or(0)
+            }
+            Sound::Horn(kind) => Self::WORK_END + usize::from(kind.min(7)),
+            Sound::Disc(i) => Self::HORN_END + i as usize,
+            Sound::Brush(c) => Self::DISC_END + c as usize,
+            Sound::MobStep(c) => Self::BRUSH_END + c as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -497,6 +590,32 @@ impl Sound {
             .chain(super::block_sounds::sounds())
             .chain(ContainerCue::ALL.map(Sound::Container))
             .chain([Sound::SoulEscape])
+            .chain(voxelcraft::content::bundle::Cue::ALL.map(Sound::Bundle))
+            .chain(crate::entity::mounts::Cue::ALL.map(Sound::Mount))
+            .chain(PortalCue::ALL.map(Sound::Portal))
+            .chain(crate::entity::fox::Cue::ALL.map(Sound::Fox))
+            .chain(voxelcraft::entity::animals::long_jump::Cue::ALL.map(Sound::Goat))
+            .chain([Sound::VillagerNo])
+            .chain([Sound::DripstoneDrip(false), Sound::DripstoneDrip(true)])
+            .chain(voxelcraft::world::composter::Cue::ALL.map(Sound::Composter))
+            .chain(voxelcraft::entity::villager::Profession::WORKERS.map(Sound::VillagerWork))
+            .chain((0..8).map(Sound::Horn))
+            .chain(Instrument::ALL.map(Sound::Disc))
+            .chain(super::horns::BrushCue::ALL.map(Sound::Brush))
+            .chain(super::creatures::StepCue::ALL.map(Sound::MobStep))
+    }
+
+    /// v1.0 final Track F4: how far Java hears this sound, where it isn't
+    /// the mixer's usual falloff ([`super::mixer::attenuation`]): Java's
+    /// linear attenuation to `16 * max(volume, 1)` blocks
+    /// (`SoundEvent.getRange`). A goat horn plays at `range / 16` = 16
+    /// (256 blocks), a jukebox's song at 4 (64 blocks).
+    pub fn java_range(self) -> Option<f32> {
+        match self {
+            Sound::Horn(_) => Some(256.0),
+            Sound::Disc(_) => Some(64.0),
+            _ => None,
+        }
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -522,6 +641,19 @@ impl Sound {
             Sound::Block(f, c) => format!("block_{}_{c:?}", f.name()).to_lowercase(),
             Sound::Container(c) => format!("container_{c:?}").to_lowercase(),
             Sound::SoulEscape => "particle_soul_escape".into(),
+            Sound::Bundle(c) => c.event().replace('.', "_"),
+            Sound::Mount(c) => c.key().replace('.', "_"),
+            Sound::Portal(c) => c.event().replace('.', "_"),
+            Sound::Fox(c) => c.key().replace('.', "_"),
+            Sound::Goat(c) => c.key().replace('.', "_"),
+            Sound::VillagerNo => "entity_villager_no".into(),
+            Sound::DripstoneDrip(lava) => format!("pointed_dripstone_drip_{}", if lava { "lava" } else { "water" }),
+            Sound::Composter(c) => c.key().replace('.', "_"),
+            Sound::VillagerWork(j) => j.work_sound().unwrap_or("entity.villager.work").replace('.', "_"),
+            Sound::Horn(kind) => format!("goat_horn_{}", super::horns::INSTRUMENTS[usize::from(kind.min(7))]),
+            Sound::Disc(i) => format!("disc_{i:?}").to_ascii_lowercase(),
+            Sound::Brush(c) => c.event().replace('.', "_"),
+            Sound::MobStep(c) => c.event().replace('.', "_"),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -668,6 +800,36 @@ impl Sound {
             Sound::Block(..) | Sound::Container(_) => SoundSource::Blocks,
             // `PlaySoundEffect` plays in the wearer's category (`PLAYERS`).
             Sound::SoulEscape => SoundSource::Players,
+            // `Entity.playSound` by the player, and `BUNDLE_DROP_CONTENTS`
+            // played as `PLAYERS`.
+            Sound::Bundle(_) => SoundSource::Players,
+            // `Camel` and `AbstractHorse` play in their own category
+            // (`NEUTRAL`; the dash-ready cue's `level().playSound` too).
+            Sound::Mount(_) => SoundSource::Neutral,
+            // `animateTick` plays the whoosh as `BLOCKS`; the trigger and
+            // travel sounds are `SimpleSoundInstance.forLocalAmbience`
+            // (`AMBIENT`, not positioned).
+            Sound::Portal(PortalCue::Ambient) | Sound::DripstoneDrip(_) => SoundSource::Blocks,
+            Sound::Portal(_) => SoundSource::Ambient,
+            // `Fox.playSound`: the fox's own category (`NEUTRAL`).
+            Sound::Fox(_) => SoundSource::Neutral,
+            // `LongJumpToRandomPos` and `LongJumpMidJump` play as `NEUTRAL`.
+            Sound::Goat(_) => SoundSource::Neutral,
+            // The villager's own category (`NEUTRAL`).
+            Sound::VillagerNo => SoundSource::Neutral,
+            Sound::Composter(_) => SoundSource::Blocks,
+            // `Villager.playWorkSound` (`makeSound`): the villager's own
+            // category, `NEUTRAL`.
+            Sound::VillagerWork(_) => SoundSource::Neutral,
+            // `InstrumentItem.play` and `forJukeboxSong`: `RECORDS`.
+            Sound::Horn(_) | Sound::Disc(_) => SoundSource::Records,
+            // `BrushItem.onUseTick` plays in `BLOCKS`, level event 3008 in `PLAYERS`.
+            Sound::Brush(super::horns::BrushCue::SandComplete | super::horns::BrushCue::GravelComplete) => {
+                SoundSource::Players
+            }
+            Sound::Brush(_) => SoundSource::Blocks,
+            Sound::MobStep(super::creatures::StepCue::Silverfish) => SoundSource::Hostile,
+            Sound::MobStep(_) => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -692,6 +854,17 @@ impl Sound {
             Sound::Block(..) => 2,
             Sound::Container(_) => 2,
             Sound::SoulEscape => 2,
+            Sound::Bundle(_) => 2,
+            Sound::Mount(_) => 2,
+            Sound::Portal(_) => 1,
+            Sound::Fox(_) => 2,
+            Sound::Goat(_) => 2,
+            Sound::VillagerNo => 2,
+            Sound::DripstoneDrip(_) => 3,
+            Sound::Composter(_) | Sound::VillagerWork(_) => 2,
+            Sound::Horn(_) | Sound::Disc(_) => 1,
+            Sound::Brush(_) => 2,
+            Sound::MobStep(_) => 3,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -751,6 +924,20 @@ impl Sound {
             Sound::Block(f, c) => super::block_sounds::render(f, c, &mut rng),
             Sound::Container(c) => super::block_sounds::render_container(c, &mut rng),
             Sound::SoulEscape => soul_escape(&mut rng),
+            Sound::Bundle(c) => super::bundle::render(c, &mut rng),
+            Sound::Mount(c) => super::mounts::render(c, &mut rng),
+            Sound::Portal(c) => portal(c, &mut rng),
+            Sound::Fox(c) => super::fox::render(c, &mut rng),
+            Sound::Goat(c) => super::goat::render(c, &mut rng),
+            Sound::VillagerNo => super::voices::villager_no(&mut rng),
+            Sound::DripstoneDrip(lava) => dripstone_drip(lava, &mut rng),
+            Sound::Composter(c) => super::work::composter(c, &mut rng),
+            Sound::VillagerWork(j) => super::work::work(j, &mut rng),
+            Sound::Horn(kind) => super::horns::render_horn(kind, &mut rng),
+            // Shares the note's buffers ([`super::block_sounds::shares`]).
+            Sound::Disc(i) => note_sound(i, &mut rng),
+            Sound::Brush(c) => super::horns::render_brush(c, &mut rng),
+            Sound::MobStep(c) => super::creatures::render_step(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
@@ -1569,6 +1756,26 @@ fn drip(rng: &mut Rng) -> Vec<f32> {
     dsp::finish(out, 0.3)
 }
 
+/// v1.0 gap track 6e: original drop landings for Java's
+/// `block.pointed_dripstone.drip_water` (a short bright plink without the
+/// cave echo) and `drip_lava` (a lower, thicker blip with a hiss).
+fn dripstone_drip(lava: bool, rng: &mut Rng) -> Vec<f32> {
+    let len = samples(0.4);
+    let mut out = vec![0.0; len];
+    if lava {
+        let f = rng.range(380.0, 520.0);
+        add_mode(&mut out, 0, Mode { freq: f, amp: 0.9, tau: 0.05, glide: 1.4, glide_tau: 0.02 });
+        let hiss = noise(rng, len, |t| (-(t / 0.08)).exp() * 0.25);
+        let mut hp = Biquad::highpass(2500.0, 0.7);
+        let hiss: Vec<f32> = hiss.iter().map(|&x| hp.process(x)).collect();
+        mix_into(&mut out, &hiss, 1.0, 0);
+    } else {
+        let f = rng.range(1100.0, 1600.0);
+        add_mode(&mut out, 0, Mode { freq: f, amp: 1.0, tau: 0.022, glide: 1.8, glide_tau: 0.01 });
+    }
+    dsp::finish(out, 0.3)
+}
+
 fn wind(rng: &mut Rng) -> Vec<f32> {
     let loop_secs = 12.0;
     let (n, x) = (samples(loop_secs), samples(0.5));
@@ -1670,6 +1877,55 @@ fn material_sound(m: Material, rng: &mut Rng, kind: Kind) -> Vec<f32> {
 /// v1.0 Track 5: an original stand-in for `particle.soul_escape`: a breathy
 /// wisp of band-passed noise that swells and fades over a faint, falling,
 /// hollow tone. Nothing is sampled.
+/// v1.0 gap Track 5c: the Nether portal's sounds, original recipes on one
+/// voice: a hollow, wavering drone of detuned low tones under a band of
+/// noise whose centre swirls. The whoosh swells and dies away; the trigger
+/// rises in pitch and loudness over four seconds; the travel sound starts
+/// full and falls away.
+fn portal(cue: PortalCue, rng: &mut Rng) -> Vec<f32> {
+    let (secs, peak) = match cue {
+        PortalCue::Ambient => (3.0, 0.45),
+        PortalCue::Trigger => (4.0, 0.6),
+        PortalCue::Travel => (4.5, 0.6),
+    };
+    let env = move |t: f32| match cue {
+        PortalCue::Ambient => (t / 0.8).min(1.0) * ((secs - t) / 1.4).clamp(0.0, 1.0),
+        PortalCue::Trigger => (t / 3.2).min(1.0).powi(2) * ((secs - t) / 0.6).clamp(0.0, 1.0),
+        PortalCue::Travel => (t / 0.12).min(1.0) * (-t / 1.4).exp() * ((secs - t) / 0.5).clamp(0.0, 1.0),
+    };
+    // A pitch multiplier over time.
+    let glide = move |t: f32| match cue {
+        PortalCue::Ambient => 1.0,
+        PortalCue::Trigger => 0.75 + 0.55 * t / secs,
+        PortalCue::Travel => 1.3 - 0.55 * t / secs,
+    };
+    let len = samples(secs);
+    let mut out = vec![0.0; len];
+    for (freq, amp) in [(70.0, 0.32), (105.0, 0.2), (141.0, 0.12)] {
+        for detune in [0.993, 1.007] {
+            let mut phase = 0.0f32;
+            for (i, s) in out.iter_mut().enumerate() {
+                let t = i as f32 / RATE;
+                let wobble = 1.0 + 0.03 * (TAU * 5.3 * t).sin();
+                phase = (phase + TAU * freq * detune * glide(t) * wobble / RATE) % TAU;
+                *s += phase.sin() * env(t) * amp * 0.5;
+            }
+        }
+    }
+    let mut air = noise(rng, len, env);
+    let mut band = Biquad::bandpass(700.0, 2.0);
+    for (i, s) in air.iter_mut().enumerate() {
+        if i % 64 == 0 {
+            let t = i as f32 / RATE;
+            let swirl = 1.0 + 0.45 * (TAU * 0.9 * t).sin();
+            band.retune(Biquad::bandpass(700.0 * glide(t) * swirl, 2.0));
+        }
+        *s = band.process(*s);
+    }
+    mix_into(&mut out, &air, 0.9, 0);
+    dsp::finish(out, peak)
+}
+
 fn soul_escape(rng: &mut Rng) -> Vec<f32> {
     let secs = 0.9;
     let mut out = noise(rng, samples(secs), |t| (t / 0.12).min(1.0) * (1.0 - t / secs).max(0.0).powf(1.6));

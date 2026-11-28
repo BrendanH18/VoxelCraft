@@ -2,7 +2,7 @@
 //! Model pixels use +Y up, +Z forward (Java's Y/Z signs are reversed).
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
-use glam::{DVec3, Quat, Vec3};
+use glam::{DVec3, Mat4, Quat, Vec3};
 
 use super::model::{EntityVertex, cube, push_cuboid_flat};
 use crate::entity::model::PlayerPose;
@@ -83,6 +83,10 @@ pub enum Aim {
     CrossbowCharge(f32),
     /// A loaded crossbow held out to fire.
     CrossbowHold,
+    /// v1.0 gap track 6e: a trident being charged (`THROW_TRIDENT`): the
+    /// arm raised behind the head and the trident's `item/trident_throwing`
+    /// display.
+    Trident,
 }
 
 /// Render inputs belong to the view/player, never to a global camera.
@@ -106,15 +110,79 @@ pub struct PlayerAppearance {
     /// The held stack's `minecraft:dye` icon tint (a dyed or leather item);
     /// `None` falls back to the item's undyed tint.
     pub held_tint: Option<[u8; 3]>,
+    /// v1.0 gap track 6c: the whole held stack, when known (its glint,
+    /// banner patterns and 3D model); `None` draws `held` as a plain stack.
+    pub held_stack: Option<crate::inventory::Stack>,
+    /// v1.0 final track F1: the off-hand stack, held in the left hand
+    /// (`ItemInHandLayer` with `HumanoidArm.LEFT`).
+    pub off_stack: Option<crate::inventory::Stack>,
     pub aim: Aim,
     /// v0.15 Track D: under Glowing, outlined through walls.
     pub glowing: bool,
     /// v0.16 Track B: an elytra is worn (its wings are drawn).
     pub elytra: bool,
+    /// v1.0 gap Track 8d: on fire (`displayFireAnimation`, which a
+    /// spectator never is): Java's flame is drawn over the player's box.
+    pub burning: bool,
+    /// The camera's look, which the flame faces (`Vec3::ZERO`: toward the
+    /// camera's position instead).
+    pub view: Vec3,
 }
 
 const PLAYER_SCALE: f32 = 0.9375;
 const UNTINTED: [u8; 4] = [255, 255, 255, 0];
+
+/// v1.0 gap track 6c: `ItemInHandLayer`'s right-hand grip on an arm with
+/// `pivot` and `rot` (in this model's frame, pixels), as a matrix from the
+/// held item's model space (a block is 0..1) to camera-relative blocks,
+/// before the item's display transform: `translateToHand`, then a turn of
+/// -90 degrees about x and 180 about y and Java's offset of (1, 2, -10)
+/// sixteenths, or (0, 1, -4.5) for a baby model (`useBabyOffset`). Java's
+/// model frame is this one turned half about x (y down, back toward +Z).
+pub(crate) fn third_person_hand(pivot: Vec3, rot: Quat, origin: Vec3, body: Quat, scale: f32, baby: bool) -> Mat4 {
+    let offset = if baby { Vec3::new(0.0, 1.0, -4.5) } else { Vec3::new(1.0, 2.0, -10.0) };
+    Mat4::from_translation(origin)
+        * Mat4::from_quat(body)
+        * Mat4::from_scale(Vec3::splat(scale / 16.0))
+        * Mat4::from_translation(pivot)
+        * Mat4::from_quat(rot)
+        * Mat4::from_rotation_x(PI)
+        * Mat4::from_scale(Vec3::splat(16.0))
+        * Mat4::from_rotation_x(-FRAC_PI_2)
+        * Mat4::from_rotation_y(PI)
+        * Mat4::from_translation(offset / 16.0)
+}
+
+/// v1.0 gap track 6d: `ItemInHandLayer`'s chain after a model's
+/// `translateToHand`, given that hand as a matrix from this model's frame
+/// (pixels) to camera-relative blocks: half a turn about x into Java's
+/// frame, -90 degrees about x, 180 about y and the adult offset of (1, 2,
+/// -10) sixteenths, from the held item's model space.
+pub(crate) fn item_in_hand_layer(hand: Mat4) -> Mat4 {
+    hand * Mat4::from_rotation_x(PI)
+        * Mat4::from_scale(Vec3::splat(16.0))
+        * Mat4::from_rotation_x(-FRAC_PI_2)
+        * Mat4::from_rotation_y(PI)
+        * Mat4::from_translation(Vec3::new(1.0, 2.0, -10.0) / 16.0)
+}
+
+/// v1.0 gap track 6c: `stack` held in the third-person right hand `hand`
+/// ([`third_person_hand`]): its model placed with Java's
+/// `thirdperson_righthand` display transform, for the renderer's item model
+/// pass to draw with the glint and translucency (`light` is the holder's
+/// sky and block light, 0..1).
+pub(crate) fn held_item(
+    stack: crate::inventory::Stack,
+    hand: Mat4,
+    light: (f32, f32),
+    block: Option<crate::world::block::Block>,
+    icon: Option<u16>,
+    tint: Option<[u8; 3]>,
+) -> super::model::HeldItemModel {
+    let display = crate::content::item_display::held(&stack);
+    let transform = hand * crate::content::item_display::Context::ThirdPersonRightHand.matrix(&display);
+    super::model::HeldItemModel { stack, transform, sky_light: light.0, block_light: light.1, block, icon, tint }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct Limb {
@@ -139,7 +207,8 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
         amount /= (speed * speed * speed).max(1.0);
     }
     let phase = position * 0.6662;
-    let mut right_arm = (phase + PI).cos() * amount;
+    let walk_right = (phase + PI).cos() * amount;
+    let mut right_arm = walk_right;
     let mut left_arm = phase.cos() * amount;
     if appearance.held.is_some() {
         right_arm = right_arm * 0.5 - PI / 10.0;
@@ -165,6 +234,12 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
         Aim::CrossbowHold => {
             (right_arm, left_arm) = (-FRAC_PI_2 - player.pitch + 0.1, -1.5 - player.pitch);
             (right_yaw, left_yaw) = (Some(0.3 + head_yaw), Some(-0.6 + head_yaw));
+        }
+        // `HumanoidModel.poseRightArm`'s `THROW_TRIDENT`, in place of the
+        // held item's pose: half the walk swing, a half turn back.
+        Aim::Trident => {
+            right_arm = walk_right * 0.5 - PI;
+            right_yaw = Some(0.0);
         }
     }
     let attack = appearance.swing.clamp(0.0, 1.0);
@@ -351,7 +426,7 @@ pub fn build_player(
     lighting: (f32, f32),
     time: f32,
     appearance: PlayerAppearance,
-    out: &mut Vec<EntityVertex>,
+    out: &mut super::model::EntityMesh,
 ) {
     let origin = (position - camera).as_vec3();
     let fall = appearance.death.map_or(0.0, |t| (((t * 20.0 - 1.0).max(0.0) / 20.0 * 1.6).sqrt()).min(1.0) * FRAC_PI_2);
@@ -377,6 +452,15 @@ pub fn build_player(
         [(lighting.0.clamp(0.0, 1.0) * 255.0) as u8, 0, if appearance.hurt { 255 } else { 0 }, 0],
         (lighting.1.clamp(0.0, 1.0) * 255.0) as u8,
     );
+    // v1.0 gap Track 8d: `EntityRenderDispatcher.submit`'s flame over the
+    // player's box for its pose (standing, crouching, swimming), in block
+    // light 15 and the player's sky light, invisible or not.
+    if appearance.burning {
+        let shape = player.collision_shape();
+        let size = (shape.half_width as f32 * 2.0, shape.height as f32);
+        let forward = if appearance.view == Vec3::ZERO { origin } else { appearance.view };
+        super::model::flame(out, origin, size, forward, light.0[0], time);
+    }
     let parts = pose(player, &appearance, time);
     const OVERLAYS: [[f32; 2]; 6] = [[32., 0.], [16., 32.], [40., 32.], [48., 48.], [0., 32.], [0., 48.]];
     for (i, p) in parts.iter().enumerate().filter(|_| !appearance.invisible) {
@@ -390,52 +474,48 @@ pub fn build_player(
         draw_wings(out, player, appearance.alpha, origin, body, light);
     }
     if let Some(item) = appearance.held {
+        // v1.0 gap track 6c: the item's own model (a block's boxes, a 3D
+        // item mesh or the extruded sprite) with its third-person display
+        // transform, drawn by the item model pass.
         let arm = parts[2];
-        // ItemInHandLayer's right grip: translated to the fist, then down 90°.
-        let mut held = limb([0.; 3], [-4., -4., -0.5], [4., 4., 0.5], [0., 0.], Quat::IDENTITY);
-        held.pivot = arm.pivot + arm.rot * Vec3::new(-1.0, -9.0, 1.0);
-        held.rot = arm.rot * Quat::from_rotation_x(-FRAC_PI_2) * Quat::from_rotation_y(PI);
-        if let Some(statue) = appearance.held_statue.and_then(crate::world::copper_golem_statue::decode) {
-            let block = crate::world::copper_golem_statue::block(statue);
-            for bounds in crate::world::copper_golem_statue::mesh(statue).as_slice() {
-                held.min = bounds.min.map(|v| (v as f32 - 8.0) * 0.4);
-                held.max = bounds.max.map(|v| (v as f32 - 8.0) * 0.4);
-                textured_box(out, &held, 0.0, origin, body, light, 2, block.info().tex[0], PLAYER_SCALE, UNTINTED);
-                let start = out.len() - 36;
-                for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
-                    let tex = block.info().tex[i ^ 1];
-                    for vertex in face {
-                        vertex.torch[2] = tex as u8;
-                        vertex.torch[3] = (tex >> 8) as u8;
-                    }
-                }
-            }
-        } else if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
-            held.min = [-3.2; 3];
-            held.max = [3.2; 3];
-            textured_box(out, &held, 0.0, origin, body, light, 2, block.info().tex[0], PLAYER_SCALE, UNTINTED);
-            // Use the appropriate face textures (grass, logs, crafting tables).
-            let start = out.len() - 36;
-            for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
-                let tex = block.info().tex[i ^ 1];
-                for vertex in face {
-                    vertex.torch[2] = tex as u8;
-                    vertex.torch[3] = (tex >> 8) as u8;
-                }
-            }
-        } else {
-            // The default thirdperson_righthand display for handheld items.
-            held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());
-            let layer = item.block().map_or_else(
-                || appearance.held_icon.or_else(|| item.icon_layer()).unwrap_or(crate::world::block::tex::ITEM_BASE),
-                |b| b.info().tex[0],
-            );
-            let tint = appearance
-                .held_tint
-                .or_else(|| crate::inventory::components::undyed_tint(item))
-                .map_or(UNTINTED, |[r, g, b]| [r, g, b, 0]);
-            textured_box(out, &held, 0.0, origin, body, light, 2, layer, PLAYER_SCALE, tint);
+        let stack = appearance.held_stack.filter(|s| s.item == item).unwrap_or(crate::inventory::Stack::new(item, 1));
+        let hand = third_person_hand(arm.pivot, arm.rot, origin, body, PLAYER_SCALE, false);
+        let mut model =
+            held_item(stack, hand, lighting, appearance.held_statue, appearance.held_icon, appearance.held_tint);
+        // v1.0 gap track 6e: Java's trident item definition switches to
+        // `item/trident_throwing` while it is used (`minecraft:using_item`).
+        if appearance.aim == Aim::Trident && item == crate::weapons::TRIDENT {
+            model.transform = hand
+                * crate::content::item_display::Context::ThirdPersonRightHand
+                    .matrix(&crate::content::item_display::TRIDENT_THROWING);
         }
+        out.push_held(model);
+    }
+    if let Some(stack) = appearance.off_stack {
+        // v1.0 final track F1: the left arm's grip, Java's offset of
+        // (-1, 2, -10) sixteenths, and the left hand's display transform:
+        // the right one's mirror (`ItemTransform.apply` with `leftHand`).
+        let arm = parts[3];
+        let hand = third_person_hand(arm.pivot, arm.rot, origin, body, PLAYER_SCALE, false)
+            * Mat4::from_translation(Vec3::new(-2.0, 0.0, 0.0) / 16.0);
+        let display = crate::content::item_display::held(&stack);
+        let mirror = Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0));
+        let transform = hand
+            * mirror
+            * display.transform(crate::content::item_display::Context::ThirdPersonRightHand).matrix()
+            * mirror
+            * Mat4::from_translation(Vec3::splat(-0.5));
+        let block = crate::world::copper_golem_statue::item_model(stack);
+        let tint = crate::inventory::components::dye_tint(&stack);
+        out.push_held(super::model::HeldItemModel {
+            stack,
+            transform,
+            sky_light: lighting.0,
+            block_light: lighting.1,
+            block,
+            icon: None,
+            tint,
+        });
     }
 }
 

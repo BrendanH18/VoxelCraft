@@ -53,7 +53,7 @@ impl Mob {
         } else {
             target.pos
         };
-        let sees = line_of_sight(w, self.pos + DVec3::Y * 2.3, target.pos + DVec3::Y * 1.62);
+        let sees = line_of_sight(w, self.look_eye(), target.eye());
         let to = target.pos - self.pos;
         if goal == target.pos && to.length_squared() < 4. && sees && self.attack_cooldown <= 0. {
             self.attack_cooldown = 2.;
@@ -62,7 +62,8 @@ impl Mob {
                 player: target.id,
                 damage: 3.,
                 knockback: ((to * DVec3::new(1., 0., 1.)).normalize_or_zero() * 6.).as_vec3(),
-                cause: crate::simulation::damage::Cause::mob("was slain by a creaking"),
+                cause: crate::simulation::damage::Cause::mob("was slain by a creaking")
+                    .by(Some(crate::entity::trident::Owner::Mob(self.uid))),
                 java: Some(crate::knockback::Hit::melee(self.pos, target.pos, 0., 0.)),
             });
             events.push(EntityEvent::OwnerHurt { player: target.id, attacker: self.uid });

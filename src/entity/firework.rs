@@ -80,9 +80,58 @@ pub struct Rocket {
     /// v1.0 Track 6: the mob that launched it (a celebrating villager),
     /// which it never hits (`Projectile.canHitEntity` skips the owner).
     pub shooter: Option<u32>,
+    /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
+    /// `FireworkRocketEntity.tick`). Saved (v1.0 gap Track 8e), as Java's `Fire`.
+    pub(crate) fire: u16,
 }
 
 impl Rocket {
+    /// v1.0 gap Track 8e: the level file's copy (`FireworkRocketEntity`'s
+    /// `Life`, `LifeTime`, `FireworksItem` and `ShotAtAngle`, with `Fire`).
+    /// A rocket a glider holds is saved loose: Java doesn't save
+    /// `attachedToEntity` either.
+    pub(super) fn save(&self) -> Option<serde_json::Value> {
+        use super::saved_projectiles::{owner_json, v3};
+        let stack = Stack { payload: self.fireworks, ..Stack::new(fw::FIREWORK_ROCKET, 1) };
+        Some(serde_json::json!({
+            "item": crate::inventory::stack_to_string(Some(stack)),
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "life": self.life,
+            "lifetime": self.lifetime,
+            "owner": owner_json(super::projectile::owner_of(self.owner, self.shooter)),
+            "shot_at_angle": self.shot_at_angle,
+            "fire": self.fire,
+        }))
+    }
+
+    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        let stack = crate::inventory::stack_from_str(v["item"].as_str()?).flatten()?;
+        let pos = s::read_v3(&v["pos"])?;
+        let owner = s::read_owner(&v["owner"]);
+        let small = |key: &str| v[key].as_u64().and_then(|n| u32::try_from(n).ok());
+        Some(Self {
+            pos,
+            previous_pos: pos,
+            vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
+            life: small("life").unwrap_or(0),
+            lifetime: small("lifetime").unwrap_or(0),
+            fireworks: stack.payload.filter(|p| matches!(p.get(), Payload::Fireworks(_))),
+            owner: s::player_of(owner),
+            attached: None,
+            shot_at_angle: v["shot_at_angle"].as_bool().unwrap_or(false),
+            horizontal_collision: false,
+            shooter: s::mob_of(owner),
+            fire: s::read_fire(v),
+        })
+    }
+
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
     /// `new FireworkRocketEntity(level, x, y, z, stack)`.
     pub fn new(pos: DVec3, stack: &Stack, owner: Option<PlayerId>, rng: &mut Rng) -> Self {
         let fireworks = stack.payload.filter(|p| matches!(p.get(), Payload::Fireworks(_)));
@@ -101,6 +150,7 @@ impl Rocket {
             shot_at_angle: false,
             horizontal_collision: false,
             shooter: None,
+            fire: 0,
         }
     }
 
@@ -143,6 +193,7 @@ impl Rocket {
             shot_at_angle: true,
             horizontal_collision: false,
             shooter: None,
+            fire: 0,
         }
     }
 
@@ -235,10 +286,11 @@ impl Entities {
 
     /// One tick of every rocket: flight, hits, the launch sound and trail,
     /// and bursts with their damage.
-    pub(super) fn update_fireworks<W: BlockSource + ?Sized>(
+    pub(super) fn update_fireworks<W: super::MobWorld + ?Sized>(
         &mut self,
         world: &W,
         ctx: &super::Ctx,
+        boss: &super::dragon::Boxes,
         events: &mut Vec<EntityEvent>,
     ) {
         // Twinkles after their bursts' sparks.
@@ -275,12 +327,39 @@ impl Entities {
                 }
                 let movement = r.vel;
                 let skip = (r.life < 2).then_some(r.owner).flatten();
+                // v1.0 gap Track 4c: an End crystal or a dragon part stops it
+                // too (`onHitEntity` explodes; its blast reaches only the
+                // living, so a crystal stands).
                 let entity_hit =
-                    first_hit(r.pos, r.pos + movement, &self.mobs, &ctx.players, skip.or(r.owner), r.shooter);
+                    first_hit(r.pos, r.pos + movement, &self.mobs, &ctx.players, skip.or(r.owner), r.shooter)
+                        .map(|_| ())
+                        .or_else(|| boss.raycast(r.pos, movement, 1.0, true).map(|_| ()));
                 let (mut pos, mut vel) = (r.pos, movement);
                 let hit = crate::physics::move_box(world, &mut pos, &mut vel, movement, SHAPE);
                 let block_hit = hit.on_ground || hit.ceiling || hit.horizontal;
                 r.horizontal_collision = hit.horizontal;
+                // v1.0 gap Track 8d: `applyEffectsFromBlocks` along the
+                // move, then `baseTick`'s burn.
+                super::projectile::tick_fire(&mut r.fire, world, r.pos, pos, SHAPE.half_width, SHAPE.height);
+                // A burning rocket's `onHitBlock` lights a candle or
+                // campfire or primes TNT (`onProjectileHit`).
+                if block_hit && r.burning() {
+                    let toward = if hit.on_ground {
+                        -DVec3::Y * 0.05
+                    } else if hit.ceiling {
+                        DVec3::Y * (SHAPE.height + 0.05)
+                    } else {
+                        movement.with_y(0.0).normalize_or_zero() * (SHAPE.half_width + 0.05)
+                    };
+                    let cell = (pos + toward).floor().as_ivec3();
+                    events.push(super::projectile::block_hit(
+                        cell,
+                        pos,
+                        true,
+                        r.shooter.is_some(),
+                        super::projectile::owner_of(r.owner, r.shooter),
+                    ));
+                }
                 r.pos = pos;
                 // `setDeltaMovement(movement)`: the move doesn't slow it.
                 r.vel = movement;
@@ -300,7 +379,7 @@ impl Entities {
                 self.particles.push(crate::particles::Request::Burst(b));
             }
             if burst || r.life > r.lifetime {
-                self.burst_firework(r, world, ctx, events);
+                self.burst_firework(r, world, ctx, boss, events);
                 return false;
             }
             true
@@ -317,6 +396,7 @@ impl Entities {
         r: &Rocket,
         world: &W,
         ctx: &super::Ctx,
+        boss: &super::dragon::Boxes,
         events: &mut Vec<EntityEvent>,
     ) {
         events.push(EntityEvent::FireworkBurst { pos: r.pos, vel: r.vel, fireworks: r.fireworks });
@@ -361,6 +441,16 @@ impl Entities {
             }
         }
         let owner = r.owner;
+        // v1.0 gap Track 4c: each dragon is a `LivingEntity` measured from
+        // its feet; `fireworks` is `#is_explosion`, so it takes the blast
+        // (through its body) whoever launched the rocket.
+        for &(hit, feet) in &boss.dragons {
+            if let Some(damage) = burst_damage(stars, feet.distance(r.pos))
+                && sees(feet, super::dragon::WILD_SHAPE.height)
+            {
+                events.push(EntityEvent::DragonStruck { hit, blow: super::dragon::Blow::explosion(damage), by: owner });
+            }
+        }
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
             if !m.alive() {
@@ -395,12 +485,19 @@ impl Entities {
     }
 
     /// Rockets near `at` for a LAN client: position and previous position.
-    pub fn fireworks_near(&self, at: DVec3, radius: f64) -> Vec<[f64; 6]> {
+    pub fn fireworks_near(&self, at: DVec3, radius: f64) -> Vec<Vec<f64>> {
         self.fireworks
             .iter()
             .filter(|r| r.attached.is_none() && r.pos.distance_squared(at) < radius * radius)
             .take(256)
-            .map(|r| [r.pos.x, r.pos.y, r.pos.z, r.previous_pos.x, r.previous_pos.y, r.previous_pos.z])
+            .map(|r| {
+                // v1.0 gap Track 8d: a seventh number, 1, when it burns.
+                let mut v = vec![r.pos.x, r.pos.y, r.pos.z, r.previous_pos.x, r.previous_pos.y, r.previous_pos.z];
+                if r.burning() {
+                    v.push(1.0);
+                }
+                v
+            })
             .collect()
     }
 
@@ -411,8 +508,10 @@ impl Entities {
         for v in list.iter().take(256) {
             let Some(a) = v.as_array() else { continue };
             let n: Vec<f64> = a.iter().filter_map(serde_json::Value::as_f64).collect();
-            if n.len() == 6 && n.iter().all(|x| x.is_finite()) {
-                self.fireworks.push(Rocket::replica(DVec3::new(n[0], n[1], n[2]), DVec3::new(n[3], n[4], n[5])));
+            if (6..=7).contains(&n.len()) && n.iter().all(|x| x.is_finite()) {
+                let mut r = Rocket::replica(DVec3::new(n[0], n[1], n[2]), DVec3::new(n[3], n[4], n[5]));
+                r.fire = u16::from(n.get(6) == Some(&1.0));
+                self.fireworks.push(r);
             }
         }
     }
@@ -434,6 +533,41 @@ mod tests {
         assert_eq!(burst_damage(2, 5.5), None);
     }
 
+    /// v1.0 gap Track 4c: a rocket with a star that bursts within five
+    /// blocks of a dragon's feet, in sight of them, hurts it through its
+    /// body (`fireworks` is `#is_explosion`); one bursting by its head, far
+    /// from its feet, doesn't.
+    #[test]
+    fn a_firework_blast_reaches_the_dragon_from_its_feet() {
+        let ctx = super::super::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: Vec::new(),
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+        };
+        let stack = fw::rocket(fw::Fireworks { flight: 1, explosions: vec![fw::Explosion::default_small_ball()] }, 1);
+        let world = Grid::flat(10);
+        for (offset, hurt) in [(DVec3::new(-2.0, 0.5, 0.0), true), (DVec3::new(0.0, 0.5, -9.0), false)] {
+            let mut e = Entities::new(1);
+            e.wild_dragons.spawn(DVec3::new(0.5, 40.0, 0.5), 0.0);
+            let feet = e.wild_dragons.dragons[0].dragon.pos;
+            let mut r = Rocket::new(feet + offset, &stack, Some(crate::entity::PlayerId::HOST), &mut Rng::new(2));
+            r.life = r.lifetime;
+            e.fireworks.push(r);
+            let mut events = Vec::new();
+            let boss = super::super::dragon::Boxes::new(None, &e.wild_dragons, &e.crystals);
+            e.update_fireworks(&world, &ctx, &boss, &mut events);
+            assert!(e.fireworks.is_empty());
+            let struck = events.iter().any(|ev| matches!(ev, EntityEvent::DragonStruck { blow, .. } if blow.explosion));
+            assert_eq!(struck, hurt, "{offset}");
+            e.apply_dragon_hits(&mut events);
+            let lost = super::super::dragon::MAX_HEALTH - e.wild_dragons.dragons[0].dragon.health;
+            assert_eq!(lost > 0.0, hurt, "{offset}: {lost}");
+        }
+    }
+
     #[test]
     fn free_rockets_climb_and_speed_up() {
         let mut rng = Rng::new(3);
@@ -453,14 +587,14 @@ mod tests {
         };
         let mut events = Vec::new();
         for _ in 0..5 {
-            e.update_fireworks(&world, &ctx, &mut events);
+            e.update_fireworks(&world, &ctx, &Default::default(), &mut events);
         }
         r = e.fireworks[0];
         // Five ticks of +0.04: 0.05 + 0.2.
         assert!((r.vel.y - 0.25).abs() < 1e-9, "{}", r.vel.y);
         assert!(events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Flight(Cue::Launch), .. })));
         for _ in 0..40 {
-            e.update_fireworks(&world, &ctx, &mut events);
+            e.update_fireworks(&world, &ctx, &Default::default(), &mut events);
         }
         assert!(e.fireworks.is_empty(), "burst once its lifetime ran out");
         assert!(events.iter().any(|ev| matches!(ev, EntityEvent::FireworkBurst { .. })));

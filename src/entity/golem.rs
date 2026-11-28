@@ -216,11 +216,11 @@ impl Entities {
                     MobKind::IronGolem if self.player_foe(i, ctx).is_some() => self
                         .player_foe(i, ctx)
                         .filter(|p| p.pos.distance_squared(pos) < GOLEM_RANGE * GOLEM_RANGE)
-                        .map(|p| p.pos),
+                        .map(|p| (p.pos, p.eye_height())),
                     MobKind::IronGolem => self
                         .mob_index
                         .nearest(&self.mobs, pos, GOLEM_RANGE, |o| o.kind.is_hostile() && o.kind != MobKind::Creeper)
-                        .map(|j| self.mobs[j].pos),
+                        .map(|j| (self.mobs[j].pos, self.mobs[j].eye_height())),
                     MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => self
                         .mob_index
                         .nearest(&self.mobs, pos, GOLEM_RANGE, |o| o.kind == MobKind::Villager)
@@ -228,13 +228,14 @@ impl Entities {
                             !ctx.nearest_target(pos)
                                 .is_some_and(|p| p.pos.distance_squared(pos) < self.mobs[j].pos.distance_squared(pos))
                         })
-                        .map(|j| self.mobs[j].pos),
+                        .map(|j| (self.mobs[j].pos, self.mobs[j].eye_height())),
                     // Wandering traders flee through `AvoidEntityGoal` (`mob::goals`).
                     // Java creepers do not flee golems (they flee cats/ocelots).
                     _ => None,
                 }
             };
-            self.mobs[i].hunt = hunt;
+            self.mobs[i].hunt = hunt.map(|h| h.0);
+            self.mobs[i].hunt_eye = hunt.map_or(1.0, |h| h.1);
             self.mobs[i].strike = false;
         }
     }
@@ -263,7 +264,8 @@ impl Entities {
                     player: player.id,
                     damage: iron_damage(&mut self.rng),
                     knockback: (dir * 6.0 + DVec3::Y * 8.0).as_vec3(),
-                    cause: crate::simulation::damage::Cause::mob("was slain by an iron golem"),
+                    cause: crate::simulation::damage::Cause::mob("was slain by an iron golem")
+                        .by(Some(super::trident::Owner::Mob(self.mobs[i].uid))),
                 });
                 continue;
             }
@@ -434,7 +436,9 @@ impl Entities {
             let p = pos.floor().as_ivec3();
             if world.snow_golem_melts(p) {
                 let at = self.mobs[i].pos;
-                if self.mobs[i].damage(1.0, None, &mut self.rng) {
+                // `SnowGolem.aiStep`: `hurtServer(onFire, 1)` each tick, which
+                // the hurt cooldown spaces (v1.0 gap Track 8d).
+                if self.mobs[i].damage_from(1.0, crate::simulation::damage::Cause::ON_FIRE, &mut self.rng) {
                     self.drop_loot_with_fire(MobKind::SnowGolem, at, 0, false, false);
                 }
                 if !self.mobs[i].alive() {
