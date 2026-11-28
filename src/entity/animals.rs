@@ -191,13 +191,17 @@ impl Mob {
     }
     /// Feeding a baby removes 10% of its remaining growth time, rounded to
     /// whole seconds as Java's ageUp does. Never starts love mode.
+    /// v1.0 gap Track 2c: `Animal.mobInteract` ages it up *forced*
+    /// (`ageUp(getSpeedUpSecondsWhenFeeding(-age), true)`), so the time
+    /// it skipped is kept as [`Mob::forced_age`], carried into adulthood
+    /// as its starting age, with the 40 ticks of particles.
     pub fn feed_growth(&mut self) {
         if self.kind == MobKind::Turtle {
             self.grow = (self.grow + ((1200.0 - self.grow) * 0.1).floor()).min(1200.0);
             self.age = -((1200.0 - self.grow) * 20.0) as i32;
         } else if self.age < 0 {
-            self.age = (self.age + ((-self.age / 20) as f32 * 0.1) as i32 * 20).min(0);
-            self.baby = self.age < 0;
+            // `getSpeedUpSecondsWhenFeeding`: `(int)(ticks / 20 * 0.1F)`.
+            self.age_up(((-self.age / 20) as f32 * 0.1) as i32, true);
         }
     }
     /// v1.0 gap Track 3b: `AgeableMob.ageUp(seconds, forced)`: older by
@@ -253,6 +257,16 @@ impl Mob {
             a.growth += dt * 20.0;
             let ticks = a.growth.floor() as i32;
             a.growth -= ticks as f32;
+            // v1.0 gap Track 2c: `AgeableMob.aiStep`'s forced-growth
+            // particle every fourth tick of its 40.
+            for _ in 0..ticks {
+                if self.forced_age_timer > 0 {
+                    if self.forced_age_timer.is_multiple_of(4) {
+                        self.forced_sparkles = self.forced_sparkles.saturating_add(1);
+                    }
+                    self.forced_age_timer -= 1;
+                }
+            }
             self.age = if self.age < 0 { (self.age + ticks).min(0) } else { (self.age - ticks).max(0) };
             self.baby = self.age < 0;
         }
@@ -563,6 +577,18 @@ impl Entities {
             if !m.alive() || !world.entity_ticking(m.pos.floor().as_ivec3()) {
                 continue;
             }
+            // v1.0 gap Track 2c: forced growth's `HAPPY_VILLAGER` particles
+            // (`getRandomX(1)`, `getRandomY() + 0.5`), as the dolphin's.
+            let sparkles = std::mem::take(&mut m.forced_sparkles);
+            let (pos, shape) = (m.pos, m.shape());
+            for _ in 0..sparkles {
+                let mut b =
+                    particles::Burst::new(particles::Kind::Effect, pos + DVec3::Y * (shape.height * 0.5 + 0.5), 1);
+                b.color = Some([0.35, 0.85, 0.3, 1.0]);
+                b.spread = DVec3::new(shape.half_width * 2.0, shape.height, shape.half_width * 2.0);
+                self.particles.push(particles::Request::Burst(b));
+            }
+            let m = &mut self.mobs[i];
             let Some(a) = m.animal.as_mut() else { continue };
             a.love = (a.love - dt).max(0.0);
             a.hearts -= dt;

@@ -198,6 +198,9 @@ pub struct Villager {
     /// v1.0 Track 6: the raid activity `SetRaidStatus` chose (never saved;
     /// Java's brain activities aren't).
     pub raid_activity: RaidActivity,
+    /// v1.0 gap Track 2c: the scheduled activity the village pass last
+    /// chose, whose look behaviours the brain runs (never saved).
+    pub(crate) activity: Activity,
     /// Ticks left of `CelebrateVillagersSurvivedRaid`; 0 when not running.
     pub celebrate: u16,
     pub wandering: bool,
@@ -277,6 +280,7 @@ impl Villager {
             courtship: 0,
             bell_hide: 0.0,
             raid_activity: RaidActivity::None,
+            activity: Activity::Idle,
             celebrate: 0,
             wandering: false,
             map_variant: None,
@@ -508,8 +512,9 @@ pub const WORK_CHECK_COOLDOWN: i64 = 300;
 pub const WORK_DISTANCE: f64 = 1.73;
 
 /// The villager brain activities the schedules choose between.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Activity {
+    #[default]
     Idle,
     Work,
     Meet,
@@ -894,6 +899,7 @@ impl Entities {
                 }
             }
             let activity = schedule_activity(tick, m.age < 0);
+            v.activity = activity;
             v.fleeing = threat.is_some();
             v.sleeping = false;
             v.goal = if let Some(z) = threat {

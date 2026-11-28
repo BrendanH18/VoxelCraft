@@ -73,6 +73,10 @@ impl BlockSource for NoClip<'_> {
     fn moving_boxes(&self, min: DVec3, max: DVec3, f: &mut dyn FnMut(IVec3, DVec3, DVec3)) {
         self.world.piston_collision_boxes(min, max, Some(self.dir), f);
     }
+
+    fn fast_lava(&self) -> bool {
+        self.world.fast_lava()
+    }
 }
 
 fn intersects(a: (DVec3, DVec3), b: (DVec3, DVec3)) -> bool {

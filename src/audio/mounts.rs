@@ -2,7 +2,10 @@
 //! and camel husk pose and dash sounds (`entity.camel.sit`, `.stand`,
 //! `.dash`, `.dash_ready` and the husk's) and the mounts' angry calls
 //! (`entity.horse.angry`, `entity.baby_horse.angry`, `entity.donkey.angry`,
-//! `entity.mule.angry`, `entity.zombie_horse.angry`, `entity.llama.angry`).
+//! `entity.mule.angry`, `entity.zombie_horse.angry`, `entity.llama.angry`),
+//! and (v1.0 gap Track 2c) the horses' jumps (`entity.horse.jump`,
+//! `entity.donkey.jump`, `entity.mule.jump`,
+//! `entity.skeleton_horse.jump_water`).
 //! Nothing is sampled: each is the shared voice model (a band-limited
 //! glottal buzz through three formants) over filtered noise and damped
 //! modes, as the other creature sounds are.
@@ -172,6 +175,23 @@ fn llama(rng: &mut Rng) -> Vec<f32> {
     dsp::finish(out, 0.5)
 }
 
+/// v1.0 gap Track 2c: a horse pushing off (`entity.horse.jump` and the
+/// donkey's, mule's and skeleton horse's in water): the hind hooves
+/// striking, a short exhale, and for `water` a splash of high noise. Java
+/// plays it at 0.4 volume.
+fn jump(rng: &mut Rng, pitch: f32, water: bool) -> Vec<f32> {
+    let mut out = vec![0.0; samples(0.5)];
+    thump(&mut out, rng, 0.0, 85.0 * pitch, 0.9);
+    thump(&mut out, rng, 0.05, 78.0 * pitch, 0.8);
+    snort(&mut out, rng, 0.08, 0.18, 900.0 * pitch, 0.5);
+    if water {
+        let mut splash = noise(rng, samples(0.3), |t| (-(t / 0.08)).exp());
+        Biquad::bandpass(2400.0, 0.8).run(&mut splash);
+        mix_into(&mut out, &splash, 0.6, 0);
+    }
+    dsp::finish(out, 0.4 * 0.55)
+}
+
 pub(super) fn render(cue: Cue, rng: &mut Rng) -> Vec<f32> {
     match cue {
         Cue::CamelSit => sit(rng, false),
@@ -188,5 +208,9 @@ pub(super) fn render(cue: Cue, rng: &mut Rng) -> Vec<f32> {
         Cue::DonkeyAngry => bray(rng, false),
         Cue::MuleAngry => bray(rng, true),
         Cue::LlamaAngry => llama(rng),
+        Cue::HorseJump => jump(rng, 1.0, false),
+        Cue::DonkeyJump => jump(rng, 0.9, false),
+        Cue::MuleJump => jump(rng, 0.95, false),
+        Cue::SkeletonHorseJumpWater => jump(rng, 1.05, true),
     }
 }

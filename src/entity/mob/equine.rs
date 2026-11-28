@@ -156,7 +156,7 @@ impl Mob {
         // The server's `handleStartJump` for the jump the rider let go of
         // (v1.0 gap Track 3b): a camel's dash sound and `DASH`, a horse's
         // rearing.
-        s.start_jump(self.kind);
+        s.start_jump(self.kind, self.in_water);
         // `Camel.tickRidden`: forward input stands a seated camel up.
         if camel && s.forward > 0.0 && s.camel_sitting && !s.in_pose_transition() {
             s.stand_up();
@@ -377,13 +377,13 @@ impl Mob {
         let controlled = s.controlled();
         let s = self.mount.as_mut().unwrap();
         (s.look_target, s.look_left, s.look_ticker) = (target, left, ticker);
+        // v1.0 gap Track 2c: `LookAtTargetSink.tick` asks the look control
+        // (`CamelLookControl`, not while a rider steers) at its own speeds.
         if let Some((_, at)) = target
             && !controlled
         {
-            let to = at - eye;
-            let flat = to.with_y(0.0).length();
-            let yaw = (to.z as f32).atan2(to.x as f32);
-            self.head_target = (super::wrap(yaw - self.yaw), (to.y as f32).atan2(flat as f32));
+            let _ = eye;
+            self.look_toward(at);
         }
     }
 
@@ -401,33 +401,43 @@ impl Mob {
         if !camel_like(self.kind) {
             return;
         }
-        let Some(s) = self.mount.as_mut() else { return };
+        let Some(s) = self.mount.as_ref() else { return };
         if s.controlled() {
             return;
         }
-        let max = camel::MAX_HEAD_Y_ROT.to_radians();
-        let head = self.yaw + self.head_yaw;
-        if s.refuses_to_move() {
+        // v1.0 gap Track 2c: on Java's `yHeadRot` (degrees), which the
+        // look control turns.
+        use super::head::{rotate_if_necessary as turn, wrap_degrees};
+        let max = camel::MAX_HEAD_Y_ROT;
+        let head = self.look.head;
+        let body = self.yrot();
+        let (refuses, last, stable) = (s.refuses_to_move(), s.last_stable_head, s.head_stable);
+        let (mut new_head, mut new_body, mut last, mut stable) = (head, body, last, stable);
+        if refuses {
             self.yaw = body_yaw;
+            new_body = self.yrot();
         } else if moved.x * moved.x + moved.z * moved.z > f64::from(2.500_000_3e-7_f32) {
-            s.last_stable_head = head;
-            s.head_stable = 0;
-        } else if super::wrap(head - s.last_stable_head).abs() > 15f32.to_radians() {
-            s.head_stable = 0;
-            s.last_stable_head = head;
-            self.yaw = rotate_if_necessary(self.yaw, head, max);
+            new_head = turn(head, body, max);
+            last = new_head;
+            stable = 0;
+        } else if wrap_degrees(head - last).abs() > 15.0 {
+            stable = 0;
+            last = head;
+            new_body = turn(body, head, max);
         } else {
-            s.head_stable = s.head_stable.saturating_add(1);
-            if s.head_stable > 10 {
-                let fraction = ((f32::from(s.head_stable) - 10.0) / 10.0).clamp(0.0, 1.0);
-                self.yaw = rotate_if_necessary(self.yaw, head, max * (1.0 - fraction));
+            stable = stable.saturating_add(1);
+            if stable > 10 {
+                let fraction = ((f32::from(stable) - 10.0) / 10.0).clamp(0.0, 1.0);
+                new_body = turn(body, head, max * (1.0 - fraction));
             }
         }
-        // The head keeps its heading as the body turns under it, within
-        // 30 degrees of the body.
-        let turned = super::wrap(self.yaw - (head - self.head_yaw));
-        self.head_yaw = super::wrap(head - self.yaw).clamp(-max, max);
-        self.head_target.0 = super::wrap(self.head_target.0 - turned).clamp(-max, max);
+        if !refuses {
+            self.set_yrot(new_body);
+        }
+        // `clampHeadRotationToBody`: the head within 30 degrees of the body.
+        self.look.head = turn(new_head, self.yrot(), max);
+        let s = self.mount.as_mut().unwrap();
+        (s.last_stable_head, s.head_stable) = (last, stable);
     }
 
     /// `Camel.canCamelChangePose`: the other pose's box fits where it stands.
@@ -500,12 +510,6 @@ impl Mob {
         }
         s.idle_wait = 30 + rng.next_int(31) as u16;
     }
-}
-
-/// `Mth.rotateIfNecessary`: `base` turned just enough to lie within `max`
-/// of `target` (radians).
-fn rotate_if_necessary(base: f32, target: f32, max: f32) -> f32 {
-    super::wrap(target + super::wrap(base - target).clamp(-max, max))
 }
 
 /// `LivingEntity.getFluidFallingAdjustedMovement` for a mount that isn't sprinting.
@@ -717,12 +721,14 @@ mod tests {
     fn a_camel_turns_its_body_after_its_head_within_30_degrees() {
         let deg = |d: f32| d.to_radians();
         let mut m = Mob::new(MobKind::Camel, DVec3::new(0.5, 64.0, 0.5), 0.0);
-        m.head_yaw = deg(60.0);
-        m.head_target.0 = m.head_yaw;
+        // v1.0 gap Track 2c: the head is Java's `yHeadRot` (`look.head`).
+        let body0 = m.yrot();
+        let rel = |m: &Mob| super::super::head::wrap_degrees(m.look.head - m.yrot());
+        m.look.head = body0 + 60.0;
         // Standing still, a head turned more than 15 degrees pulls the body
         // round to within 30 degrees of it.
         m.camel_turn(m.yaw, DVec3::ZERO);
-        assert!((m.yaw - deg(30.0)).abs() < 1e-5 && (m.head_yaw - deg(30.0)).abs() < 1e-5, "{}", m.yaw);
+        assert!((m.yaw - deg(30.0)).abs() < 1e-5 && (rel(&m) - 30.0).abs() < 1e-3, "{}", m.yaw);
         // Ten ticks later the body turns to face it over ten more.
         for _ in 0..10 {
             m.camel_turn(m.yaw, DVec3::ZERO);
@@ -731,19 +737,19 @@ mod tests {
         for _ in 0..10 {
             m.camel_turn(m.yaw, DVec3::ZERO);
         }
-        assert!((m.yaw - deg(60.0)).abs() < 1e-4 && m.head_yaw.abs() < 1e-4, "{}", m.yaw.to_degrees());
+        assert!((m.yaw - deg(60.0)).abs() < 1e-4 && rel(&m).abs() < 1e-2, "{}", m.yaw.to_degrees());
         // Walking, the head stays within 30 degrees of the body.
-        m.head_yaw = deg(50.0);
+        m.look.head = m.yrot() + 50.0;
         m.camel_turn(m.yaw, DVec3::X * 0.1);
-        assert!((m.head_yaw - deg(30.0)).abs() < 1e-5 && (m.yaw - deg(60.0)).abs() < 1e-4);
+        assert!((rel(&m) - 30.0).abs() < 1e-3 && (m.yaw - deg(60.0)).abs() < 1e-4);
         // Sitting (`refuseToMove`) the body holds still.
         m.mount.as_mut().unwrap().sit_down();
         let body = m.yaw;
         m.yaw += 1.0;
-        m.head_yaw = 1.2;
+        m.look.head = m.yrot() + 70.0;
         m.camel_turn(body, DVec3::ZERO);
         assert_eq!(m.yaw, body);
-        assert!(m.head_yaw <= deg(30.0) + 1e-6, "{}", m.head_yaw.to_degrees());
+        assert!(rel(&m) <= 30.0 + 1e-3, "{}", rel(&m));
     }
 
     /// v1.0 gap Track 3b: `SetEntityLookTargetSometimes(PLAYER, 6, 30..=60)`
@@ -775,8 +781,9 @@ mod tests {
                 assert!(ticks <= 60, "seed {seed}");
             }
             assert!(ticks >= 30, "seed {seed}: {ticks}");
-            // The head turns toward it (straight ahead, along +x).
-            assert!(m.head_target.0.abs() < 1e-3);
+            // The look control is asked to turn toward it (v1.0 gap Track
+            // 2c: the request replaces the old head target).
+            assert!(m.look.looking());
             let mut held = 0;
             while m.mount.as_ref().unwrap().look_target.is_some() {
                 m.camel_look(&w, &near, &mut rng);

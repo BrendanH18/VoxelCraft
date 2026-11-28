@@ -561,7 +561,6 @@ impl Mob {
             if delta.length_squared() < 4.0 {
                 return None;
             }
-            self.look_at(at, 1.2);
             return Some((self.pursue(w, at, 2.5, true, false, rng), 2.5));
         }
         if !self.leash_close
@@ -577,7 +576,6 @@ impl Mob {
         }
         let goal = self.pos + delta / distance * (distance - 2.0);
         let speed = self.goal_speed(if matches!(self.kind, MobKind::Llama | MobKind::TraderLlama) { 2.0 } else { 1.0 });
-        self.look_at(at, 1.2);
         Some((self.pursue(w, goal, speed, true, false, rng), speed))
     }
 }

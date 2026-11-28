@@ -14,7 +14,8 @@ impl Mob {
         self.stop_goal(w);
         let flat = (at - self.pos).with_y(0.0);
         let d = self.pos.distance_squared(at);
-        self.look_at(at, 0.52);
+        // `OcelotAttackGoal.tick`: `setLookAt(target, 30, 30)`.
+        self.set_look_at(at + DVec3::Y * 0.5, super::head::ATTACK_LOOK, super::head::ATTACK_LOOK);
         if self.ocelot.as_ref().unwrap().leaping {
             if !self.on_ground {
                 return Some((None, 0.0));

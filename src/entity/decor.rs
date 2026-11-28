@@ -832,6 +832,10 @@ impl<W: BlockSource + ?Sized> BlockSource for Wrapped<'_, W> {
     fn block(&self, p: IVec3) -> Option<Block> {
         self.0.block(p)
     }
+
+    fn fast_lava(&self) -> bool {
+        self.0.fast_lava()
+    }
 }
 
 /// Every framed item for the renderer's free-standing block models: its

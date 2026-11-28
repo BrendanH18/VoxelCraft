@@ -51,7 +51,12 @@ impl Mob {
         let delta = target.pos - self.pos;
         let flat = delta.with_y(0.0);
         let dir = flat.normalize_or(DVec3::X);
-        self.head_target = (wrap(dir.z.atan2(dir.x) as f32 - self.yaw).clamp(-1.2, 1.2), 0.0);
+        // `MeleeAttackGoal.tick`: `setLookAt(target, 30, 30)`.
+        self.set_look_at(
+            target.pos + DVec3::Y * (target.shape.height * 0.85),
+            super::head::ATTACK_LOOK,
+            super::head::ATTACK_LOOK,
+        );
         let sees = line_of_sight(
             w,
             self.pos + DVec3::Y * self.shape().height * 0.85,

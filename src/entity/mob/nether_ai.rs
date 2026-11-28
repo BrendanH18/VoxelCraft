@@ -4,7 +4,7 @@
 
 use glam::{DVec3, IVec3};
 
-use super::{ATTACK_RANGE, Ai, Ctx, EntityEvent, Mob, MobKind, MobSound, MobWorld, Rng, line_of_sight, wrap};
+use super::{ATTACK_RANGE, Ai, Ctx, EntityEvent, Mob, MobKind, MobSound, MobWorld, Rng, line_of_sight};
 use crate::entity::nether::{Foe, Goal, LavaGoal, Weapon, ZOMBIFY_TIME};
 use crate::world::block::Block;
 use crate::world::terrain::Dimension;
@@ -92,7 +92,11 @@ impl Mob {
                 n.barter = true;
             }
             self.ai = Ai::Idle;
-            self.head_target = (0.0, -0.6);
+            // The admiring pose holds the head down (`PiglinModel`'s
+            // `ADMIRING_ITEM`); the game draws it from the look.
+            let ahead = super::spear::view_vector(34.4, self.yrot());
+            let eye = self.look_eye();
+            self.set_look_at(eye + ahead, super::head::HEAD_ROT_SPEED, super::head::MAX_HEAD_X_ROT);
             return Some((None, 0.0));
         }
         match n.goal {
@@ -109,12 +113,11 @@ impl Mob {
                 if flat.length_squared() < 0.04 {
                     return Some((None, 0.0));
                 }
-                self.look_at(at, 0.5);
+                // `GoToWantedItem` sets only the walk target.
                 Some((self.pursue(world, at, speed, true, false, rng), speed))
             }
             Goal::Flee(from) => {
                 self.ai = Ai::Panic;
-                self.head_target = (0.0, 0.0);
                 let away = ((self.pos - from) * DVec3::new(1.0, 0.0, 1.0)).normalize_or(DVec3::X);
                 let dir = self.steer(away, dt, world, rng);
                 Some((Some(dir), speed))
@@ -188,7 +191,7 @@ impl Mob {
                 self.walk_to(world, target, 1, speed, false);
             }
         }
-        self.look_at(target.as_dvec3() + DVec3::splat(0.5), 0.5);
+        // `MoveToBlockGoal` doesn't look (v1.0 gap Track 2c).
         let dir = self.follow_path(world, speed, false);
         Some((dir, speed))
     }
@@ -223,7 +226,9 @@ impl Mob {
         let flat = DVec3::new(to.x, 0.0, to.z);
         let hdist = flat.length();
         let dir = if hdist > 1e-6 { flat / hdist } else { DVec3::X };
-        self.look_at(at, 1.4);
+        // `MeleeAttack` and `CrossbowAttack`: `LOOK_TARGET` on the target,
+        // followed at the mob's own speeds.
+        self.look_toward(at + DVec3::Y * if matches!(foe, Foe::Player(_)) { crate::player::EYE_HEIGHT } else { 1.2 });
         let weapon = self.nether.as_ref().map_or(Weapon::None, |n| n.weapon);
         let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
         let aim = at + DVec3::Y * 1.2;
@@ -361,15 +366,6 @@ impl Mob {
         }
         let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.9), eye);
         (self.pursue(world, at, speed, sees, true, rng), speed)
-    }
-
-    /// Turns the head toward a point, up to `max` radians off the body.
-    pub(crate) fn look_at(&mut self, at: DVec3, max: f32) {
-        let to = at - self.pos;
-        let hdist = to.x.hypot(to.z);
-        let eye = to.y + 1.62 - self.shape().height * 0.9;
-        let face_yaw = (to.z as f32).atan2(to.x as f32);
-        self.head_target = (wrap(face_yaw - self.yaw).clamp(-max, max), (eye as f32).atan2(hdist as f32));
     }
 
     /// Heads along `dir`, side-stepping for a moment when blocked by a wall

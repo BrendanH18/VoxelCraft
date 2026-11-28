@@ -23,6 +23,7 @@ pub(crate) mod equine;
 mod frog;
 pub(crate) mod goals;
 pub(super) mod hazards;
+pub(crate) mod head;
 mod illager;
 mod navigate;
 pub(crate) use navigate::is_sand;
@@ -1426,8 +1427,6 @@ pub struct Mob {
     pub(super) ai: Ai,
     pub(super) ai_timer: f32,
     pub(super) move_yaw: f32,
-    head_target: (f32, f32),
-    head_timer: f32,
     pub(super) attack_cooldown: f32,
     burn_timer: f32,
     fire_left: f32,
@@ -1530,9 +1529,12 @@ pub struct Mob {
     pub(crate) chase_goals: selector::Selector,
     pub(crate) spear: Option<chase::SpearUse>,
     pub(crate) spear_use: Option<chase::SpearCharge>,
-    /// v1.0 gap Track 2b: Java's head yaw and pitch while aiming a spear
-    /// (`LookControl`; never saved).
-    pub(crate) look: spear::JavaLook,
+    /// v1.0 gap Track 2c: Java's `yHeadRot` and `xRot` and the
+    /// `LookControl` that turns them, for every mob (never saved).
+    pub(crate) look: head::JavaLook,
+    /// v1.0 gap Track 2c: the idle look goals, brain look behaviours and
+    /// `BodyRotationControl` (never saved).
+    pub(crate) head: head::Head,
     /// A mount carrying a rider's spear charge: `hunt` at its
     /// `chargeSpeedModifier` (1.4 for zombie horses, 4 for camel husks).
     pub(crate) hunt_charge: bool,
@@ -1671,8 +1673,6 @@ impl Mob {
             ai: Ai::Idle,
             ai_timer: 1.0,
             move_yaw: yaw,
-            head_target: (0.0, 0.0),
-            head_timer: 0.0,
             attack_cooldown: 0.0,
             burn_timer: 0.0,
             fire_left: 0.0,
@@ -1739,6 +1739,7 @@ impl Mob {
             spear: None,
             spear_use: None,
             look: Default::default(),
+            head: Default::default(),
             hunt_charge: false,
             mob_steered: false,
             hurt_age: u32::MAX,
@@ -2510,6 +2511,11 @@ impl Mob {
             super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))
         };
         let (wish, speed) = self.camel_hold(world, wish, speed);
+        // v1.0 gap Track 2c: the idle look goals and brain look behaviours,
+        // after the mob's other goals took their flags.
+        if self.dying.is_none() {
+            self.head_goals(world, ctx, rng, wish.is_some());
+        }
 
         // Don't walk off tall drops; wanderers pick another direction.
         let controlled = self.mount.as_ref().is_some_and(|s| s.controlled());
@@ -2534,15 +2540,18 @@ impl Mob {
         let java = (!controlled || self.kind == MobKind::HappyGhast || super::nautilus::is_nautilus(self.kind))
             && self.riding.is_none()
             && self.java_moves(world);
-        // Turn the body toward the direction of travel.
+        // Turn toward the direction of travel: v1.0 gap Track 2c,
+        // `MoveControl.tick`'s `rotlerp(yRot, wanted, 90)` a tick.
         if let Some(dir) = wish.filter(|_| !controlled && !java && !matches!(self.kind, MobKind::Bee | MobKind::Allay))
         {
             let target = (dir.z as f32).atan2(dir.x as f32);
-            self.yaw = turn_toward(self.yaw, target, 8.0 * dtf);
+            self.yaw = turn_toward(self.yaw, target, std::f32::consts::FRAC_PI_2 * dtf / super::motion::TICK);
         }
-        // v1.0 gap Track 2b: `LookControl.tick` after the move control, for
-        // a mob aiming a spear.
-        self.look_tick();
+        // `LookControl.tick` after the move control (v1.0 gap Track 2b for
+        // spears, Track 2c for every mob).
+        for _ in 0..((dtf / super::motion::TICK).round() as u32).max(1) {
+            self.look_tick();
+        }
 
         if std::mem::take(&mut self.jump) && self.on_ground && wish.is_some() && !controlled && self.alive() {
             self.vel.y = JUMP_VELOCITY;
@@ -2647,13 +2656,12 @@ impl Mob {
         }
         self.advance_walk(self.pos - tick_start);
 
-        // Head eases toward its target.
-        let k = (dtf * 6.0).min(1.0);
-        self.head_yaw += (self.head_target.0 - self.head_yaw) * k;
-        self.head_pitch += (self.head_target.1 - self.head_pitch) * k;
         // v1.0 gap Track 3b: a camel's body follows its head within 30
         // degrees, and holds still while it sits or changes pose.
         self.camel_turn(body_yaw, self.pos - tick_start);
+        // v1.0 gap Track 2c: `BodyRotationControl` after the move, and the
+        // drawn head from Java's `yHeadRot` and `xRot`.
+        self.body_tick(self.pos - tick_start);
 
         let (health, provoked) = (self.health, self.provoked);
         let alive = self.alive();
@@ -2736,7 +2744,8 @@ impl Mob {
         {
             let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
             let sees = line_of_sight(world, eye, at + DVec3::Y);
-            self.look_at(at, 1.2);
+            // `RangedAttackGoal.tick`: `setLookAt(target, 30, 30)`.
+            self.set_look_at(at + DVec3::Y, head::ATTACK_LOOK, head::ATTACK_LOOK);
             if (at - self.pos).with_y(0.0).length() <= WITCH_RANGE && sees {
                 self.stop_navigation();
                 return (None, 0.0);
@@ -2926,13 +2935,13 @@ impl Mob {
             let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
             let dist = flat.length();
             if dist > 1e-4 {
-                let dir = flat / dist;
                 let reach = match self.kind {
                     MobKind::IronGolem => 2.4,
                     MobKind::Enderman => super::endermite::ENDERMAN_REACH,
                     _ => 1.5,
                 };
-                self.head_target = (wrap((dir.z as f32).atan2(dir.x as f32) - self.yaw).clamp(-1.2, 1.2), 0.0);
+                // `MeleeAttackGoal.tick`: `setLookAt(target, 30, 30)`.
+                self.set_look_at(goal + DVec3::Y, head::ATTACK_LOOK, head::ATTACK_LOOK);
                 let golem = self.kind == MobKind::IronGolem;
                 if dist <= reach
                     && self.attack_cooldown <= 0.0
@@ -3072,10 +3081,13 @@ impl Mob {
         match self.ai {
             Ai::Chase => {
                 let Some(&target) = target else { return (None, 0.0) };
-                // Look at the player's face.
-                let eye = to_player.y + 1.62 - self.shape().height * 0.9;
-                let face_yaw = (to_player.z as f32).atan2(to_player.x as f32);
-                self.head_target = (wrap(face_yaw - self.yaw).clamp(-1.2, 1.2), (eye as f32).atan2(hdist as f32));
+                // The attack goals look at the target's eyes:
+                // `setLookAt(target, 30, 30)`.
+                self.set_look_at(
+                    target.pos + DVec3::Y * head::player_eye(&target),
+                    head::ATTACK_LOOK,
+                    head::ATTACK_LOOK,
+                );
                 let dir = if hdist > 1e-6 { flat / hdist } else { DVec3::X };
                 if self.kind == MobKind::Enderman && self.enderman_tactics(dt, world, &target, rng, events) {
                     return (None, 0.0);
@@ -3207,18 +3219,15 @@ impl Mob {
                         self.panic_target(world, ctx, rng, speed);
                     }
                     if let Some(dir) = self.follow_path(world, speed, false) {
-                        self.head_target = (0.0, 0.0);
                         return (Some(dir), speed);
                     }
                 }
                 if rng.chance(dt * 1.2) || self.blocked && rng.chance(dt * 4.0) {
                     self.move_yaw = rng.range(0.0, TAU);
                 }
-                self.head_target = (0.0, 0.0);
                 (Some(yaw_dir(self.move_yaw)), speed)
             }
             Ai::Wander if self.path_move => {
-                self.head_target = (0.0, 0.0);
                 let speed = self.stroll_speed();
                 match self.follow_path(world, speed, false) {
                     Some(dir) if self.ai_timer > 0.0 => (Some(dir), speed),
@@ -3241,17 +3250,9 @@ impl Mob {
                     self.ai = Ai::Idle;
                     self.ai_timer = rng.range(2.0, 6.0);
                 }
-                self.head_target = (0.0, 0.0);
                 (Some(yaw_dir(self.move_yaw)), self.kind.wander_speed())
             }
             Ai::Idle => {
-                // Occasionally look around.
-                self.head_timer -= dt;
-                if self.head_timer <= 0.0 {
-                    self.head_timer = rng.range(1.0, 3.5);
-                    self.head_target =
-                        if rng.chance(0.6) { (rng.range(-1.1, 1.1), rng.range(-0.35, 0.3)) } else { (0.0, 0.0) };
-                }
                 if super::mounts::camel_like(self.kind) {
                     self.camel_idle(world, ctx, rng);
                 } else if self.kind.walks_paths() {
@@ -3389,8 +3390,8 @@ impl Mob {
         let target_eye = target.pos + DVec3::Y * crate::player::EYE_HEIGHT;
         self.lift = target_eye.y > eye.y + self.height_offset as f64;
         let to = target.pos - self.pos;
-        let face = (to.z as f32).atan2(to.x as f32);
-        self.head_target = (wrap(face - self.yaw).clamp(-1.2, 1.2), 0.0);
+        // `BlazeAttackGoal.tick`: `setLookAt(target, 10, 10)`.
+        self.set_look_at(target_eye, 10.0, 10.0);
         let sees = line_of_sight(world, eye, target_eye);
         self.move_ctl.last_seen = if sees { 0 } else { self.move_ctl.last_seen + ticks as i32 };
         let toward = (Some((to * DVec3::new(1.0, 0.0, 1.0)).normalize_or(DVec3::X)), path::ground_speed(0.23));

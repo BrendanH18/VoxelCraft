@@ -34,15 +34,10 @@ use crate::entity::{Ctx, Entities, EntityEvent, PlayerId};
 use crate::knockback::{Push, TICK_RATE};
 use crate::weapons::spear;
 
-/// `Mob.getHeadRotSpeed`, `getMaxHeadXRot` and `getMaxHeadYRot`.
-pub const HEAD_ROT_SPEED: f32 = 10.0;
-pub const MAX_HEAD_X_ROT: f32 = 40.0;
-pub const MAX_HEAD_Y_ROT: f32 = 75.0;
+pub use super::head::{HEAD_ROT_SPEED, MAX_HEAD_X_ROT};
 /// `SpearUseGoal`: `mob.lookAt(target, 30, 30)` and
 /// `getLookControl().setLookAt(target, 30, 30)`.
 pub const SPEAR_GOAL_TURN: f32 = 30.0;
-/// `LookControl.setLookAt`'s `lookAtCooldown`.
-const LOOK_COOLDOWN: u8 = 2;
 /// `SpearRetreat`'s `MAX_FLEEING_TIME` and its behaviour timeout.
 pub const PIGLIN_MAX_FLEEING: i32 = 100;
 /// `PiglinAi.initFightActivity`: `SpearApproach(1.0, 10.0F)`,
@@ -50,44 +45,13 @@ pub const PIGLIN_MAX_FLEEING: i32 = 100;
 pub const PIGLIN_APPROACH: f64 = 10.0;
 pub const PIGLIN_IN_RANGE: f64 = 2.0;
 
-/// `Mth.wrapDegrees`.
-fn wrap_degrees(a: f32) -> f32 {
-    super::swim::wrap_degrees(a)
-}
-
-/// `Control.rotateTowards` (`Mth.degreesDifference`, clamped).
-fn rotate_towards(from: f32, to: f32, max: f32) -> f32 {
-    from + wrap_degrees(to - from).clamp(-max, max)
-}
-
-/// `Mth.rotateIfNecessary`: `base` within `max` of `target`.
-fn rotate_if_necessary(base: f32, target: f32, max: f32) -> f32 {
-    target - wrap_degrees(target - base).clamp(-max, max)
-}
+use super::head::{wrap_degrees, yaw_toward};
 
 /// `Entity.calculateViewVector(xRot, yRot)`, degrees.
 pub fn view_vector(x_rot: f32, y_rot: f32) -> DVec3 {
     let (x, y) = (x_rot.to_radians(), -y_rot.to_radians());
     let (y_cos, y_sin, x_cos, x_sin) = (y.cos(), y.sin(), x.cos(), x.sin());
     DVec3::new(f64::from(y_sin * x_cos), f64::from(-x_sin), f64::from(y_cos * x_cos))
-}
-
-/// `LookControl.getYRotD`: Java's yaw toward `d`, or `None` straight up or down.
-fn yaw_toward(d: DVec3) -> Option<f32> {
-    (d.x.abs() > 1e-5 || d.z.abs() > 1e-5).then(|| (d.z.atan2(d.x).to_degrees() as f32) - 90.0)
-}
-
-/// Java's look rotations for a mob aiming a spear (none saved, as in Java).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct JavaLook {
-    pub active: bool,
-    /// `yHeadRot` and `xRot` in degrees (0 faces +Z; positive pitch looks down).
-    pub head: f32,
-    pub pitch: f32,
-    cooldown: u8,
-    wanted: DVec3,
-    y_max: f32,
-    x_max: f32,
 }
 
 /// What a stab remembered (`recentKineticEnemies`).
@@ -147,26 +111,6 @@ impl Mob {
         self.pos + DVec3::Y * (self.shape().height * 0.85)
     }
 
-    fn look_start(&mut self) {
-        if !self.look.active {
-            self.look = JavaLook {
-                active: true,
-                head: self.yrot() + self.head_yaw.to_degrees(),
-                pitch: -self.head_pitch.to_degrees(),
-                ..Default::default()
-            };
-        }
-    }
-
-    /// `LookControl.setLookAt(x, y, z, yMaxRotSpeed, xMaxRotAngle)`.
-    pub(crate) fn set_look_at(&mut self, at: DVec3, y_max: f32, x_max: f32) {
-        self.look_start();
-        self.look.wanted = at;
-        self.look.y_max = y_max;
-        self.look.x_max = x_max;
-        self.look.cooldown = LOOK_COOLDOWN;
-    }
-
     /// `Mob.lookAt(entity, yMax, xMax)` on the body's `yRot` (its `xRot`
     /// is overwritten by the look control the same tick).
     pub(crate) fn turn_body_to(&mut self, at: DVec3, max: f32) {
@@ -176,56 +120,16 @@ impl Mob {
         }
     }
 
-    /// Whether a spear goal or behaviour is aiming (the look stays Java's).
-    fn spear_aiming(&self) -> bool {
-        self.spear.is_some()
-            || self.spear_use.is_some()
-            || self.nether.as_ref().is_some_and(|n| n.spear.running.iter().any(|&r| r))
-    }
-
-    /// `LookControl.tick`, after the move control turned the body; the
-    /// drawn head follows it.
-    pub(crate) fn look_tick(&mut self) {
-        if !self.look.active {
-            return;
-        }
-        let body = self.yrot();
-        let eye = self.spear_eye();
-        let mut l = self.look;
-        l.pitch = 0.0;
-        if l.cooldown > 0 {
-            l.cooldown -= 1;
-            let d = l.wanted - eye;
-            if let Some(yaw) = yaw_toward(d) {
-                l.head = rotate_towards(l.head, yaw, l.y_max);
-            }
-            let flat = d.x.hypot(d.z);
-            if d.y.abs() > 1e-5 || flat > 1e-5 {
-                l.pitch = rotate_towards(0.0, -(d.y.atan2(flat).to_degrees() as f32), l.x_max);
-            }
-        } else {
-            l.head = rotate_towards(l.head, body, HEAD_ROT_SPEED);
-        }
-        if !self.nav.is_done() {
-            l.head = rotate_if_necessary(l.head, body, MAX_HEAD_Y_ROT);
-        }
-        l.head = wrap_degrees(l.head);
-        self.head_target = (super::wrap((l.head - body).to_radians()), -l.pitch.to_radians());
-        l.active = l.cooldown > 0 || self.spear_aiming();
-        self.look = l;
-    }
-
-    /// `getHeadLookAngle` and `getLookAngle` while aiming.
+    /// `getHeadLookAngle` and `getLookAngle` (v1.0 gap Track 2c: every
+    /// mob keeps Java's `yHeadRot` and `xRot`).
     fn spear_looks(&self) -> (DVec3, DVec3) {
-        let pitch = if self.look.active { self.look.pitch } else { -self.head_pitch.to_degrees() };
-        let head = if self.look.active { self.look.head } else { self.yrot() + self.head_yaw.to_degrees() };
+        let (pitch, head) = (self.look.pitch, self.look.head);
         (view_vector(pitch, head), view_vector(pitch, self.yrot()))
     }
 
     /// `startUsingItem(MAIN_HAND)` with a spear: a fresh contact memory.
     pub(crate) fn lower_spear(&mut self) {
         self.spear_use = Some(super::chase::SpearCharge::default());
-        self.look_start();
     }
 }
 

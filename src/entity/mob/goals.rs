@@ -776,7 +776,9 @@ impl Mob {
         match entry.goal {
             G::Breed => {
                 let Some((uid, at)) = self.animal.as_ref().and_then(|a| a.partner) else { return };
-                self.look_at(at, 1.2);
+                // `setLookAt(partner, 10, getMaxHeadXRot())`.
+                let x = self.max_head_x_rot();
+                self.set_look_at(at + DVec3::Y * (self.shape().height * 0.85), 10.0, x);
                 self.walk_to(world, at.floor().as_ivec3(), 1, speed, false);
                 let a = self.animal.as_mut().unwrap();
                 a.courtship += 0.1;
@@ -791,7 +793,9 @@ impl Mob {
                     return;
                 };
                 let at = t.pos;
-                self.look_at(at, 1.2);
+                // `setLookAt(player, getMaxHeadYRot() + 20, getMaxHeadXRot())`.
+                let (y, x) = (self.max_head_y_rot() + 20.0, self.max_head_x_rot());
+                self.set_look_at(at + DVec3::Y * super::head::player_eye(t), y, x);
                 let close = if self.kind == MobKind::Armadillo { if self.baby { 1.0 } else { 2.0 } } else { 2.5 };
                 if at.distance_squared(self.pos) < close * close {
                     self.nav.stop();
@@ -818,7 +822,9 @@ impl Mob {
                 let at = t.pos;
                 let teleport = at.distance_squared(self.pos) >= 144.0;
                 if !teleport {
-                    self.look_at(at, 1.2);
+                    // `setLookAt(owner, 10, getMaxHeadXRot())`.
+                    let x = self.max_head_x_rot();
+                    self.set_look_at(at + DVec3::Y * super::head::player_eye(t), 10.0, x);
                 }
                 self.goals.recalc -= 1;
                 if self.goals.recalc <= 0 {

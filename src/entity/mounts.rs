@@ -133,10 +133,15 @@ pub enum Cue {
     MuleAngry,
     ZombieHorseAngry,
     LlamaAngry,
+    /// v1.0 gap Track 2c: `AbstractHorse.playJumpSound` and its overrides.
+    HorseJump,
+    DonkeyJump,
+    MuleJump,
+    SkeletonHorseJumpWater,
 }
 
 impl Cue {
-    pub const ALL: [Cue; 14] = [
+    pub const ALL: [Cue; 18] = [
         Cue::CamelSit,
         Cue::CamelStand,
         Cue::CamelDash,
@@ -151,6 +156,10 @@ impl Cue {
         Cue::MuleAngry,
         Cue::ZombieHorseAngry,
         Cue::LlamaAngry,
+        Cue::HorseJump,
+        Cue::DonkeyJump,
+        Cue::MuleJump,
+        Cue::SkeletonHorseJumpWater,
     ];
 
     /// The Java sound event.
@@ -170,6 +179,10 @@ impl Cue {
             Cue::MuleAngry => "entity.mule.angry",
             Cue::ZombieHorseAngry => "entity.zombie_horse.angry",
             Cue::LlamaAngry => "entity.llama.angry",
+            Cue::HorseJump => "entity.horse.jump",
+            Cue::DonkeyJump => "entity.donkey.jump",
+            Cue::MuleJump => "entity.mule.jump",
+            Cue::SkeletonHorseJumpWater => "entity.skeleton_horse.jump_water",
         }
     }
 
@@ -217,6 +230,12 @@ impl Cue {
             (Event::Angry, MobKind::Mule) => Cue::MuleAngry,
             (Event::Angry, MobKind::ZombieHorse) => Cue::ZombieHorseAngry,
             (Event::Angry, MobKind::Llama | MobKind::TraderLlama) => Cue::LlamaAngry,
+            // `playJumpSound`: the donkey's and mule's own; a skeleton horse
+            // in water its `jump_water`; every other horse `HORSE_JUMP`.
+            (Event::Jump { .. }, MobKind::Donkey) => Cue::DonkeyJump,
+            (Event::Jump { .. }, MobKind::Mule) => Cue::MuleJump,
+            (Event::Jump { water: true }, MobKind::SkeletonHorse) => Cue::SkeletonHorseJumpWater,
+            (Event::Jump { .. }, MobKind::Horse | MobKind::SkeletonHorse | MobKind::ZombieHorse) => Cue::HorseJump,
             _ => return None,
         })
     }
@@ -233,6 +252,11 @@ pub enum Event {
     DashReady,
     Angry,
     Ambient,
+    /// v1.0 gap Track 2c: `handleStartJump`'s `playJumpSound` (0.4 volume),
+    /// in water or not.
+    Jump {
+        water: bool,
+    },
 }
 
 /// v1.0 gap Track 3b: `AbstractHorse`'s rearing (`setStanding(20)`).
@@ -453,6 +477,19 @@ pub struct State {
     next_stand: i32,
     pub stand_anim: f32,
     pub stand_anim_o: f32,
+    /// v1.0 gap Track 2c: `AbstractHorse`'s grazing: `FLAG_EATING`
+    /// (`EatingHaystack`, saved only while set), `eatingCounter`, the
+    /// client's `eatAnim` (now and a tick ago) for the head-down animation,
+    /// and the mouth (`FLAG_OPEN_MOUTH`'s `mouthCounter` and `mouthAnim`).
+    /// `on_grass` is whether a grass block is under its feet this tick.
+    pub eating: bool,
+    eating_counter: u8,
+    pub eat_anim: f32,
+    pub eat_anim_o: f32,
+    mouth_counter: u8,
+    pub mouth_anim: f32,
+    pub mouth_anim_o: f32,
+    pub(crate) on_grass: bool,
     /// v1.0 gap Track 3b: sounds this mount made since the last update.
     pub(super) events: Vec<Event>,
     /// A nautilus's dash cooldown as the rider's jump charge sees it
@@ -567,6 +604,14 @@ impl State {
             next_stand: -AMBIENT_STAND_INTERVAL,
             stand_anim: 0.0,
             stand_anim_o: 0.0,
+            eating: false,
+            eating_counter: 0,
+            eat_anim: 0.0,
+            eat_anim_o: 0.0,
+            mouth_counter: 0,
+            mouth_anim: 0.0,
+            mouth_anim_o: 0.0,
+            on_grass: false,
             events: Vec::new(),
             jump_cooldown: 0,
             vehicle_on_ground: true,
@@ -727,7 +772,7 @@ impl State {
     /// dash sound and `DASH`, whose change sets a 55-tick cooldown when
     /// none is running (`onSyncedDataUpdated`), even for a release in the
     /// air that didn't dash. `AbstractHorse.handleStartJump` rears.
-    pub(super) fn start_jump(&mut self, kind: MobKind) {
+    pub(super) fn start_jump(&mut self, kind: MobKind, in_water: bool) {
         let Some(_amount) = self.started_jump.take() else { return };
         if !self.saddled() {
             return;
@@ -746,13 +791,78 @@ impl State {
         } else if rears(kind) {
             self.allow_stand_sliding = true;
             self.stand_if_possible(kind);
+            // v1.0 gap Track 2c: `playJumpSound`.
+            self.events.push(Event::Jump { water: in_water });
         }
     }
     /// `AbstractHorse.standIfPossible`: rear for 20 ticks (`setStanding`).
     pub fn stand_if_possible(&mut self, kind: MobKind) {
         if rears(kind) {
+            // `setStanding`: rearing ends a meal.
+            self.eating = false;
             self.stand_counter = STAND_TICKS;
         }
+    }
+    /// v1.0 gap Track 2c: `AbstractHorse.canEatGrass` (llamas and camels
+    /// don't graze).
+    pub fn grazes(kind: MobKind) -> bool {
+        rears(kind)
+    }
+    /// v1.0 gap Track 2c: `AbstractHorse.isImmobile`: grazing or rearing.
+    pub fn immobile(&self) -> bool {
+        self.eating || self.standing()
+    }
+    /// v1.0 gap Track 2c: one tick of `AbstractHorse.aiStep`'s grazing (a
+    /// 1-in-300 start while nobody rides it and a grass block is under it,
+    /// ending after 50 ticks) for a living mount, then `tick`'s
+    /// `eatAnim` and `mouthAnim` (`standAnim` zeroes the eating one).
+    pub(super) fn eat_tick(&mut self, kind: MobKind, alive: bool, rng: &mut Rng) {
+        if !Self::grazes(kind) {
+            return;
+        }
+        if alive {
+            let vehicle = self.rider.is_some() || self.passenger.is_some();
+            if !self.eating && !vehicle && rng.next_int(300) == 0 && self.on_grass {
+                self.eating = true;
+            }
+            if self.eating {
+                self.eating_counter += 1;
+                if self.eating_counter > 50 {
+                    self.eating_counter = 0;
+                    self.eating = false;
+                }
+            }
+        }
+        if self.mouth_counter > 0 {
+            self.mouth_counter += 1;
+            if self.mouth_counter > 30 {
+                self.mouth_counter = 0;
+            }
+        }
+        self.eat_anim_o = self.eat_anim;
+        self.eat_anim = if self.eating {
+            (self.eat_anim + ((1.0 - self.eat_anim) * 0.4 + 0.05)).min(1.0)
+        } else {
+            (self.eat_anim + ((0.0 - self.eat_anim) * 0.4 - 0.05)).max(0.0)
+        };
+        if self.standing() {
+            self.eat_anim = 0.0;
+            self.eat_anim_o = 0.0;
+        }
+        self.mouth_anim_o = self.mouth_anim;
+        self.mouth_anim = if self.mouth_counter > 0 {
+            (self.mouth_anim + ((1.0 - self.mouth_anim) * 0.7 + 0.05)).min(1.0)
+        } else {
+            (self.mouth_anim + ((0.0 - self.mouth_anim) * 0.7 - 0.05)).max(0.0)
+        };
+    }
+    /// v1.0 gap Track 2c: `AbstractHorse.eating`'s `openMouth` when fed.
+    pub fn open_mouth(&mut self) {
+        self.mouth_counter = 1;
+    }
+    /// `AbstractHorse.getEatAnim` at `partial` of the way through the tick.
+    pub fn eat_anim(&self, partial: f32) -> f32 {
+        self.eat_anim_o + (self.eat_anim - self.eat_anim_o) * partial
     }
     /// `AbstractHorse.makeMad`: rear (if it can) and play the angry sound,
     /// unless it already rears.
@@ -868,6 +978,11 @@ impl State {
         if self.seats.iter().any(Option::is_some) {
             v["seats"] = json!(self.seats.map(|p| p.map(|p| p.0)));
         }
+        // v1.0 gap Track 2c: Java's `EatingHaystack`, written only while it
+        // grazes so other mounts save byte for byte as before.
+        if self.eating {
+            v["eating"] = json!(true);
+        }
         v
     }
     pub fn load(kind: MobKind, v: &Value) -> Option<Self> {
@@ -894,6 +1009,7 @@ impl State {
         s.chest = v["chest"].as_bool().unwrap_or(false) && chested(kind);
         s.strength = v["strength"].as_u64().map_or(s.strength, |n| n.clamp(1, 5) as u8);
         s.passenger = v["passenger"].as_u64().and_then(|p| u32::try_from(p).ok()).map(PlayerId);
+        s.eating = v["eating"].as_bool().unwrap_or(false) && Self::grazes(kind);
         if kind == MobKind::HappyGhast
             && let Some(seats) = v["seats"].as_array()
         {
@@ -1053,8 +1169,9 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
     // v1.0 gap Track 3b: `AbstractHorse`'s rearing a tick at a time;
     // `RandomStandGoal` runs while the AI does (not while it rears).
     for _ in 0..ticks {
-        let ai = !s.standing();
+        let ai = !s.immobile();
         s.rear_tick(mob.kind, ai, rng);
+        s.eat_tick(mob.kind, mob.health > 0.0, rng);
     }
     if camel_like(mob.kind) {
         // v1.0 gap Track 3: the pose clock, and `Camel.tick` standing a
@@ -1073,9 +1190,9 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
     } else {
         s.dash_cooldown = s.dash_cooldown.saturating_sub(ticks as u16);
     }
-    // `LivingEntity.aiStep`: a rearing horse is immobile (`isImmobile`):
-    // its AI doesn't run and it walks nowhere.
-    if s.standing() && !s.controlled() {
+    // `LivingEntity.aiStep`: a rearing or grazing horse is immobile
+    // (`isImmobile`): its AI doesn't run and it walks nowhere.
+    if s.immobile() && !s.controlled() {
         return Some((None, 0.));
     }
     // A caravan llama walks after the one ahead, keeping about two blocks back.
@@ -1084,7 +1201,7 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
     {
         let flat = (ahead - mob.pos) * DVec3::new(1., 0., 1.);
         if flat.length_squared() > 2.5 * 2.5 {
-            mob.look_at(ahead, 1.0);
+            // `LlamaFollowCaravanGoal` doesn't look (v1.0 gap Track 2c).
             return Some((Some(flat.normalize()), 2.6));
         }
     }
@@ -1181,7 +1298,8 @@ impl Entities {
             let spit = super::thrown::Thrown::spit(mouth, target, m.uid, &mut self.rng);
             self.sculk.shot(mouth, crate::world::vibration::EventSource::mob(m.uid));
             let m = &mut self.mobs[i];
-            m.look_at(target, 1.0);
+            // `RangedAttackGoal`: `setLookAt(target, 30, 30)`.
+            m.set_look_at(target, super::mob::head::ATTACK_LOOK, super::mob::head::ATTACK_LOOK);
             m.attack_cooldown = 2.0;
             m.attack_anim = 0.3;
             // Java: one spit per provocation, then the llama calms down.
