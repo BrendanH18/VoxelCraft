@@ -1317,6 +1317,33 @@ they can, Java's result depends on the order its server decorated the two
 chunks; the test reports those). See the
 [record](../../../../docs/verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md).
 
+## Decoration beside End cities (v1.0 gap-closing Track 4c)
+
+`end_city_decoration.json` extends the End's decoration to grids that
+contain End cities. The same tool, run with `--cities`, starts the pinned
+server on a new world per seed (0 and 42), finds the End city nearest two
+points per seed with Java's own `locate structure minecraft:end_city`,
+force-loads the 15 x 15 chunks around each city's start chunk, saves and
+reads back:
+
+- `cities`: every `end_city` start the compared 13 x 13 chunks reference,
+  with its pieces in Java's order (template, rotation, `OW`, box);
+- `chunks`: the rows of `end_decoration.json`, plus the end stone and the
+  chorus of the columns outside every piece's box;
+- `chorus_bases` and `gateways` in the grid (there are none).
+
+```sh
+python3 tools/extract_java_end_decoration_fixtures.py /path/to/server.jar --cities --output target/java-end-cities.json
+diff tests/fixtures/java/26.3/end_city_decoration.json target/java-end-cities.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib world::end::decoration'
+```
+
+Generation 7 must lay out every piece exactly as Java's, match the end
+stone outside the pieces everywhere and in full away from the cities, and
+match the chorus of every chunk whose plants can't meet a neighbour's,
+beside and under the cities included. See the
+[record](../../../../docs/verification/2026-11-27-v1.0-gap-track-04c-end-final.md).
+
 ## The Ender Dragon's flight (v1.0 gap-closing Track 4b)
 
 `dragon_flight.json` holds Java 26.3's `EnderDragon.aiStep` flight, tick by

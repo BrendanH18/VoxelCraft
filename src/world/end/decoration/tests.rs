@@ -250,3 +250,168 @@ fn a_world_notes_the_return_gateways_it_generates() {
     assert_eq!(world.return_gateway_exit(g), Some(super::RETURN_EXIT));
     assert_eq!(world.return_gateway_exit(g + IVec3::Y), None);
 }
+
+fn city_fixture() -> Value {
+    serde_json::from_str(include_str!("../../../../tests/fixtures/java/26.3/end_city_decoration.json")).unwrap()
+}
+
+/// Java's name of a piece rotation (`Rotation.name()`).
+fn rotation_name(r: crate::world::mansion::Rotation) -> &'static str {
+    use crate::world::mansion::Rotation;
+    match r {
+        Rotation::None => "NONE",
+        Rotation::Clockwise90 => "CLOCKWISE_90",
+        Rotation::Clockwise180 => "CLOCKWISE_180",
+        Rotation::Counterclockwise90 => "COUNTERCLOCKWISE_90",
+    }
+}
+
+/// A chunk's end stone and chorus as the fixture's rows hash them: all of
+/// it, then only the columns outside `footprint`.
+fn chunk_hashes(blocks: &[(IVec3, Block)], footprint: &rustc_hash::FxHashSet<IVec2>) -> [(u64, String); 4] {
+    let mut stone: Vec<IVec3> = blocks.iter().filter(|(_, b)| *b == Block::END_STONE).map(|&(p, _)| p).collect();
+    stone.sort_by_key(|p| (p.x, p.y, p.z));
+    let mut chorus: Vec<(IVec3, String)> = blocks.iter().filter_map(|&(p, b)| chorus_name(b).map(|n| (p, n))).collect();
+    chorus.sort_by(|a, b| (a.0.x, a.0.y, a.0.z, &a.1).cmp(&(b.0.x, b.0.y, b.0.z, &b.1)));
+    let outside = |p: &IVec3| !footprint.contains(&IVec2::new(p.x, p.z));
+    let stone_text = |s: &mut dyn Iterator<Item = &IVec3>| -> (u64, String) {
+        let text: Vec<String> = s.map(|p| format!("{} {} {};", p.x, p.y, p.z)).collect();
+        (text.len() as u64, fnv(text.iter().map(String::as_str)))
+    };
+    let chorus_text = |s: &mut dyn Iterator<Item = &(IVec3, String)>| -> (u64, String) {
+        let text: Vec<String> = s.map(|(p, n)| format!("{} {} {} {n};", p.x, p.y, p.z)).collect();
+        (text.len() as u64, fnv(text.iter().map(String::as_str)))
+    };
+    [
+        stone_text(&mut stone.iter()),
+        chorus_text(&mut chorus.iter()),
+        stone_text(&mut stone.iter().filter(|p| outside(p))),
+        chorus_text(&mut chorus.iter().filter(|(p, _)| outside(p))),
+    ]
+}
+
+/// v1.0 gap Track 4c: four End cities (two per seed, found by Java's own
+/// `locate`) and the 13 × 13 chunks around each, against the running jar
+/// (`tests/fixtures/java/26.3/end_city_decoration.json`).
+///
+/// - Every city reaching the grids starts in Java's chunk and lays out
+///   Java's pieces: template, rotation, `OW` and box, in Java's order.
+/// - The end stone outside the pieces' boxes (the terrain and
+///   `end_island_decorated`, which the cities can't touch) is Java's in
+///   every chunk.
+/// - In the chunks clear of every city's footprint, with their
+///   neighbours, the chorus is Java's (where it can't meet a neighbour's;
+///   see [`outer_end_chunks_are_decorated_as_javas`]).
+/// - Where a city covers part of a chunk, the chorus is Java's too: the
+///   templates are original (FE-02), but no column a piece covers grows a
+///   plant in either game, so the draws stay in step. The end stone inside
+///   the pieces' boxes (which the templates' air carves) is counted, not
+///   required.
+#[test]
+fn decoration_beside_end_cities_is_javas() {
+    let f = city_fixture();
+    let mut failures = Vec::new();
+    let (mut clear, mut touched, mut carved, mut chunks_seen, mut pieces_seen) = (0, 0, 0, 0, 0);
+    for (seed, grids) in f["seeds"].as_object().unwrap() {
+        let end = EndGen::with_generation(seed.parse::<i64>().unwrap() as u64, Generation::V7);
+        for g in grids.as_array().unwrap() {
+            let (lo, hi) = (ivec2(&g["grid"][0]), ivec2(&g["grid"][1]));
+            let (blo, bhi) = (lo * 16, hi * 16 + IVec2::splat(15));
+            // Java lists the starts its grid chunks reference: those whose
+            // whole box reaches one of them.
+            let mut ours: Vec<_> = end
+                .cities_near(blo, bhi)
+                .into_iter()
+                .filter(|c| {
+                    c.bounds.min.x <= bhi.x
+                        && c.bounds.max.x >= blo.x
+                        && c.bounds.min.z <= bhi.y
+                        && c.bounds.max.z >= blo.y
+                })
+                .collect();
+            ours.sort_by_key(|c| (c.start.chunk.x, c.start.chunk.y));
+            let theirs = g["cities"].as_array().unwrap();
+            let starts: Vec<IVec2> = ours.iter().map(|c| c.start.chunk).collect();
+            let want: Vec<IVec2> = theirs.iter().map(|c| ivec2(&c["start"])).collect();
+            assert_eq!(starts, want, "seed {seed} grid {lo}..{hi}: city starts");
+            let mut footprint = rustc_hash::FxHashSet::default();
+            for (city, java) in ours.iter().zip(theirs) {
+                let java: Vec<String> =
+                    java["pieces"].as_array().unwrap().iter().map(|p| p.to_string().replace(' ', "")).collect();
+                let got: Vec<String> = city
+                    .pieces
+                    .iter()
+                    .map(|p| {
+                        let (a, b) = (p.bounds.min, p.bounds.max);
+                        format!(
+                            "[\"{}\",\"{}\",{},{},{},{},{},{},{}]",
+                            p.name(),
+                            rotation_name(p.rotation),
+                            p.overwrite,
+                            a.x,
+                            a.y,
+                            a.z,
+                            b.x,
+                            b.y,
+                            b.z
+                        )
+                    })
+                    .collect();
+                pieces_seen += got.len();
+                if got != java {
+                    failures.push(format!("seed {seed} city {}: pieces\n{got:?}\n!=\n{java:?}", city.start.chunk));
+                }
+                for p in &city.pieces {
+                    for z in p.bounds.min.z..=p.bounds.max.z {
+                        for x in p.bounds.min.x..=p.bounds.max.x {
+                            footprint.insert(IVec2::new(x, z));
+                        }
+                    }
+                }
+            }
+            let near_city = |c: IVec2| {
+                let (a, b) = (c * 16 - IVec2::splat(16), c * 16 + IVec2::splat(31));
+                footprint.iter().any(|p| p.cmpge(a).all() && p.cmple(b).all())
+            };
+            let grid: Vec<IVec2> = g["chunks"].as_array().unwrap().iter().map(ivec2).collect();
+            let tangled = order_dependent(&end, &grid);
+            let mut sections = rustc_hash::FxHashMap::default();
+            for c in g["chunks"].as_array().unwrap() {
+                let chunk = ivec2(c);
+                chunks_seen += 1;
+                let blocks = column(&end, &mut sections, chunk);
+                let got = chunk_hashes(&blocks, &footprint);
+                let row = |i: usize| (c[i].as_u64().unwrap(), c[i + 1].as_str().unwrap().to_string());
+                let want = [row(3), row(5), row(8), row(10)];
+                if got[2] != want[2] {
+                    failures.push(format!(
+                        "seed {seed} chunk {chunk}: end stone outside the cities {:?} != {:?}",
+                        got[2], want[2]
+                    ));
+                }
+                if near_city(chunk) {
+                    carved += usize::from(got[0] != want[0]);
+                } else if got[0] != want[0] {
+                    failures.push(format!("seed {seed} chunk {chunk}: end stone {:?} != {:?}", got[0], want[0]));
+                }
+                if tangled.contains(&chunk) {
+                    continue;
+                }
+                if near_city(chunk) {
+                    touched += 1;
+                } else {
+                    clear += 1;
+                }
+                if got[1] != want[1] {
+                    failures.push(format!("seed {seed} chunk {chunk}: chorus {:?} != {:?}", got[1], want[1]));
+                }
+            }
+        }
+    }
+    eprintln!(
+        "{chunks_seen} chunks, {pieces_seen} pieces; chorus checked in {clear} clear of cities and {touched} beside or under one; {carved} with other end stone inside a piece's box"
+    );
+    assert!(failures.is_empty(), "{} differ:\n{}", failures.len(), failures.join("\n"));
+    assert_eq!(pieces_seen, 173);
+    assert!(clear > 300 && touched > 100, "{clear} {touched}");
+}

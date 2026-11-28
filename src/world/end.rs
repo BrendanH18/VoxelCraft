@@ -537,8 +537,20 @@ impl super::end_city::Terrain for EndGen {
         matches!(self.biome(x, z), EndBiome::Highlands | EndBiome::Midlands)
     }
 
+    /// Generations 5 and 6 measure a start from the first free block above
+    /// the column. Generation 7 uses Java's `getFirstOccupiedHeight`
+    /// (`WORLD_SURFACE_WG` less one: the top block, or one below the floor
+    /// over the void), which the running jar's cities confirm (v1.0 gap
+    /// Track 4c): its cities stand one block lower, and a start whose
+    /// lowest corner tops out at y 59 is dropped.
     fn first_free(&self, x: i32, z: i32) -> i32 {
-        self.column(x, z).map_or(0, |(top, _)| top + 1)
+        let v7 = self.generation >= super::terrain::Generation::V7;
+        match self.column(x, z) {
+            Some((top, _)) if v7 => top,
+            Some((top, _)) => top + 1,
+            None if v7 => -1,
+            None => 0,
+        }
     }
 }
 
