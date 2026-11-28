@@ -97,6 +97,8 @@ impl Entities {
         self.tick_undead_mounts(dt, world, ctx);
         self.piglin_rides(world, ctx);
         self.sense_goals(world);
+        // v1.0 gap Track 2c: what the mobs' look goals and brains see.
+        self.sense_looks(world);
         self.sense_schools();
         self.sense_dolphins(world, &moved);
         // v0.16 Track C: the Wither's server AI before the mobs move.

@@ -56,9 +56,6 @@ impl Mob {
             self.stop_navigation();
             self.endermite.as_mut().unwrap().attack_wait = 0;
         }
-        // The model has no separate head: `Endermite.tick` keeps the body
-        // on the entity's own rotation.
-        self.head_target = (0.0, 0.0);
         let to = pos - self.pos;
         let dir = to.with_y(0.0).normalize_or(DVec3::X);
         let eye = self.pos + DVec3::Y * EYE_HEIGHT;

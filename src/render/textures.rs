@@ -108,6 +108,13 @@ fn points(layer: u16, n: usize) -> Vec<(f32, f32)> {
 
 const STONE: [u8; 3] = [125, 125, 125];
 
+/// v1.0 gap Track 2c: a mob material pattern's texel (layers
+/// `entity::model::PATTERN_TEX`..), for the mount screen's preview, which
+/// draws without the GPU's entity shader.
+pub fn mob_pattern_pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    mob::pixel(layer, x % SIZE, y % SIZE)
+}
+
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     // v1.0 gap track 6b: the item models' plant layers.
     if (voxelcraft::content::item_models::TEX..voxelcraft::content::item_models::TEX_END).contains(&layer) {

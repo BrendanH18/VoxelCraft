@@ -303,7 +303,7 @@ different pitches.
 - **Riding**: saddled strider riding and warped-fungus-on-a-stick steering are implemented. Strider jockeys (a zombified piglin with a fungus stick on a saddled strider, 1 in 30 while monsters spawn; else a baby strider rider, 1 in 10) follow `Strider.finalizeSpawn` since v1.0 Track 7. Since the v1.0 gap-closing Track 2 ([record](verification/2026-11-27-v1.0-gap-track-02-hostile-ai.md), implemented, unverified):
   - The zombified piglin steers its strider (`Mob.getControllingPassenger`; it isn't in `#non_controlling_rider`): the strider's own movement goals stop (`updateControlFlags`), and the piglin's goals walk the strider's navigation with the strider's lava malus. A calm piglin strolls (`WaterAvoidingRandomStrollGoal`: one full update in 60 to a `LandRandomPos.getPos(10, 7)` spot), an angry one rides at its target. Like Java's, a steered strider no longer looks for lava on its own. A baby strider rider runs the strider's own goal table, so the adult keeps its own goals.
   - Baby piglins ride baby hoglins (`babySometimesRideBabyHoglin`): a baby that has seen a baby hoglin within 16 blocks (`PiglinSpecificSensor`, every 20 ticks) takes it as its ride target after 200–800 ticks, walks over at speed modifier 0.8 (`Mount`), and rides it for 200–600 ticks (`RIDE_DURATION`). It gets off (`DismountOrSkipMounting`) when the vehicle is dead, more than 8 blocks away or grown up, when either was hurt in the last 40 ticks, or when its piglin vehicle rides nothing; with no ride target left it gets off too (`updateActivity`), so riders dismount after a reload. `Piglin.startRiding` climbs the riders already aboard (`getTopPassenger(hoglin, 3)`), so babies stack at most three high. Seats: 0.875 on a baby hoglin (1.49375 on an adult), 0.98 on a baby piglin, less the baby piglin's 0.1875 vehicle attachment.
-  - Remaining: Java's riding piglin also turns its head with the ride activity's look behaviours (`createLookBehaviors`), which the retained idle look code stands in for.
+  - Since v1.0 gap Track 2c ([record](verification/2026-11-27-v1.0-gap-track-02c-looks.md), implemented, unverified): the riding piglin turns its head with the ride activity's looks (a player holding a loved item within 8 blocks, then `TriggerGate.triggerOneShuffled` over a player, a piglin or anything within 8, or nothing), followed by `LookAtTargetSink(45, 90)`; a strider jockey's zombified piglin looks around with its own `LookAtPlayerGoal` and `RandomLookAroundGoal`, while the steered strider's look goals stop (`updateControlFlags`) and its body holds still while it stands (`BodyRotationControl` with a mob passenger).
 - **Breeding**: hoglins and striders use the retained shared breeding/temptation pipeline. Complete selected-reference acceptance remains under MOB-03.
 - **Bartering**: every output exists since v1.0 Track 5 added Soul Speed
   ([record](verification/2026-11-25-v1.0-track-05-enchant-loot.md)).
@@ -314,7 +314,10 @@ different pitches.
     ends it, as `wasHurtBy` erases the memories. The location and dance state are saved. Java's
     dance pose lives in the client model, which the reference server jar lacks, so the arms-up
     bob and ear flap are an original approximation; the other celebrate-activity behaviours
-    (look at nearby piglins, stroll, hostile-player scan) use the retained idle code.
+    (stroll, hostile-player scan) use the retained idle code. Since v1.0 gap Track 2c the
+    celebrating piglin's looks are Java's: a player holding a loved item within 14 blocks, or
+    the `RunOne`'s look at a piglin within 8 (its stroll counted as doing nothing for 10 to 20
+    ticks).
   - Crossbow piglins now use the existing ranged behavior against mob targets,
     and mob arrows resolve through shared mob-hit retaliation/loot handling.
     Java 26.3 `CrossbowAttack` consumes any living attack target; it has no

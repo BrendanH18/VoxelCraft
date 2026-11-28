@@ -20,6 +20,13 @@ pub trait BlockSource {
     /// each belongs to. They follow their progress, so a box can lie
     /// partly in a neighbouring cell. Only worlds have moving blocks.
     fn moving_boxes(&self, _min: DVec3, _max: DVec3, _f: &mut dyn FnMut(IVec3, DVec3, DVec3)) {}
+
+    /// v1.0 gap Track 2c: the dimension's `FAST_LAVA` environment
+    /// attribute (the Nether), which scales lava currents (`Entity`'s
+    /// `LAVA_FAST_FLOW_SCALE` 0.007 against 0.0023). Only worlds know it.
+    fn fast_lava(&self) -> bool {
+        false
+    }
 }
 
 impl BlockSource for World {
@@ -30,6 +37,10 @@ impl BlockSource for World {
 
     fn moving_boxes(&self, min: DVec3, max: DVec3, f: &mut dyn FnMut(IVec3, DVec3, DVec3)) {
         self.piston_collision_boxes(min, max, None, f);
+    }
+
+    fn fast_lava(&self) -> bool {
+        self.generator.dimension == crate::world::terrain::Dimension::Nether
     }
 }
 

@@ -125,7 +125,10 @@ impl Mob {
             return (None, 0.0);
         };
         let to_target = t.pos - pos;
-        self.head_target = (wrap((to_target.z as f32).atan2(to_target.x as f32) - self.yaw).clamp(-1.2, 1.2), 0.0);
+        // v1.0 gap Track 2c: `LOOK_TARGET` on the attack target, which
+        // `LookAtTargetSink` follows at the breeze's own speeds.
+        let _ = to_target;
+        self.look_toward(t.pos + DVec3::Y * super::head::player_eye(t));
         let s = self.breeze.as_mut().unwrap();
 
         // Shoot, already running: charging, then the shot, then recovering.

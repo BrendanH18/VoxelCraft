@@ -737,6 +737,44 @@ impl Entities {
         }
     }
 
+    /// v1.0 gap Track 2c: a mob's melee stab (`DamageTypes.SPEAR`, in
+    /// `#can_break_armor_stand`) on decoration `i`: a framed item pops out
+    /// whatever the rules (`ItemFrame.hurtServer` drops it first); otherwise
+    /// a mob's damage does nothing without mobGriefing
+    /// (`BlockAttachedEntity` and `ArmorStand.hurtServer`); with it an
+    /// armor stand wobbles, and breaks on a second hit within 5 ticks, and
+    /// an empty frame or a painting breaks.
+    pub(super) fn mob_hurt_decor(&mut self, i: usize, source: EventSource) {
+        if i >= self.decor.len() {
+            return;
+        }
+        let drops = self.entity_drops;
+        let now = self.decor_clock;
+        let framed = matches!(self.decor[i].kind, Kind::Frame { .. }) && self.decor[i].item.is_some();
+        if framed {
+            self.post_decor_event(i, GameEvent::BlockChange, source);
+            let d = &mut self.decor[i];
+            let stack = d.item.take();
+            let spot = drop_spot(d);
+            if let Some(s) = stack.filter(|_| drops) {
+                self.items.push(ItemEntity::new(s, spot, DVec3::ZERO, 0.5, &mut self.rng));
+            }
+            return;
+        }
+        if !self.villager_griefing {
+            return;
+        }
+        let d = &mut self.decor[i];
+        if d.kind == Kind::Stand && d.last_hit.is_none_or(|last| now.saturating_sub(last) > BREAK_WINDOW) {
+            d.last_hit = Some(now);
+            d.wobble = WOBBLE_TICKS;
+            self.post_decor_event(i, GameEvent::EntityDamage, source);
+            return;
+        }
+        self.post_decor_event(i, GameEvent::EntityDie, source);
+        self.break_decor(i, drops, drops);
+    }
+
     /// v1.0 Track 9: queues `event` at decoration `i`.
     fn post_decor_event(&mut self, i: usize, event: GameEvent, source: EventSource) {
         let pos = self.decor[i].pos;
@@ -831,6 +869,10 @@ struct Wrapped<'a, W: BlockSource + ?Sized>(&'a W);
 impl<W: BlockSource + ?Sized> BlockSource for Wrapped<'_, W> {
     fn block(&self, p: IVec3) -> Option<Block> {
         self.0.block(p)
+    }
+
+    fn fast_lava(&self) -> bool {
+        self.0.fast_lava()
     }
 }
 

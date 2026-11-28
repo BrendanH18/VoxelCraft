@@ -138,6 +138,10 @@ impl Mob {
             }
             if super::mounts::rears(self.kind) {
                 v["mount"]["stand"] = json!([s.stand_anim_o, s.stand_anim]);
+                // v1.0 gap Track 2c: grazing and the open mouth, for Track
+                // 7b's horse animation (`getEatAnim`, `getMouthAnim`).
+                v["mount"]["eat"] = json!([s.eat_anim_o, s.eat_anim]);
+                v["mount"]["mouth"] = json!([s.mouth_anim_o, s.mouth_anim]);
             }
         }
         if let Some(a) = &self.aquatic {
@@ -307,6 +311,10 @@ impl Mob {
                 w["dash"][2].as_u64().map_or(0, |t| t.min(u64::from(super::mounts::DASH_COOLDOWN)) as u16);
             let stand = |i: usize| w["stand"][i].as_f64().map_or(0.0, |a| a.clamp(0.0, 1.0) as f32);
             (s.stand_anim_o, s.stand_anim) = (stand(0), stand(1));
+            let eat = |k: &str, i: usize| w[k][i].as_f64().map_or(0.0, |a| a.clamp(0.0, 1.0) as f32);
+            (s.eat_anim_o, s.eat_anim) = (eat("eat", 0), eat("eat", 1));
+            (s.mouth_anim_o, s.mouth_anim) = (eat("mouth", 0), eat("mouth", 1));
+            s.eating = s.eat_anim > 0.0;
             if let Some(h) = w["max_health"].as_f64().filter(|h| h.is_finite() && (1.0..=100.0).contains(h)) {
                 s.max_health = h as f32;
             }

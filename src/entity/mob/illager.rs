@@ -191,13 +191,10 @@ impl Mob {
         }
     }
 
-    /// Turn the head toward `at`.
+    /// Turn the head toward `at` (the attack goals' `setLookAt(target, 30,
+    /// 30)`; v1.0 gap Track 2c).
     fn face(&mut self, at: DVec3) {
-        let to = at - self.pos;
-        let flat = to.with_y(0.0).length();
-        let yaw = (to.z as f32).atan2(to.x as f32);
-        let eye = self.shape().height * 0.85;
-        self.head_target = (wrap(yaw - self.yaw).clamp(-1.2, 1.2), ((to.y - eye) as f32).atan2(flat as f32));
+        self.set_look_at(at, super::head::ATTACK_LOOK, super::head::ATTACK_LOOK);
     }
 
     /// The melee hit `Mob.doHurtTarget` lands on `aim`: the attack damage

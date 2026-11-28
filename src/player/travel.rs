@@ -219,7 +219,8 @@ impl Player {
             self.motion.fall_distance = 0.0;
         }
         if pushed {
-            *dm += contact.current_impulse(*dm, false);
+            // v1.0 gap Track 2c: lava pushes at the Nether's `FAST_LAVA` rate.
+            *dm += contact.current_impulse(*dm, world.fast_lava());
         }
         self.motion.fluid = contact;
         self.in_water = contact.in_water();

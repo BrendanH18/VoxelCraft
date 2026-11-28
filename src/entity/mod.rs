@@ -1342,6 +1342,8 @@ pub struct Entities {
     casters: Vec<shadow::Caster>,
     /// v0.18 Track 6: the mobs' simulation poses while `mesh` draws interpolated ones.
     poses: Vec<mob::Pose>,
+    /// v1.0 gap Track 2c: each mob's heading and body while it is drawn.
+    headings: Vec<(f32, f32)>,
 }
 
 impl Entities {
@@ -1456,6 +1458,7 @@ impl Entities {
             still_ticks: 0,
             casters: Vec::new(),
             poses: Vec::new(),
+            headings: Vec::new(),
         }
     }
 
@@ -2344,13 +2347,18 @@ impl Entities {
         // v0.18 Track 6: draw each mob turned and mid-stride as of `alpha`,
         // then put the simulation's values back.
         self.poses.clear();
+        self.headings.clear();
         for m in &mut self.mobs {
             self.poses.push(m.pose_values());
+            // v1.0 gap Track 2c: the models draw `yaw` as the body; the
+            // simulation's heading (`yRot`) and body come back after.
+            self.headings.push((m.yaw, m.body_yaw));
             m.set_pose_values(m.render_pose(alpha as f32));
         }
         self.rendered = model::build(&self.mobs, camera, forward, view, alpha, &mut self.mesh);
-        for (m, &pose) in self.mobs.iter_mut().zip(&self.poses) {
+        for ((m, &pose), &(yaw, body)) in self.mobs.iter_mut().zip(&self.poses).zip(&self.headings) {
             m.set_pose_values(pose);
+            (m.yaw, m.body_yaw) = (yaw, body);
         }
         model::build_arrows(&self.arrows, camera, alpha, &mut self.mesh);
         model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
@@ -4219,7 +4227,11 @@ mod tests {
             raining: false,
             dimension: Dimension::Overworld,
         };
-        let hit = (0..60 * 10).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
+        // v1.0 gap Track 2c: 20 seconds, not 10. The zombie first strolls
+        // until a 1-in-5 target search sees the player past the pillar, so
+        // the first hit's time follows the random stream, which the idle
+        // look goals now draw from too (it came at 10.15 s).
+        let hit = (0..60 * 20).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
         assert!(hit, "zombie stuck at {:?}", e.mobs[0].pos);
     }
 

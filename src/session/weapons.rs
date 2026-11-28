@@ -156,7 +156,7 @@ impl PlayerSession {
         let eye = self.player.eye();
         let range = spear::player_range(self.mode.is_creative());
         let block = self.spear_block_distance(world, eye, look, range.max + along.max(0.0) / TICK_RATE);
-        let targets = entities.spear_targets(eye, look, range, along / TICK_RATE, block, None);
+        let targets = entities.spear_targets(world, eye, look, range, along / TICK_RATE, block, None);
         let clock = self.weapons.clock;
         let mut affected = 0u8;
         let yaw = crate::knockback::java_yaw_degrees(self.player.yaw);

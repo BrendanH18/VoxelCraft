@@ -201,6 +201,45 @@ pub fn block_distance<W: crate::physics::BlockSource + ?Sized>(
         .map(|t| t * max)
 }
 
+/// v1.0 gap Track 2c: `ProjectileUtil.getManyEntityHitResult` for one
+/// box from `from` along `span`: a hit when the box holds `from`
+/// (`includeFromEntity`) or the segment crosses it; otherwise, when it
+/// crosses the box grown by `margin`, only if from that crossing toward the
+/// box's centre (stopped at the first block collision box,
+/// `ClipContext.Block.COLLIDER`) the segment still reaches the box. A
+/// segment starting inside the grown box but outside the box itself misses
+/// (`AABB.clip` finds no entry).
+pub fn stab_hits<W: crate::physics::BlockSource + ?Sized>(
+    world: &W,
+    from: glam::DVec3,
+    span: glam::DVec3,
+    min: glam::DVec3,
+    max: glam::DVec3,
+    margin: f64,
+) -> bool {
+    use crate::physics::ray_aabb;
+    let inside = |min: glam::DVec3, max: glam::DVec3| from.cmpge(min).all() && from.cmple(max).all();
+    if inside(min, max) || ray_aabb(from, span, min, max).is_some_and(|t| t <= 1.0) {
+        return true;
+    }
+    if margin <= 0.0 {
+        return false;
+    }
+    let grow = glam::DVec3::splat(margin);
+    if inside(min - grow, max + grow) {
+        return false;
+    }
+    let Some(t) = ray_aabb(from, span, min - grow, max + grow).filter(|t| *t <= 1.0) else { return false };
+    let outside = from + span * t;
+    let toward = (min + max) * 0.5 - outside;
+    let length = toward.length();
+    if length <= 1e-9 {
+        return true;
+    }
+    let reach = block_distance(world, outside, toward, length).map_or(length, |b| b.min(length));
+    ray_aabb(outside, toward / length * reach, min, max).is_some_and(|t| t <= 1.0)
+}
+
 /// Lunge's `post_piercing_attack` impulse: the look direction with its
 /// vertical part dropped (`coordinate_scale [1, 0, 1]`), times 0.458 per
 /// level, in blocks per tick. Not normalized: looking down lunges less.

@@ -332,3 +332,63 @@ fn the_stab_follows_the_head_not_the_target() {
     e.mob_spear_stabs(&world, &c, &mut events);
     assert!(events.is_empty(), "{events:?}");
 }
+
+/// v1.0 gap Track 2c: `PiercingWeapon.canHitEntity` takes every pickable
+/// entity: a minecart in the way takes ten times the stab's 6 (past 40 it
+/// breaks into its item), an End crystal is set off, and the mob's own
+/// cart is never stabbed (`isPassengerOfSameVehicle`).
+#[test]
+fn mob_spears_stab_carts_and_crystals_but_not_their_own_cart() {
+    use crate::entity::minecart::CartKind;
+    let world = Grid::flat(0);
+    let c = ctx(Vec::new(), Dimension::Overworld);
+    let at = DVec3::new(2.3, 0.0, 0.5);
+    let mut e = Entities::new(4);
+    charging_zombie(&mut e, at + DVec3::Y * 0.4);
+    e.spawn_cart(CartKind::Rideable, at);
+    let mut events = Vec::new();
+    e.mob_spear_stabs(&world, &c, &mut events);
+    assert!(e.minecarts.is_empty(), "60 damage breaks the cart");
+    assert!(e.items.iter().any(|i| i.stack.item == crate::item::Item::MINECART));
+
+    let mut e = Entities::new(4);
+    charging_zombie(&mut e, at + DVec3::Y * 1.0);
+    e.crystals.spawn(at, None, false, false);
+    let mut events = Vec::new();
+    e.mob_spear_stabs(&world, &c, &mut events);
+    assert!(e.crystals.hits_pending(), "the crystal is set off");
+
+    // Riding a cart, its own cart ahead isn't stabbed.
+    let mut e = Entities::new(4);
+    let z = charging_zombie(&mut e, at + DVec3::Y * 0.4);
+    let id = e.spawn_cart(CartKind::Rideable, at);
+    e.mobs[z].riding = Some(id);
+    let mut events = Vec::new();
+    e.mob_spear_stabs(&world, &c, &mut events);
+    assert_eq!(e.minecarts.len(), 1);
+    assert!(e.items.is_empty());
+}
+
+/// v1.0 gap Track 2c: `getManyEntityHitResult`'s margin. A ray passing
+/// 0.1 beside a box (inside its 0.125 margin) hits it when nothing stands
+/// between the margin and the box's centre, and misses when a block does;
+/// a ray starting inside the margin but outside the box misses.
+#[test]
+fn the_margin_hit_checks_blocks_toward_the_box() {
+    use crate::weapons::spear::stab_hits;
+    let mut world = Grid::flat(-10);
+    let (min, max) = (DVec3::new(3.0, 0.0, 0.0), DVec3::new(4.0, 1.0, 1.0));
+    // Along +X at z = -0.1, just outside the box's z = 0 face.
+    let (from, span) = (DVec3::new(0.5, 0.5, -0.1), DVec3::new(5.0, 0.0, 0.0));
+    assert!(stab_hits(&world, from, span, min, max, 0.125));
+    assert!(!stab_hits(&world, from, span, min, max, 0.0), "no margin, no hit");
+    // Farther than the margin beside it: a miss.
+    assert!(!stab_hits(&world, DVec3::new(0.5, 0.5, -0.2), span, min, max, 0.125));
+    // A block in the corner between the margin crossing (2.875, 0.5, -0.1)
+    // and the box's centre stops the clip short of the box: a miss, though
+    // the ray itself passes clear of it.
+    world.set(glam::IVec3::new(2, 0, 0), crate::world::block::Block::STONE);
+    assert!(!stab_hits(&world, from, span, min, max, 0.125), "a block toward the centre");
+    // Starting within the margin (but outside the box): `AABB.clip` finds no entry.
+    assert!(!stab_hits(&Grid::flat(-10), DVec3::new(2.95, 0.5, 0.5), DVec3::new(-1.0, 0.0, 0.0), min, max, 0.125));
+}
