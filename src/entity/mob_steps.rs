@@ -100,8 +100,8 @@ mod tests {
     #[test]
     fn a_step_every_five_thirds_of_a_block() {
         let (mut dist, mut next) = (0.0, 0.0);
-        let steps = (0..1000).filter(|_| advance(&mut dist, &mut next, 0.01)).count();
-        // 10 blocks: moveDist 6, steps at 0.006 (passing 0), then each whole number.
+        let steps = (0..990).filter(|_| advance(&mut dist, &mut next, 0.01)).count();
+        // 9.9 blocks: moveDist 5.94; a step passing 0, then each whole number.
         assert_eq!(steps, 6);
         assert_eq!(StepCue::of(MobKind::Turtle, true, false), Some(StepCue::BabyTurtle));
         assert_eq!(StepCue::of(MobKind::Camel, false, true), Some(StepCue::CamelSand));

@@ -410,6 +410,29 @@ mod tests {
         w.maps.game_ticks += 1;
         w.tick_redstone();
     }
+    /// v1.0 final Track F4: a LAN guest draws the host's find rising out
+    /// of the block (`BrushableBlockEntity.getUpdateTag`'s item and hit
+    /// direction), and loses it when the host's block is done.
+    #[test]
+    fn lan_guests_see_the_find_rise_out_of_the_block() {
+        let mut host = world();
+        host.maps.game_ticks = 0;
+        host.brush_block(AT, IVec3::X);
+        let near = host.emerging_near(AT.as_dvec3(), 64.0);
+        assert_eq!(near.len(), 1);
+        assert!(host.emerging_near(AT.as_dvec3() + glam::DVec3::splat(100.0), 64.0).is_empty());
+        let mut guest = World::new_remote(Arc::new(Generator::new(42)), 2);
+        guest.receive_chunk(chunk_of(AT), Arc::new(ChunkData::Uniform(Block::AIR)));
+        guest.set_block(AT, state(false, 1));
+        assert_eq!(guest.emerging_items().count(), 0);
+        guest.apply_emerging(&serde_json::json!(near));
+        let seen: Vec<_> = guest.emerging_items().collect();
+        let hosted: Vec<_> = host.emerging_items().collect();
+        assert_eq!(seen, hosted);
+        assert_eq!(seen[0].2, IVec3::X);
+        guest.apply_emerging(&serde_json::json!([]));
+        assert_eq!(guest.emerging_items().count(), 0);
+    }
     #[test]
     fn java_strokes_cooldown_dust_decay_and_one_extraction() {
         let mut w = world();

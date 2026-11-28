@@ -2862,6 +2862,21 @@ mod tests {
         assert_eq!(peer_sounds(&hurt, &[], guest, me, near).len(), 1);
     }
 
+    /// v1.0 final Track F4: a goat horn reaches guests to its 256-block
+    /// range and a jukebox's song to 64; other sounds stop at 64.
+    #[test]
+    fn goat_horns_reach_guests_256_blocks_away() {
+        use crate::audio::{SoundSource, sounds::Sound};
+        let me = DVec3::new(0.5, 64.0, 0.5);
+        let host = DVec3::new(200.5, 64.0, 0.5);
+        let horn = [(Sound::Horn(2), Some(host), 1.0, (1.0, 1.0), SoundSource::Records)];
+        let sent = peer_sounds(&horn, &[], voxelcraft::entity::PlayerId(2), me, host);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0][0], json!(Sound::Horn(2).key()));
+        let hurt = [(Sound::Hurt, Some(host), 1.0, (1.0, 1.0), SoundSource::Players)];
+        assert!(peer_sounds(&hurt, &[], voxelcraft::entity::PlayerId(2), me, host).is_empty());
+    }
+
     #[test]
     fn statue_prediction_matches_block_use_priority() {
         use voxelcraft::{
