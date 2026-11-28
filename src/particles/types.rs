@@ -218,6 +218,11 @@ impl System {
         match request {
             Request::Particle(p) => self.pool.spawn(p),
             Request::Break { cell, block } => self.break_block(cell, block, world),
+            Request::Item { pos, vel, item } => {
+                if self.accept(setting, false, false) {
+                    self.item_particle(pos, vel, item);
+                }
+            }
             Request::Hit { cell, block, face } => self.hit_block(cell, block, face, world),
             Request::Burst(b) => self.burst(b, setting),
             Request::Tracking(burst) => {
@@ -613,6 +618,30 @@ impl System {
         let v = self.rng.range(0.0, 0.75);
         p.uv = [u + 0.25, v, u, v + 0.25];
         p
+    }
+
+    /// v1.0 gap Track 2g: `BreakingItemParticle` (`ItemParticleOption`):
+    /// the particle's own random velocity cut to a tenth plus `vel`,
+    /// gravity 1, half the usual size, white, and a random quarter of the
+    /// item's sprite (`uo`, `vo` up to 3 of 4); block items show their
+    /// block's particle texture.
+    fn item_particle(&mut self, pos: DVec3, vel: DVec3, item: crate::item::Item) {
+        let texture = match item.icon_layer() {
+            Some(layer) => Texture::Item(layer.saturating_sub(crate::world::block::tex::ITEM_BASE)),
+            None => match item.block() {
+                Some(b) if b != Block::AIR => Texture::Block(b),
+                _ => return,
+            },
+        };
+        let mut p = Particle::new(pos, texture);
+        p.gravity = 1.0;
+        p.size = 0.05 * self.rng.range(1.0, 2.0);
+        p.velocity = java_velocity(&mut self.rng, DVec3::ZERO) * 0.1 + vel;
+        p.lifetime = (4.0 / self.rng.range(0.1, 1.0)) as u16;
+        let u = self.rng.next_f32() * 3.0 / 4.0;
+        let v = self.rng.next_f32() * 3.0 / 4.0;
+        p.uv = [u + 0.25, v, u, v + 0.25];
+        self.pool.spawn(p);
     }
 
     fn break_block(&mut self, cell: IVec3, block: Block, world: &World) {

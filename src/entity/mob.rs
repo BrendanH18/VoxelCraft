@@ -4161,7 +4161,10 @@ impl Mob {
         } else {
             // Knockback isn't cancelled instantly: little control in the air.
             let k = (dt * if self.on_ground { 10.0 } else { 1.5 }).min(1.0);
-            if self.on_ground || wish.is_some() {
+            // v1.0 gap Track 2g: a long-jumping goat flies its arc
+            // (`setDiscardFriction`).
+            let long_jump = self.goat_long_jumping();
+            if (self.on_ground || wish.is_some()) && !long_jump {
                 self.vel.x += (target.x - self.vel.x) * k;
                 self.vel.z += (target.z - self.vel.z) * k;
             }
@@ -4172,6 +4175,10 @@ impl Mob {
                 let ticks = dt * 20.0;
                 let target = 0.05 * (f64::from(amplifier) + 1.0) * 20.0;
                 (target + (self.vel.y - target) * 0.8f64.powf(ticks)) * 0.98f64.powf(ticks)
+            } else if long_jump {
+                // v1.0 gap Track 2g: `LongJumpUtil`'s arc: Java's 0.08 a tick
+                // squared and, with friction discarded, no drag.
+                (self.vel.y - 32.0 * dt).max(-78.)
             } else if super::mounts::equine(self.kind) {
                 // Java: gravity 0.08 blocks/tick and vertical drag 0.98.
                 ((self.vel.y - 32.0 * dt) * 0.98f64.powf(dt * 20.)).max(-78.)

@@ -856,6 +856,7 @@ impl Game {
                 | EntityEvent::ExperienceBurst { .. }
                 | EntityEvent::DropEquipment { .. }
                 | EntityEvent::ThrowItem { .. }
+                | EntityEvent::ItemParticle { .. }
                 // Applied by the entities within their tick.
                 | EntityEvent::DragonStruck { .. }
                 | EntityEvent::DragonHealed { .. }

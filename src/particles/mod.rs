@@ -51,6 +51,9 @@ pub enum Texture {
     /// The renderer resolves the block's particle icon, independently of mesh packing.
     Block(Block),
     Sprite(u16),
+    /// v1.0 gap Track 2g: a layer of the item icon array (Java's item
+    /// atlas sprite for `ItemParticleOption`).
+    Item(u16),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -295,6 +298,13 @@ pub enum Request {
     EyeBreak {
         pos: DVec3,
     },
+    /// v1.0 gap Track 2g: one `ItemParticleOption` particle of `item` at
+    /// `pos` with `vel` (blocks a tick): `BreakingItemParticle.Provider`.
+    Item {
+        pos: DVec3,
+        vel: DVec3,
+        item: crate::item::Item,
+    },
     /// HoneyBlock entity events 53/54 and slide sound.
     Honey {
         pos: DVec3,
@@ -310,6 +320,32 @@ pub enum Request {
     },
 }
 
+/// v1.0 gap Track 2g: `LivingEntity.spawnItemParticles(stack, count)`, for
+/// eating (`Consumable.emitParticlesAndSounds`: 5 a chew, 16 on finishing)
+/// and a broken tool (`breakItem`: 5): each particle 0.6 ahead of the eyes,
+/// 0.3 to 0.9 down the view and up to 0.15 aside, moving up to 0.05 aside
+/// and 0.1 to 0.2 up the view, then 0.05 up (blocks a tick). `forward` is
+/// the unit view direction; `seed` the client's random draw.
+pub fn living_item_particles(
+    item: crate::item::Item,
+    eye: DVec3,
+    forward: DVec3,
+    count: u32,
+    seed: u64,
+) -> impl Iterator<Item = Request> {
+    let side = forward.cross(DVec3::Y).normalize_or(DVec3::X);
+    let up = side.cross(forward).normalize_or(DVec3::Y);
+    let mut rng = crate::entity::Rng::new(seed);
+    (0..count).map(move |_| {
+        let dx = (f64::from(rng.next_f32()) - 0.5) * 0.1;
+        let dy = f64::from(rng.next_f32()) * 0.1 + 0.1;
+        let vel = side * dx + up * dy + DVec3::Y * 0.05;
+        let y = -f64::from(rng.next_f32()) * 0.6 - 0.3;
+        let x = (f64::from(rng.next_f32()) - 0.5) * 0.3;
+        Request::Item { pos: eye + side * x + up * y + forward * 0.6, vel, item }
+    })
+}
+
 impl Request {
     /// Where the effect happens, for range checks.
     pub fn pos(&self) -> DVec3 {
@@ -319,6 +355,7 @@ impl Request {
             Request::Explosion { pos, .. }
             | Request::EyeBreak { pos }
             | Request::Honey { pos, .. }
+            | Request::Item { pos, .. }
             | Request::Firework { pos, .. } => *pos,
             Request::Break { cell, .. } | Request::Hit { cell, .. } => cell.as_dvec3() + DVec3::splat(0.5),
         }
@@ -340,6 +377,7 @@ impl Request {
             Request::Break { cell, block } => json!({"t": "r", "p": c(*cell), "b": block.0}),
             Request::Hit { cell, block, face } => json!({"t": "h", "p": c(*cell), "b": block.0, "d": c(*face)}),
             Request::EyeBreak { pos } => json!({"t": "e", "p": v(*pos)}),
+            Request::Item { pos, vel, item } => json!({"t": "it", "p": v(*pos), "v": v(*vel), "i": item.0}),
             Request::Honey { pos, count, sound } => json!({"t": "honey", "p": v(*pos), "n": count, "sound": sound}),
             Request::Firework { pos, vel, fireworks } => {
                 json!({"t": "fw", "p": v(*pos), "v": v(*vel), "f": fireworks.map(|f| f.field())})
@@ -388,6 +426,11 @@ impl Request {
             "r" => Request::Break { cell: c("p")?, block: block()? },
             "h" => Request::Hit { cell: c("p")?, block: block()?, face: c("d")?.clamp(IVec3::NEG_ONE, IVec3::ONE) },
             "e" => Request::EyeBreak { pos: v("p")? },
+            "it" => Request::Item {
+                pos: v("p")?,
+                vel: v("v")?.clamp(DVec3::splat(-4.0), DVec3::splat(4.0)),
+                item: crate::item::Item::all_items().find(|i| u64::from(i.0) == j["i"].as_u64().unwrap_or(u64::MAX))?,
+            },
             "honey" => Request::Honey {
                 pos: v("p")?,
                 count: u8::try_from(j["n"].as_u64()?).ok()?.min(10),

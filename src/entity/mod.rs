@@ -517,6 +517,14 @@ pub enum EntityEvent {
         from: u8,
         to: u8,
     },
+    /// v1.0 gap Track 2g: an `ItemParticleOption` particle from a pass that
+    /// only has the event list (thrown snowballs and eggs breaking, a fox
+    /// eating); handled internally into [`Entities::particles`].
+    ItemParticle {
+        pos: DVec3,
+        vel: DVec3,
+        item: crate::item::Item,
+    },
     /// v1.0 gap Track 2g: a mob throws or drops `stack` from `pos` at `vel`
     /// (blocks a second), 10 ticks before it can be picked up
     /// (`BehaviorUtils.throwItem`, `spawnAtLocation`); handled internally.

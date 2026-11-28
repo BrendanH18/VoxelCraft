@@ -657,6 +657,9 @@ impl Entities {
                 EntityEvent::ThrowItem { stack, pos, vel } => {
                     self.items.push(item::ItemEntity::new(stack, pos, vel, 0.5, &mut self.rng));
                 }
+                EntityEvent::ItemParticle { pos, vel, item } => {
+                    self.particles.push(crate::particles::Request::Item { pos, vel, item });
+                }
                 _ => {}
             }
         }
@@ -670,6 +673,7 @@ impl Entities {
                     | EntityEvent::ExperienceBurst { .. }
                     | EntityEvent::DropEquipment { .. }
                     | EntityEvent::ThrowItem { .. }
+                    | EntityEvent::ItemParticle { .. }
             )
         });
         let mut destroyed = Vec::new();

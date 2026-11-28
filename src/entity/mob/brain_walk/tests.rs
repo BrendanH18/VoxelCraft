@@ -408,7 +408,7 @@ fn farmers_bake_bread_and_compost_their_spare_seeds() {
 fn farmers_use_bone_meal_on_growing_crops() {
     use crate::entity::villager::Profession;
     let mut w = Grid::flat(64);
-    let job = IVec3::new(6, 64, 6);
+    let job = IVec3::new(4, 64, 4);
     w.set(job, Block::COMPOSTER);
     let crop = IVec3::new(1, 64, 0);
     w.set(crop - IVec3::Y, Block::FARMLAND);
